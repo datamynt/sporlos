@@ -17,6 +17,17 @@ def _base() -> str:
     return f"https://{d}" if d and "FYLL" not in d else "https://sporlos.no"
 
 
+def send_verification(uid: int, email: str) -> bool:
+    """Send e-postbekreftelse (signert lenke, ingen DB-token)."""
+    link = f"{_base()}/verify?uid={uid}&t={auth.sign_token('verify', str(uid))}"
+    return mailer.send(
+        email,
+        "Bekreft e-posten din - Sporlos",
+        f"Hei,\n\nBekreft e-postadressen din for Sporlos:\n{link}\n\n"
+        "Opprettet du ikke en konto? Se bort fra denne e-posten.\n\nSporlos",
+    )
+
+
 def send_trial_reminders(within_days: int = 3) -> int:
     """Send påminnelse til trial-tenants som utløper snart. Returnerer antall sendt."""
     sent = 0

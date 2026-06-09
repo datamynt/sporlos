@@ -28,7 +28,7 @@ from starlette.responses import (
 )
 from starlette.routing import Route
 
-from app import mailer, store
+from app import mailer, notify, store
 from app.auth import check_token, hash_password, verify_password
 from app.geo import lookup as geo_lookup
 from app.privacy import client_ip, visitor_hash
@@ -267,6 +267,10 @@ async def signup(request):
             try:
                 tid, uid = store.create_account(company, email, hash_password(pw))
                 request.session["uid"], request.session["tid"] = uid, tid
+                try:
+                    notify.send_verification(uid, email)
+                except Exception:
+                    pass
                 return RedirectResponse("/app", status_code=302)
             except Exception:
                 err = "Kunne ikke opprette konto. Prøv igjen."
@@ -332,6 +336,37 @@ async def unsubscribe(request):
         "Ugyldig lenke",
         '<h1>Ugyldig avmeldings-lenke</h1><p class=muted><a href="/">Til forsiden</a></p>',
     )
+
+
+async def verify_email(request):
+    uid = request.query_params.get("uid") or ""
+    token = request.query_params.get("t") or ""
+    if uid and check_token("verify", uid, token):
+        try:
+            store.set_email_verified(int(uid))
+        except Exception:
+            pass
+        return _shell(
+            "Bekreftet",
+            '<h1>E-posten er bekreftet ✓</h1><p class=muted><a href="/app">Til Sporløs</a></p>',
+        )
+    return _shell(
+        "Ugyldig lenke",
+        '<h1>Ugyldig bekreftelseslenke</h1><p class=muted><a href="/app">Til Sporløs</a></p>',
+    )
+
+
+async def resend_verify(request):
+    u = _user(request)
+    if not u:
+        return RedirectResponse("/login", status_code=302)
+    usr = store.get_user(u["uid"])
+    if usr and not usr["email_verified"]:
+        try:
+            notify.send_verification(usr["id"], usr["email"])
+        except Exception:
+            pass
+    return RedirectResponse("/app?vsent=1", status_code=302)
 
 
 async def forgot(request):
@@ -714,6 +749,16 @@ async def dashboard(request):
     if site and site["tenant_id"] != user["tid"]:
         site, public_id = None, None  # tenant-isolasjon: ikke din site
 
+    me = store.get_user(user["uid"])
+    verify_banner = ""
+    if me and not me["email_verified"] and me.get("email"):
+        sent = "Ny lenke sendt. " if request.query_params.get("vsent") else ""
+        verify_banner = (
+            '<p style="background:#fff7ed;color:#9a3412;padding:.5rem .8rem;border-radius:7px;'
+            f'font-size:.9rem">{sent}Bekreft e-posten din ({escape(me["email"])}) — sjekk innboksen, '
+            'eller <a href="/resend-verify" style="color:#9a3412;text-decoration:underline">send på nytt</a>.</p>'
+        )
+
     if not site:
         sites = store.list_sites(user["tid"])
         tenant = store.get_tenant(user["tid"]) or {}
@@ -770,6 +815,7 @@ form.add button{{background:#1a1a1a;color:#fff;border:0;padding:0 1rem;border-ra
 .top{{display:flex;justify-content:space-between;align-items:center}}.top a{{font-size:.85rem;color:#888}}</style>
 <div class=top><h1>Mine sites <small style="font-weight:400;color:#888;font-size:1rem">· i dag</small></h1>
 <a href="/logout">Logg ut</a></div>
+{verify_banner}
 {trial}
 {planinfo}
 {upgrade}
@@ -917,6 +963,7 @@ table{{border-collapse:collapse;width:100%;margin:.5rem 0}}td{{border-bottom:1px
 h3{{margin:1.5rem 0 .3rem;font-size:1rem}}</style>
 <p style="margin:0 0 .5rem"><a href="/app" style="color:#3730a3;text-decoration:none;font-size:.85rem">← Mine sites</a></p>
 <h1>{escape(site['domain'])}</h1>
+{verify_banner}
 <div class=tabs>{tabs}</div>
 <details style="margin:1rem 0"><summary style="cursor:pointer;color:#3730a3;font-size:.9rem">Vis sporings-kode</summary>
 <pre style="background:#f6f6f6;padding:.8rem;border-radius:7px;overflow:auto;font-size:.78rem">{escape(f'<script defer data-site="{public_id}" data-api="{PUBLIC_BASE}/api/event" src="{PUBLIC_BASE}/sporlos.js"></script>')}</pre></details>
@@ -962,6 +1009,8 @@ routes = [
     Route("/forgot", forgot, methods=["GET", "POST"]),
     Route("/reset", reset, methods=["GET", "POST"]),
     Route("/unsubscribe", unsubscribe),
+    Route("/verify", verify_email),
+    Route("/resend-verify", resend_verify),
     Route("/logout", logout),
     Route("/auth/google", google_login),
     Route("/auth/google/callback", google_callback, name="google_callback"),

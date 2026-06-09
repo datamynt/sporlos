@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     tenant_id     BIGINT NOT NULL REFERENCES tenants(id),
     email         TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    email_verified INTEGER NOT NULL DEFAULT 0,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

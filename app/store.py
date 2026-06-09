@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS users (
     tenant_id INTEGER NOT NULL REFERENCES tenants(id),
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    email_verified INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS sites (
@@ -151,6 +152,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_reminded_at TIMESTAMPTZ")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS email_optout INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER NOT NULL DEFAULT 0")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT")
             cur.execute("ALTER TABLE daily_rollups ADD COLUMN IF NOT EXISTS merkle_root TEXT")
@@ -166,6 +168,7 @@ def init_db() -> None:
                 "ALTER TABLE tenants ADD COLUMN trial_ends_at TEXT",
                 "ALTER TABLE tenants ADD COLUMN trial_reminded_at TEXT",
                 "ALTER TABLE tenants ADD COLUMN email_optout INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE tenants ADD COLUMN stripe_customer_id TEXT",
                 "ALTER TABLE tenants ADD COLUMN stripe_subscription_id TEXT",
             ):
@@ -258,6 +261,20 @@ def get_user_by_email(email: str) -> dict | None:
         )
         r = cur.fetchone()
         return dict(r) if r else None
+
+
+def get_user(uid: int) -> dict | None:
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, tenant_id, email, email_verified FROM users WHERE id = {P}", (uid,)
+        )
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def set_email_verified(uid: int) -> None:
+    with _cursor() as cur:
+        cur.execute(f"UPDATE users SET email_verified = 1 WHERE id = {P}", (uid,))
 
 
 def set_password(email: str, password_hash: str) -> None:
