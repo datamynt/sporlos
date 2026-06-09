@@ -4,6 +4,10 @@ Fundament for passord-reset, trial-utløp-varsler, e-postbekreftelse, ukerapport
 Sender via Workspace SMTP (smtp.gmail.com:587 + app-passord) eller hvilken som helst
 SMTP. No-op (logger) hvis ikke konfigurert, så resten av appen aldri krasjer på e-post.
 
+To moduser:
+  - SMTP-relay (IP-autentisert): sett SMTP_HOST=smtp-relay.gmail.com + MAIL_FROM. Ingen login.
+  - SMTP-auth (app-passord): sett SMTP_HOST=smtp.gmail.com + SMTP_USER + SMTP_PASS.
+
 Env: SMTP_HOST, SMTP_PORT (default 587), SMTP_USER, SMTP_PASS, MAIL_FROM (default = SMTP_USER).
 """
 
@@ -18,12 +22,13 @@ from email.message import EmailMessage
 log = logging.getLogger("sporlos.mailer")
 
 
+def _from() -> str | None:
+    return os.environ.get("MAIL_FROM") or os.environ.get("SMTP_USER")
+
+
 def configured() -> bool:
-    return bool(
-        os.environ.get("SMTP_HOST")
-        and os.environ.get("SMTP_USER")
-        and os.environ.get("SMTP_PASS")
-    )
+    # Nok for relay (IP-autentisert): host + en avsenderadresse. Login er valgfri.
+    return bool(os.environ.get("SMTP_HOST") and _from())
 
 
 def send(to: str, subject: str, body: str) -> bool:
@@ -31,9 +36,10 @@ def send(to: str, subject: str, body: str) -> bool:
     if not configured():
         log.warning("SMTP ikke konfigurert — e-post ikke sendt (to=%s subject=%r)", to, subject)
         return False
-    frm = os.environ.get("MAIL_FROM") or os.environ["SMTP_USER"]
+    frm = _from()
     host = os.environ["SMTP_HOST"]
     port = int(os.environ.get("SMTP_PORT", "587"))
+    user, pw = os.environ.get("SMTP_USER"), os.environ.get("SMTP_PASS")
     msg = EmailMessage()
     msg["From"] = frm
     msg["To"] = to
@@ -42,7 +48,8 @@ def send(to: str, subject: str, body: str) -> bool:
     try:
         with smtplib.SMTP(host, port, timeout=20) as s:
             s.starttls(context=ssl.create_default_context())
-            s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
+            if user and pw:  # app-passord-modus; relay (IP-auth) hopper over login
+                s.login(user, pw)
             s.send_message(msg)
         log.info("E-post sendt til %s (%r)", to, subject)
         return True
