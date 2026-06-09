@@ -74,6 +74,13 @@ CREATE TABLE IF NOT EXISTS funnels (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Passord-reset-tokens (engangs, utløper).
+CREATE TABLE IF NOT EXISTS reset_tokens (
+    token       TEXT PRIMARY KEY,
+    email       TEXT NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL
+);
+
 -- Mål/konverteringer per site (egendefinert hendelse eller sti).
 CREATE TABLE IF NOT EXISTS goals (
     id          BIGSERIAL PRIMARY KEY,

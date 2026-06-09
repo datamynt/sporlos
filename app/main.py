@@ -28,7 +28,7 @@ from starlette.responses import (
 )
 from starlette.routing import Route
 
-from app import store
+from app import mailer, store
 from app.auth import hash_password, verify_password
 from app.geo import lookup as geo_lookup
 from app.privacy import client_ip, visitor_hash
@@ -299,6 +299,8 @@ async def login(request):
             return RedirectResponse("/app", status_code=302)
         err = "Feil e-post eller passord."
     eb = f'<div class=err>{escape(err)}</div>' if err else ""
+    if request.query_params.get("reset"):
+        eb += '<p style="color:#0a0;font-size:.9rem">Passordet er oppdatert — logg inn.</p>'
     return _shell(
         "Logg inn",
         f"""<h1>Logg inn</h1>{eb}
@@ -308,7 +310,77 @@ async def login(request):
   <button>Logg inn</button>
 </form>
 {_google_button()}
-<p class=muted>Ny her? <a href="/signup">Opprett konto</a></p>""",
+<p class=muted>Ny her? <a href="/signup">Opprett konto</a> · <a href="/forgot">Glemt passord?</a></p>""",
+    )
+
+
+async def forgot(request):
+    if request.method == "POST":
+        f = await request.form()
+        email = (f.get("email") or "").strip().lower()
+        u = store.get_user_by_email(email) if email else None
+        if u and u["password_hash"] != "!google-oauth":
+            token = store.create_reset_token(email)
+            link = f"{PUBLIC_BASE}/reset?token={token}"
+            mailer.send(
+                email,
+                "Tilbakestill passordet ditt – Sporløs",
+                f"Hei,\n\nKlikk for å velge nytt passord (gyldig i 1 time):\n{link}\n\n"
+                "Ba du ikke om dette, kan du se bort fra e-posten.\n\nSporløs",
+            )
+        # alltid samme svar (ingen e-post-enumerering)
+        return _shell(
+            "Sjekk e-posten",
+            "<h1>Sjekk e-posten din</h1><p class=muted>Hvis det finnes en konto på adressen, "
+            "har vi sendt en lenke for å tilbakestille passordet. Lenken er gyldig i én time.</p>"
+            '<p class=muted><a href="/login">Tilbake til innlogging</a></p>',
+        )
+    return _shell(
+        "Glemt passord",
+        """<h1>Glemt passord</h1>
+<p class=muted>Skriv inn e-posten din, så sender vi en lenke for å velge nytt passord.</p>
+<form method=post>
+  <label>E-post</label><input name=email type=email required>
+  <button>Send lenke</button>
+</form>
+<p class=muted><a href="/login">Tilbake</a></p>""",
+    )
+
+
+async def reset(request):
+    token = (request.query_params.get("token") or "")
+    if request.method == "POST":
+        f = await request.form()
+        token = f.get("token") or ""
+        pw = f.get("password") or ""
+        email = store.pop_reset_token(token) if token else None
+        if not email:
+            return _shell(
+                "Lenke utløpt",
+                "<h1>Lenken er ugyldig eller utløpt</h1>"
+                '<p class=muted><a href="/forgot">Be om en ny</a></p>',
+            )
+        if len(pw) < 8:
+            new = store.create_reset_token(email)  # ny token, prøv igjen
+            return _shell(
+                "For kort passord",
+                f"""<h1>Velg nytt passord</h1><div class=err>Passordet må være minst 8 tegn.</div>
+<form method=post>
+  <input type=hidden name=token value="{escape(new)}">
+  <label>Nytt passord</label><input name=password type=password required minlength=8>
+  <button>Lagre passord</button>
+</form>""",
+            )
+        store.set_password(email, hash_password(pw))
+        return RedirectResponse("/login?reset=1", status_code=302)
+    return _shell(
+        "Velg nytt passord",
+        f"""<h1>Velg nytt passord</h1>
+<form method=post>
+  <input type=hidden name=token value="{escape(token)}">
+  <label>Nytt passord</label><input name=password type=password required minlength=8>
+  <button>Lagre passord</button>
+</form>""",
     )
 
 
@@ -855,6 +927,8 @@ routes = [
     Route("/personvern", personvern),
     Route("/signup", signup, methods=["GET", "POST"]),
     Route("/login", login, methods=["GET", "POST"]),
+    Route("/forgot", forgot, methods=["GET", "POST"]),
+    Route("/reset", reset, methods=["GET", "POST"]),
     Route("/logout", logout),
     Route("/auth/google", google_login),
     Route("/auth/google/callback", google_callback, name="google_callback"),

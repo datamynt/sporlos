@@ -90,6 +90,11 @@ CREATE TABLE IF NOT EXISTS funnels (
     steps TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS reset_tokens (
+    token TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS daily_rollups (
     site_id INTEGER NOT NULL,
     day TEXT NOT NULL,
@@ -247,6 +252,37 @@ def get_user_by_email(email: str) -> dict | None:
         )
         r = cur.fetchone()
         return dict(r) if r else None
+
+
+def set_password(email: str, password_hash: str) -> None:
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE users SET password_hash = {P} WHERE email = {P}",
+            (password_hash, email.strip().lower()),
+        )
+
+
+def create_reset_token(email: str) -> str:
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    with _cursor() as cur:
+        cur.execute(
+            f"INSERT INTO reset_tokens (token, email, expires_at) VALUES ({P}, {P}, {P})",
+            (token, email.strip().lower(), expires),
+        )
+    return token
+
+
+def pop_reset_token(token: str) -> str | None:
+    """Returner e-post hvis token er gyldig + ikke utløpt, og forbruk den (engangs)."""
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT email FROM reset_tokens WHERE token = {P} AND expires_at > {P}", (token, now)
+        )
+        r = cur.fetchone()
+        cur.execute(f"DELETE FROM reset_tokens WHERE token = {P}", (token,))
+        return r["email"] if r else None
 
 
 def get_tenant(tenant_id: int) -> dict | None:
