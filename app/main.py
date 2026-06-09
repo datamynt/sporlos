@@ -188,6 +188,7 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.3rem 0}
 footer{padding:3rem 0;color:#888;font-size:.85rem}
 a{color:#3730a3}
 </style>
+<script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" src="https://sporlos.no/sporlos.js"></script>
 <div class=wrap>
 <header>
   <span class=tag>Norsk · cookieløs · samtykke-fri</span>
@@ -246,6 +247,7 @@ input{{width:100%;padding:.6rem;border:1px solid #ccc;border-radius:7px;font-siz
 button{{margin-top:1.2rem;width:100%;background:#1a1a1a;color:#fff;border:0;padding:.7rem;border-radius:8px;font-size:1rem;cursor:pointer}}
 .err{{background:#fee;color:#900;padding:.6rem;border-radius:7px;font-size:.9rem;margin:.5rem 0}}
 .muted{{color:#888;font-size:.85rem;margin-top:1.2rem}}a{{color:#3730a3}}</style>
+<script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" src="https://sporlos.no/sporlos.js"></script>
 {inner}"""
     )
 
