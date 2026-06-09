@@ -313,6 +313,38 @@ def mark_trial_reminded(tenant_id: int) -> None:
         )
 
 
+def weekly_report_data(days: int = 7) -> list[dict]:
+    """Per tenant m/ epost: pv + unike per site siste `days`. Kun tenants med trafikk."""
+    start, end = _period_window(days)
+    with _cursor() as cur:
+        cur.execute(
+            "SELECT t.id, "
+            "(SELECT email FROM users WHERE tenant_id = t.id ORDER BY id LIMIT 1) AS email "
+            "FROM tenants t"
+        )
+        tenants = [dict(r) for r in cur.fetchall()]
+        out = []
+        for t in tenants:
+            if not t["email"]:
+                continue
+            cur.execute(f"SELECT id, domain FROM sites WHERE tenant_id = {P}", (t["id"],))
+            sites = [dict(r) for r in cur.fetchall()]
+            site_stats, total = [], 0
+            for s in sites:
+                cur.execute(
+                    f"SELECT COUNT(*) AS pv, COUNT(DISTINCT visitor_hash) AS uv FROM events "
+                    f"WHERE site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview'",
+                    (s["id"], start, end),
+                )
+                r = cur.fetchone()
+                pv, uv = r["pv"], r["uv"]
+                total += pv
+                site_stats.append({"domain": s["domain"], "pv": pv, "uv": uv})
+            if total > 0:
+                out.append({"tenant_id": t["id"], "email": t["email"], "sites": site_stats})
+    return out
+
+
 def get_tenant(tenant_id: int) -> dict | None:
     with _cursor() as cur:
         cur.execute(

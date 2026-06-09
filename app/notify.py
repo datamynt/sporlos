@@ -41,3 +41,25 @@ def send_trial_reminders(within_days: int = 3) -> int:
             store.mark_trial_reminded(r["id"])
             sent += 1
     return sent
+
+
+def send_weekly_reports(days: int = 7) -> int:
+    """Ukentlig sammendrag (pv + unike per site) til hver tenant med trafikk. Antall sendt."""
+    sent = 0
+    for t in store.weekly_report_data(days):
+        lines = [
+            f"- {s['domain']}: {s['pv']} sidevisninger, {s['uv']} unike besokende"
+            for s in t["sites"]
+            if s["pv"] > 0
+        ]
+        if not lines:
+            continue
+        body = (
+            "Hei,\n\nDin siste uke pa Sporlos:\n\n"
+            + "\n".join(lines)
+            + f"\n\nSe full statistikk: {_base()}/app\n\n"
+            "Vil du ikke ha ukerapport? Bare svar pa denne e-posten.\n\nSporlos"
+        )
+        if mailer.send(t["email"], "Din uke pa Sporlos", body):
+            sent += 1
+    return sent

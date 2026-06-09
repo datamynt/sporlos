@@ -57,6 +57,11 @@ def main(argv: list[str]) -> int:
         print(f"trial-varsler sendt: {send_trial_reminders(days)}")
         return 0
 
+    if cmd == "weekly-report":
+        from app.notify import send_weekly_reports
+        print(f"ukerapporter sendt: {send_weekly_reports()}")
+        return 0
+
     if cmd == "stripe-products":
         import stripe  # noqa
         stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
