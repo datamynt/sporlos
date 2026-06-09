@@ -1,0 +1,16 @@
+# Interne dev-filer — ALDRI committet til (fremtidig) public AGPL-repo
+CLAUDE.md
+IN_FLIGHT.md
+.gemini/
+RUNBOOK*.md
+CONVERGENCE*.md
+GTM_RESEARCH*.md
+*_RESEARCH*.md
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.env
+*.db
+geoip/

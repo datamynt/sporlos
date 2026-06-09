@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.db
+.env
+.git/
+# interne dev-/strategi-filer skal aldri inn i image
+CLAUDE.md
+IN_FLIGHT.md
+*_RESEARCH*.md
+GTM_RESEARCH*.md
+docs/

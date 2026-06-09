@@ -1,0 +1,76 @@
+"""Enkel admin-CLI for dev/dogfood.
+
+    python -m app.manage init
+    python -m app.manage create-site "Datamynt" merdata.no
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+from app import store
+
+
+def main(argv: list[str]) -> int:
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+
+    cmd = argv[0]
+    if cmd == "init":
+        store.init_db()
+        print("db initialisert")
+        return 0
+
+    if cmd == "create-site":
+        if len(argv) < 3:
+            print("bruk: create-site <tenant-navn> <domene>")
+            return 2
+        store.init_db()
+        tenant_id = store.create_tenant(argv[1])
+        site = store.create_site(tenant_id, argv[2])
+        # Bruk prod-domenet hvis satt, ellers localhost for lokal dev.
+        domain = os.environ.get("SPORLOS_DOMAIN")
+        base = f"https://{domain}" if domain and "FYLL_INN" not in domain else "http://localhost:8000"
+        print(f"site opprettet: {site['domain']}")
+        print(f"  public_id: {site['public_id']}")
+        print(f"  snippet:   <script defer data-site=\"{site['public_id']}\" "
+              f"data-api=\"{base}/api/event\" src=\"{base}/sporlos.js\"></script>")
+        print(f"  dashboard: {base}/app?site={site['public_id']}")
+        return 0
+
+    if cmd == "rollup":
+        day = argv[1] if len(argv) > 1 else None
+        n, d = store.rollup_all(day)
+        print(f"rollup kjørt for {n} sites, dag {d}")
+        return 0
+
+    if cmd == "anchor":
+        from app.anchor import anchor_pending
+        print(anchor_pending())
+        return 0
+
+    if cmd == "stripe-products":
+        import stripe  # noqa
+        stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+        if not stripe.api_key:
+            print("STRIPE_SECRET_KEY mangler i miljøet")
+            return 2
+        plans = [("LITEN", "Sporløs Liten", 9900), ("VEKST", "Sporløs Vekst", 24900),
+                 ("PRO", "Sporløs Pro", 59900)]
+        for k, name, amount in plans:
+            p = stripe.Product.create(name=name)
+            pr = stripe.Price.create(
+                product=p.id, unit_amount=amount, currency="nok",
+                recurring={"interval": "month"},
+            )
+            print(f"STRIPE_PRICE_{k}={pr.id}")
+        return 0
+
+    print(f"ukjent kommando: {cmd}")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

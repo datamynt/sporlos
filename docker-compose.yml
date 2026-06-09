@@ -1,0 +1,23 @@
+# Lokal Postgres som matcher prod — fjerner SQLite→Postgres-overraskelser ved deploy.
+#   docker compose up -d
+#   export DATABASE_URL=postgresql://sporlos:sporlos@localhost:5434/sporlos
+# (host-port 5434: 5432=cloud-sql-proxy, 5433=annen lokal container)
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: sporlos
+      POSTGRES_PASSWORD: sporlos
+      POSTGRES_DB: sporlos
+    ports:
+      - "5434:5432"
+    volumes:
+      - sporlos_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sporlos"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  sporlos_pgdata:

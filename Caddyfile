@@ -1,0 +1,4 @@
+# Auto-HTTPS via Let's Encrypt. SPORLOS_DOMAIN settes i .env.
+{$SPORLOS_DOMAIN} {
+	reverse_proxy app:8000
+}
