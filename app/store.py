@@ -344,6 +344,39 @@ def goal_stats(site_id: int, days: int = 7) -> list[dict]:
     return out
 
 
+def flow_stats(site_id: int, days: int = 7) -> dict:
+    """Inngangs- og utgangssider (aggregat fra økter). Første side i en økt = inngang,
+    siste = utgang. 30-min gap definerer økt (samme som sesjonisering). Ingen ny data."""
+    start, end = _period_window(days)
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT visitor_hash, ts, path FROM events WHERE site_id = {P} AND ts >= {P} "
+            f"AND ts < {P} AND name = 'pageview' ORDER BY visitor_hash, ts",
+            (site_id, start, end),
+        )
+        rows = cur.fetchall()
+    entries, exits = {}, {}
+    prev_v, prev_e, last_path = None, 0.0, None
+    for r in rows:
+        v, e, p = r["visitor_hash"], _epoch(r["ts"]), r["path"]
+        if v != prev_v or (e - prev_e) > _SESSION_GAP:
+            if last_path is not None:
+                exits[last_path] = exits.get(last_path, 0) + 1
+            entries[p] = entries.get(p, 0) + 1
+        last_path = p
+        prev_v, prev_e = v, e
+    if last_path is not None:
+        exits[last_path] = exits.get(last_path, 0) + 1
+
+    def top(d):
+        return [
+            {"path": k, "n": n}
+            for k, n in sorted(d.items(), key=lambda x: -x[1])[:10]
+        ]
+
+    return {"entries": top(entries), "exits": top(exits)}
+
+
 def compute_rollup(site_id: int, day: str) -> dict:
     """Beregn + lagre dags-aggregat for én site/dag, med sha256 av kanonisk JSON.
     Hashen er det som forankres on-chain (B2) for å gjøre tallene uforanderlige."""

@@ -673,6 +673,7 @@ form.add button{{background:#1a1a1a;color:#fff;border:0;padding:0 1rem;border-ra
     events = store.top_events(site["id"], days)
     goals = store.goal_stats(site["id"], days)
     rollups = store.recent_rollups(site["id"])
+    flow = store.flow_stats(site["id"], days)
 
     # Periodevelger
     tabs = " ".join(
@@ -769,6 +770,8 @@ h3{{margin:1.5rem 0 .3rem;font-size:1rem}}</style>
 <div class=grid>
   <div><h3>Topp sider</h3>{table(s['top_paths'], 'path')}</div>
   <div><h3>Topp kilder</h3>{table(s['top_sources'], 'src')}</div>
+  <div><h3>Inngangssider</h3>{table(flow['entries'], 'path')}</div>
+  <div><h3>Utgangssider</h3>{table(flow['exits'], 'path')}</div>
   <div><h3>Land</h3>{table(s['countries'], 'k')}</div>
   <div><h3>Fylke / region</h3>{table(s['regions'], 'k')}</div>
   <div><h3>Enheter</h3>{table(s['devices'], 'k')}</div>
