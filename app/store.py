@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     plan TEXT NOT NULL DEFAULT 'trial',
     trial_ends_at TEXT,
     trial_reminded_at TEXT,
+    email_optout INTEGER NOT NULL DEFAULT 0,
     stripe_customer_id TEXT,
     stripe_subscription_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -149,6 +150,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'trial'")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_reminded_at TIMESTAMPTZ")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS email_optout INTEGER NOT NULL DEFAULT 0")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT")
             cur.execute("ALTER TABLE daily_rollups ADD COLUMN IF NOT EXISTS merkle_root TEXT")
@@ -163,6 +165,7 @@ def init_db() -> None:
                 "ALTER TABLE tenants ADD COLUMN plan TEXT NOT NULL DEFAULT 'trial'",
                 "ALTER TABLE tenants ADD COLUMN trial_ends_at TEXT",
                 "ALTER TABLE tenants ADD COLUMN trial_reminded_at TEXT",
+                "ALTER TABLE tenants ADD COLUMN email_optout INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE tenants ADD COLUMN stripe_customer_id TEXT",
                 "ALTER TABLE tenants ADD COLUMN stripe_subscription_id TEXT",
             ):
@@ -313,6 +316,14 @@ def mark_trial_reminded(tenant_id: int) -> None:
         )
 
 
+def set_email_optout(tenant_id: int, optout: bool = True) -> None:
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE tenants SET email_optout = {P} WHERE id = {P}",
+            (1 if optout else 0, tenant_id),
+        )
+
+
 def weekly_report_data(days: int = 7) -> list[dict]:
     """Per tenant m/ epost: pv + unike per site siste `days`. Kun tenants med trafikk."""
     start, end = _period_window(days)
@@ -320,7 +331,7 @@ def weekly_report_data(days: int = 7) -> list[dict]:
         cur.execute(
             "SELECT t.id, "
             "(SELECT email FROM users WHERE tenant_id = t.id ORDER BY id LIMIT 1) AS email "
-            "FROM tenants t"
+            "FROM tenants t WHERE COALESCE(t.email_optout, 0) = 0"
         )
         tenants = [dict(r) for r in cur.fetchall()]
         out = []
@@ -478,6 +489,32 @@ def flow_stats(site_id: int, days: int = 7) -> dict:
         ]
 
     return {"entries": top(entries), "exits": top(exits)}
+
+
+def path_transitions(site_id: int, days: int = 7, limit: int = 12) -> list[dict]:
+    """Vanligste side→side-overganger innen økter (navigasjonsstier). Hopper over
+    selv-overganger (samme side på rad, f.eks. refresh). Aggregat, ingen ny data."""
+    start, end = _period_window(days)
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT visitor_hash, ts, path FROM events WHERE site_id = {P} AND ts >= {P} "
+            f"AND ts < {P} AND name = 'pageview' ORDER BY visitor_hash, ts",
+            (site_id, start, end),
+        )
+        rows = cur.fetchall()
+    trans = {}
+    prev_v, prev_e, prev_p = None, 0.0, None
+    for r in rows:
+        v, e, p = r["visitor_hash"], _epoch(r["ts"]), r["path"]
+        same_session = v == prev_v and (e - prev_e) <= _SESSION_GAP
+        if same_session and prev_p is not None and prev_p != p:
+            key = (prev_p, p)
+            trans[key] = trans.get(key, 0) + 1
+        prev_v, prev_e, prev_p = v, e, p
+    return [
+        {"from": k[0], "to": k[1], "n": n}
+        for k, n in sorted(trans.items(), key=lambda x: -x[1])[:limit]
+    ]
 
 
 def create_funnel(site_id: int, name: str, steps: list[dict]) -> None:

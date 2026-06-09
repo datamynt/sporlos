@@ -30,3 +30,16 @@ def verify_password(password: str, stored: str) -> bool:
         return hmac.compare_digest(dk, expected)
     except Exception:
         return False
+
+
+def _secret() -> bytes:
+    return (os.environ.get("SESSION_SECRET") or "dev-secret").encode()
+
+
+def sign_token(purpose: str, value: str) -> str:
+    """Kort signert token (hmac) for lenker uten DB-oppslag, f.eks. avmelding."""
+    return hmac.new(_secret(), f"{purpose}:{value}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def check_token(purpose: str, value: str, token: str) -> bool:
+    return hmac.compare_digest(sign_token(purpose, value), token or "")

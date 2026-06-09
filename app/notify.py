@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
-from app import mailer, store
+from app import auth, mailer, store
 
 
 def _base() -> str:
@@ -54,11 +54,13 @@ def send_weekly_reports(days: int = 7) -> int:
         ]
         if not lines:
             continue
+        tid = str(t["tenant_id"])
+        unsub = f"{_base()}/unsubscribe?tid={tid}&t={auth.sign_token('unsub', tid)}"
         body = (
             "Hei,\n\nDin siste uke pa Sporlos:\n\n"
             + "\n".join(lines)
             + f"\n\nSe full statistikk: {_base()}/app\n\n"
-            "Vil du ikke ha ukerapport? Bare svar pa denne e-posten.\n\nSporlos"
+            f"Vil du ikke ha ukerapport? Meld av her:\n{unsub}\n\nSporlos"
         )
         if mailer.send(t["email"], "Din uke pa Sporlos", body):
             sent += 1

@@ -29,7 +29,7 @@ from starlette.responses import (
 from starlette.routing import Route
 
 from app import mailer, store
-from app.auth import hash_password, verify_password
+from app.auth import check_token, hash_password, verify_password
 from app.geo import lookup as geo_lookup
 from app.privacy import client_ip, visitor_hash
 from app.useragent import is_bot, parse_ua
@@ -311,6 +311,26 @@ async def login(request):
 </form>
 {_google_button()}
 <p class=muted>Ny her? <a href="/signup">Opprett konto</a> · <a href="/forgot">Glemt passord?</a></p>""",
+    )
+
+
+async def unsubscribe(request):
+    tid = request.query_params.get("tid") or ""
+    token = request.query_params.get("t") or ""
+    if tid and check_token("unsub", tid, token):
+        try:
+            store.set_email_optout(int(tid), True)
+        except Exception:
+            pass
+        return _shell(
+            "Avmeldt",
+            "<h1>Du er avmeldt</h1><p class=muted>Du får ikke flere ukerapporter på e-post. "
+            'Vil du ha dem tilbake, kontakt oss på post@datamynt.no.</p>'
+            '<p class=muted><a href="/app">Til Sporløs</a></p>',
+        )
+    return _shell(
+        "Ugyldig lenke",
+        '<h1>Ugyldig avmeldings-lenke</h1><p class=muted><a href="/">Til forsiden</a></p>',
     )
 
 
@@ -774,6 +794,7 @@ form.add button{{background:#1a1a1a;color:#fff;border:0;padding:0 1rem;border-ra
     funnels = store.funnel_stats(site["id"], days)
     rollups = store.recent_rollups(site["id"])
     flow = store.flow_stats(site["id"], days)
+    transitions = store.path_transitions(site["id"], days)
 
     # Periodevelger
     tabs = " ".join(
@@ -850,6 +871,16 @@ form.add button{{background:#1a1a1a;color:#fff;border:0;padding:0 1rem;border-ra
         '<div style="color:#888;font-size:.8rem">Linjer som starter med / = sti, ellers = hendelse. Min. 2 steg.</div>'
         "</form>"
     )
+    nav_rows = "".join(
+        f'<tr><td>{escape(tr["from"])} → {escape(tr["to"])}</td><td>{tr["n"]}</td></tr>'
+        for tr in transitions
+    )
+    nav_html = (
+        "<h3>Navigasjonsstier</h3>"
+        '<p style="color:#888;font-size:.85rem">Vanligste side→side-overganger innen en økt.</p>'
+        "<table><tr><th>Fra → Til</th><th>Antall</th></tr>"
+        f"{nav_rows or '<tr><td>ingen overganger enda</td><td></td></tr>'}</table>"
+    )
     event_rows = "".join(
         f'<tr><td>{escape(e["k"])}</td><td>{e["u"]}</td><td>{e["n"]}</td></tr>' for e in events
     )
@@ -911,6 +942,7 @@ h3{{margin:1.5rem 0 .3rem;font-size:1rem}}</style>
 </div>
 {goals_html}
 {funnels_html}
+{nav_html}
 {events_html}
 {verify_html}
 <p style="color:#999;font-size:.8rem;margin-top:2rem">Cookieløs · ingen IP lagret · samtykke-fri<br>
@@ -929,6 +961,7 @@ routes = [
     Route("/login", login, methods=["GET", "POST"]),
     Route("/forgot", forgot, methods=["GET", "POST"]),
     Route("/reset", reset, methods=["GET", "POST"]),
+    Route("/unsubscribe", unsubscribe),
     Route("/logout", logout),
     Route("/auth/google", google_login),
     Route("/auth/google/callback", google_callback, name="google_callback"),
