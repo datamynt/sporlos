@@ -83,6 +83,13 @@ CREATE TABLE IF NOT EXISTS goals (
     match_value TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS funnels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    site_id INTEGER NOT NULL REFERENCES sites(id),
+    name TEXT NOT NULL,
+    steps TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS daily_rollups (
     site_id INTEGER NOT NULL,
     day TEXT NOT NULL,
@@ -375,6 +382,74 @@ def flow_stats(site_id: int, days: int = 7) -> dict:
         ]
 
     return {"entries": top(entries), "exits": top(exits)}
+
+
+def create_funnel(site_id: int, name: str, steps: list[dict]) -> None:
+    with _cursor() as cur:
+        cur.execute(
+            f"INSERT INTO funnels (site_id, name, steps) VALUES ({P}, {P}, {P})",
+            (site_id, name, json.dumps(steps)),
+        )
+
+
+def delete_funnel(funnel_id: int, site_id: int) -> None:
+    with _cursor() as cur:
+        cur.execute(
+            f"DELETE FROM funnels WHERE id = {P} AND site_id = {P}", (funnel_id, site_id)
+        )
+
+
+def funnel_stats(site_id: int, days: int = 7) -> list[dict]:
+    """For hver funnel: antall unike besøkende som nådde hvert steg (i rekkefølge) + rate.
+    Per besøkende (daglig-hash), steg matches sekvensielt i tidsorden."""
+    start, end = _period_window(days)
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, name, steps FROM funnels WHERE site_id = {P} ORDER BY id", (site_id,)
+        )
+        funnels = [dict(r) for r in cur.fetchall()]
+        if not funnels:
+            return []
+        cur.execute(
+            f"SELECT visitor_hash, name, path FROM events WHERE site_id = {P} AND ts >= {P} "
+            f"AND ts < {P} ORDER BY visitor_hash, ts",
+            (site_id, start, end),
+        )
+        rows = cur.fetchall()
+    visitors = {}
+    for r in rows:
+        visitors.setdefault(r["visitor_hash"], []).append(r)
+
+    def matches(ev, st):
+        if st["type"] == "event":
+            return ev["name"] == st["value"]
+        return ev["name"] == "pageview" and ev["path"] == st["value"]
+
+    out = []
+    for f in funnels:
+        steps = json.loads(f["steps"])
+        counts = [0] * len(steps)
+        for evs in visitors.values():
+            idx = 0
+            for ev in evs:
+                if idx >= len(steps):
+                    break
+                if matches(ev, steps[idx]):
+                    idx += 1
+            for i in range(idx):
+                counts[i] += 1
+        base = counts[0] if counts else 0
+        step_out = [
+            {
+                "value": st["value"],
+                "type": st["type"],
+                "count": counts[i],
+                "rate": round(counts[i] / base * 100) if base else 0,
+            }
+            for i, st in enumerate(steps)
+        ]
+        out.append({"id": f["id"], "name": f["name"], "steps": step_out})
+    return out
 
 
 def compute_rollup(site_id: int, day: str) -> dict:

@@ -65,6 +65,15 @@ CREATE TABLE IF NOT EXISTS daily_rollups (
     PRIMARY KEY (site_id, day)
 );
 
+-- Funnels: ordnede steg (sti/hendelse) per site, lagret som JSON.
+CREATE TABLE IF NOT EXISTS funnels (
+    id          BIGSERIAL PRIMARY KEY,
+    site_id     BIGINT NOT NULL REFERENCES sites(id),
+    name        TEXT NOT NULL,
+    steps       TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Mål/konverteringer per site (egendefinert hendelse eller sti).
 CREATE TABLE IF NOT EXISTS goals (
     id          BIGSERIAL PRIMARY KEY,

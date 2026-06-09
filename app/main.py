@@ -466,6 +466,33 @@ async def goal_delete(request):
     return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
 
 
+async def funnel_create(request):
+    f = await request.form()
+    site, pid = _own_site(request, f)
+    if site:
+        name = (f.get("name") or "").strip()
+        steps = []
+        for line in (f.get("steps") or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            steps.append({"type": "path" if line.startswith("/") else "event", "value": line})
+        if name and len(steps) >= 2:
+            store.create_funnel(site["id"], name, steps)
+    return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
+
+
+async def funnel_delete(request):
+    f = await request.form()
+    site, pid = _own_site(request, f)
+    if site:
+        try:
+            store.delete_funnel(int(f.get("funnel_id") or 0), site["id"])
+        except Exception:
+            pass
+    return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
+
+
 def _legal(title, inner):
     return HTMLResponse(
         f"""<!doctype html><meta charset=utf-8>
@@ -672,6 +699,7 @@ form.add button{{background:#1a1a1a;color:#fff;border:0;padding:0 1rem;border-ra
     series = store.timeseries(site["id"], days)
     events = store.top_events(site["id"], days)
     goals = store.goal_stats(site["id"], days)
+    funnels = store.funnel_stats(site["id"], days)
     rollups = store.recent_rollups(site["id"])
     flow = store.flow_stats(site["id"], days)
 
@@ -717,6 +745,37 @@ form.add button{{background:#1a1a1a;color:#fff;border:0;padding:0 1rem;border-ra
         '<select name=match_type style="padding:.4rem;border:1px solid #ccc;border-radius:6px"><option value=event>Hendelse</option><option value=path>Sti</option></select>'
         '<input name=match_value placeholder="signup eller /takk" required style="flex:1;min-width:8rem;padding:.4rem;border:1px solid #ccc;border-radius:6px">'
         '<button style="background:#1a1a1a;color:#fff;border:0;padding:0 .8rem;border-radius:6px;cursor:pointer">Legg til mål</button>'
+        "</form>"
+    )
+    # Funnels (steg m/ drop-off)
+    frows = ""
+    for fu in funnels:
+        steprows = "".join(
+            f'<tr><td>{i + 1}. {escape(st["value"])} '
+            f'<small style="color:#999">({escape(st["type"])})</small></td>'
+            f'<td>{st["count"]}</td><td>{st["rate"]}%</td></tr>'
+            for i, st in enumerate(fu["steps"])
+        )
+        frows += (
+            f'<div style="margin:.8rem 0"><b>{escape(fu["name"])}</b> '
+            '<form method=post action="/app/funnels/delete" style="display:inline">'
+            f'<input type=hidden name=site value="{escape(public_id)}">'
+            f'<input type=hidden name=funnel_id value="{fu["id"]}">'
+            '<button title="Slett" style="background:none;border:0;color:#c00;cursor:pointer">✕</button></form>'
+            f"<table>{steprows}</table></div>"
+        )
+    if not frows:
+        frows = '<p style="color:#888;font-size:.9rem">Ingen funnels enda.</p>'
+    funnels_html = (
+        f"<h3>Funnels</h3>{frows}"
+        '<form method=post action="/app/funnels" style="margin:.5rem 0;font-size:.9rem">'
+        f'<input type=hidden name=site value="{escape(public_id)}">'
+        '<input name=name placeholder="Navn (f.eks. Kjøpstrakt)" required '
+        'style="padding:.4rem;border:1px solid #ccc;border-radius:6px;width:100%;box-sizing:border-box;margin-bottom:.4rem">'
+        '<textarea name=steps required rows=4 placeholder="Ett steg per linje, i rekkefolge:&#10;/&#10;/priser&#10;signup" '
+        'style="width:100%;box-sizing:border-box;padding:.4rem;border:1px solid #ccc;border-radius:6px;font:inherit"></textarea>'
+        '<button style="background:#1a1a1a;color:#fff;border:0;padding:.4rem .8rem;border-radius:6px;cursor:pointer;margin-top:.4rem">Lag funnel</button>'
+        '<div style="color:#888;font-size:.8rem">Linjer som starter med / = sti, ellers = hendelse. Min. 2 steg.</div>'
         "</form>"
     )
     event_rows = "".join(
@@ -779,6 +838,7 @@ h3{{margin:1.5rem 0 .3rem;font-size:1rem}}</style>
   <div><h3>Operativsystem</h3>{table(s['os'], 'k')}</div>
 </div>
 {goals_html}
+{funnels_html}
 {events_html}
 {verify_html}
 <p style="color:#999;font-size:.8rem;margin-top:2rem">Cookieløs · ingen IP lagret · samtykke-fri<br>
@@ -805,6 +865,8 @@ routes = [
     Route("/app/sites", create_site_post, methods=["POST"]),
     Route("/app/goals", goal_create, methods=["POST"]),
     Route("/app/goals/delete", goal_delete, methods=["POST"]),
+    Route("/app/funnels", funnel_create, methods=["POST"]),
+    Route("/app/funnels/delete", funnel_delete, methods=["POST"]),
 ]
 
 # Ingestion må ta imot cross-origin beacons fra ethvert kunde-domene.
