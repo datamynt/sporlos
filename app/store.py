@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     name TEXT NOT NULL,
     plan TEXT NOT NULL DEFAULT 'trial',
     trial_ends_at TEXT,
+    trial_reminded_at TEXT,
     stripe_customer_id TEXT,
     stripe_subscription_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -147,6 +148,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS region TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'trial'")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_reminded_at TIMESTAMPTZ")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT")
             cur.execute("ALTER TABLE daily_rollups ADD COLUMN IF NOT EXISTS merkle_root TEXT")
@@ -160,6 +162,7 @@ def init_db() -> None:
                 "ALTER TABLE events ADD COLUMN region TEXT",
                 "ALTER TABLE tenants ADD COLUMN plan TEXT NOT NULL DEFAULT 'trial'",
                 "ALTER TABLE tenants ADD COLUMN trial_ends_at TEXT",
+                "ALTER TABLE tenants ADD COLUMN trial_reminded_at TEXT",
                 "ALTER TABLE tenants ADD COLUMN stripe_customer_id TEXT",
                 "ALTER TABLE tenants ADD COLUMN stripe_subscription_id TEXT",
             ):
@@ -283,6 +286,31 @@ def pop_reset_token(token: str) -> str | None:
         r = cur.fetchone()
         cur.execute(f"DELETE FROM reset_tokens WHERE token = {P}", (token,))
         return r["email"] if r else None
+
+
+def trial_ending_tenants(within_days: int = 3) -> list[dict]:
+    """Trial-tenants som utløper innen `within_days` og ikke er varslet. Med én bruker-epost."""
+    now = datetime.now(timezone.utc)
+    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+    cutoff = (now + timedelta(days=within_days)).strftime("%Y-%m-%d %H:%M:%S")
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT t.id, t.trial_ends_at, "
+            f"(SELECT email FROM users WHERE tenant_id = t.id ORDER BY id LIMIT 1) AS email "
+            f"FROM tenants t WHERE t.plan = 'trial' AND t.trial_ends_at IS NOT NULL "
+            f"AND t.trial_ends_at > {P} AND t.trial_ends_at <= {P} "
+            f"AND t.trial_reminded_at IS NULL",
+            (now_str, cutoff),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def mark_trial_reminded(tenant_id: int) -> None:
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE tenants SET trial_reminded_at = {P} WHERE id = {P}", (now_str, tenant_id)
+        )
 
 
 def get_tenant(tenant_id: int) -> dict | None:

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     -- byrå eller direktekunde; white-label-felter kan legges til her
     plan          TEXT NOT NULL DEFAULT 'trial',
     trial_ends_at TIMESTAMPTZ,
+    trial_reminded_at TIMESTAMPTZ,
     stripe_customer_id     TEXT,
     stripe_subscription_id TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()

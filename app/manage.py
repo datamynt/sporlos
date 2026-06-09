@@ -51,6 +51,12 @@ def main(argv: list[str]) -> int:
         print(anchor_pending())
         return 0
 
+    if cmd == "trial-reminders":
+        from app.notify import send_trial_reminders
+        days = int(argv[1]) if len(argv) > 1 else 3
+        print(f"trial-varsler sendt: {send_trial_reminders(days)}")
+        return 0
+
     if cmd == "stripe-products":
         import stripe  # noqa
         stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
