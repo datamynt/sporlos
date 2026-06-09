@@ -228,7 +228,8 @@ a{color:#3730a3}
 </section>
 <footer>
   <a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>
-  Sporløs · personvernvennlig webanalyse · drevet av Datamynt AS
+  Sporløs · personvernvennlig webanalyse<br>
+  Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@datamynt.no
 </footer>
 </div>"""
     )
@@ -484,56 +485,61 @@ async def vilkar(request):
     return _legal(
         "Salgsbetingelser",
         """<h1>Salgsbetingelser</h1>
-<p>Disse betingelsene gjelder kjøp av abonnement på webanalysetjenesten Sporløs, levert av
-Datamynt AS ("vi"). Tjenesten selges til næringsdrivende (B2B).</p>
+<p>Disse salgsbetingelsene gjelder kjøp av abonnement på webanalysetjenesten Sporløs, og er utformet
+etter Forbrukertilsynets anbefalinger for forbrukerkjøp over internett. Tjenesten selges også til
+næringsdrivende; enkelte forbrukerrettigheter (f.eks. angrerett) gjelder kun forbrukere.</p>
 
-<h2>1. Tjenesten</h2>
-<p>Sporløs er en personvernvennlig webanalysetjeneste. Funksjon og planer er beskrevet på
-<a href="/">sporlos.no</a>. Vi kan videreutvikle tjenesten løpende.</p>
+<h2>1. Selger (avtalepart)</h2>
+<p><b>Datamynt AS</b>, org.nr 936 017 207<br>Maridalsveien 163, 0461 Oslo<br>
+E-post: <b>post@datamynt.no</b> · Telefon: +47 48 27 99 19</p>
 
-<h2>2. Avtaleinngåelse</h2>
-<p>Avtale inngås når du oppretter konto og bestiller en plan. Du må ha fullmakt til å binde
-virksomheten du registrerer.</p>
+<h2>2. Tjenesten og priser</h2>
+<p>Sporløs er personvernvennlig webanalyse. Planer og priser fremgår av <a href="/">sporlos.no</a>,
+oppgitt i NOK. (Datamynt er foreløpig ikke mva-registrert; mva tilkommer fra registreringstidspunktet.)</p>
 
-<h2>3. Priser og betaling</h2>
-<p>Priser fremgår av <a href="/">prislisten</a> og er oppgitt eksklusiv mva. Abonnement
-faktureres forskuddsvis per måned eller år via kort (Stripe) eller Vipps. Ved årlig betaling
-gis to måneder rabatt.</p>
-<p><b>Fast/løpende betaling:</b> Abonnementet er løpende og fornyes automatisk for en ny periode
-til gjeldende pris inntil det sies opp (se pkt. 5). Du varsles ved prisendringer. Betaler du med
-Vipps, kan du når som helst se og avslutte den faste avtalen i Vipps-appen; betaler du med kort,
-avslutter du i tjenesten eller ved å kontakte oss.</p>
-<p><b>Faktura / EHF:</b> Større kunder, byråer og offentlig sektor kan betale mot faktura (EHF) —
-kontakt oss på post@datamynt.no for fakturaavtale.</p>
+<h2>3. Avtaleinngåelse</h2>
+<p>Avtalen er bindende når bestillingen er sendt og bekreftet. Du må være myndig for å inngå avtale.</p>
 
-<h2>4. Prøveperiode</h2>
-<p>Nye kunder får 30 dager gratis prøveperiode uten betalingskort og uten bindingstid.
-Prøveperioden går ikke over til betalt abonnement uten at du aktivt velger en plan.</p>
+<h2>4. Betaling</h2>
+<p>Betaling skjer med Vipps eller betalingskort, forskuddsvis per betalingsperiode. Næringsdrivende
+kan etter avtale betale mot faktura/EHF (post@datamynt.no).</p>
 
-<h2>5. Løpetid og oppsigelse</h2>
-<p>Abonnementet løper til det sies opp. Du kan si opp når som helst med virkning fra utløpet av
-inneværende betalingsperiode. Allerede betalt periode refunderes ikke, men du belastes ikke
-videre. Self-host (åpen kildekode) er gratis og omfattes ikke av disse betingelsene.</p>
+<h2>5. Levering</h2>
+<p>Tjenesten gjøres tilgjengelig umiddelbart etter at avtalen er inngått.</p>
 
-<h2>6. Angrerett</h2>
-<p>Angrerettloven gjelder forbrukere og ikke salg til næringsdrivende. Prøveperioden gir deg
-likevel anledning til å teste tjenesten uten kostnad før kjøp.</p>
+<h2>6. Løpetid, fornyelse og oppsigelse</h2>
+<p><b>Ingen bindingstid.</b> Abonnementet løper fortløpende og fornyes automatisk for en ny periode
+(måned eller år) til gjeldende pris inntil det sies opp. <b>Du kan si opp når som helst</b>, med
+virkning fra utløpet av inneværende betalte periode.</p>
+<p><b>Slik sier du opp:</b> betaler du med Vipps, kan du se og avslutte den faste avtalen direkte i
+Vipps-appen. Ellers avslutter du i tjenesten eller ved å kontakte oss på <b>post@datamynt.no</b>.
+Allerede betalt periode refunderes ikke, men du belastes ikke videre. Prisendringer varsles i rimelig tid.</p>
 
-<h2>7. Behandling av data</h2>
-<p>Sporløs er designet for ikke å samle personopplysninger om dine besøkende. For den begrensede
-behandlingen som skjer på dine vegne, gjelder vår <a href="/personvern">personvernerklæring</a>
-og databehandleravtale (tilgjengelig på forespørsel).</p>
+<h2>7. Angrerett (forbrukere)</h2>
+<p>Som forbruker har du 14 dagers angrerett etter angrerettloven. For digitale tjenester som leveres
+umiddelbart ber vi om ditt uttrykkelige samtykke til at leveringen starter før angrefristen utløper;
+du erkjenner da at angreretten bortfaller når tjenesten er levert. Den gratis prøveperioden lar deg
+uansett teste kostnadsfritt før kjøp. (Angrerett gjelder ikke ved salg til næringsdrivende.)</p>
 
-<h2>8. Ansvar</h2>
-<p>Tjenesten leveres "som den er". Vi tilstreber høy oppetid, men gir ingen garanti for
-uavbrutt drift. Vårt samlede ansvar er begrenset til vederlaget betalt de siste 12 måneder.</p>
+<h2>8. Prøveperiode</h2>
+<p>Nye kunder får 30 dager gratis, uten betalingskort og uten bindingstid. Prøveperioden går ikke
+over til betalt abonnement uten at du aktivt velger en plan.</p>
 
-<h2>9. Endringer</h2>
-<p>Vi kan endre priser og betingelser. Vesentlige endringer varsles på e-post eller i tjenesten
-i rimelig tid før de trer i kraft.</p>
+<h2>9. Reklamasjon</h2>
+<p>Ved feil eller mangel, kontakt oss på post@datamynt.no. Forbrukere har rettigheter etter
+forbrukerkjøpsloven.</p>
 
-<h2>10. Lovvalg og verneting</h2>
-<p>Avtalen reguleres av norsk rett. Verneting er Oslo tingrett.</p>""",
+<h2>10. Behandling av data</h2>
+<p>Sporløs samler ikke personopplysninger om dine besøkende. Se <a href="/personvern">personvernerklæringen</a>;
+for næringsdrivende gjelder i tillegg databehandleravtale (på forespørsel).</p>
+
+<h2>11. Ansvar</h2>
+<p>Tjenesten leveres "som den er" med tilstrebet høy oppetid. For næringsdrivende er vårt samlede
+ansvar begrenset til vederlag betalt siste 12 måneder; forbrukeres ufravikelige rettigheter berøres ikke.</p>
+
+<h2>12. Klage og konfliktløsning</h2>
+<p>Ta først kontakt med oss på post@datamynt.no. Forbrukere kan klage til Forbrukertilsynet/Forbrukerrådet.
+Avtalen reguleres av norsk rett.</p>""",
     )
 
 
