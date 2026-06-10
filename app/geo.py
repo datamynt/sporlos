@@ -31,6 +31,47 @@ def _get_reader():
     return _reader
 
 
+# Engelsk → norsk for landnavn (DB-IP gir engelske navn; vi viser norsk).
+# Oversettes i VISNINGS-laget så lagrede data forblir kanoniske.
+COUNTRY_NO = {
+    "Norway": "Norge", "Sweden": "Sverige", "Denmark": "Danmark", "Finland": "Finland",
+    "Iceland": "Island", "Germany": "Tyskland", "United States": "USA",
+    "United Kingdom": "Storbritannia", "Netherlands": "Nederland", "Belgium": "Belgia",
+    "France": "Frankrike", "Spain": "Spania", "Portugal": "Portugal", "Italy": "Italia",
+    "Ireland": "Irland", "Austria": "Østerrike", "Switzerland": "Sveits", "Poland": "Polen",
+    "Czechia": "Tsjekkia", "Czech Republic": "Tsjekkia", "Estonia": "Estland",
+    "Latvia": "Latvia", "Lithuania": "Litauen", "Russia": "Russland", "Ukraine": "Ukraina",
+    "Greece": "Hellas", "Turkey": "Tyrkia", "Türkiye": "Tyrkia", "China": "Kina",
+    "Japan": "Japan", "South Korea": "Sør-Korea", "Republic of Korea": "Sør-Korea",
+    "India": "India", "Brazil": "Brasil", "Mexico": "Mexico", "Canada": "Canada",
+    "Australia": "Australia", "New Zealand": "New Zealand", "South Africa": "Sør-Afrika",
+    "Croatia": "Kroatia", "Hungary": "Ungarn", "Romania": "Romania", "Bulgaria": "Bulgaria",
+    "Slovakia": "Slovakia", "Slovenia": "Slovenia", "Serbia": "Serbia",
+    "Thailand": "Thailand", "Vietnam": "Vietnam", "Philippines": "Filippinene",
+    "Indonesia": "Indonesia", "United Arab Emirates": "De forente arabiske emirater",
+    "Saudi Arabia": "Saudi-Arabia", "Israel": "Israel", "Egypt": "Egypt",
+    "Argentina": "Argentina", "Chile": "Chile", "Colombia": "Colombia",
+    "Singapore": "Singapore", "Hong Kong": "Hongkong", "Taiwan": "Taiwan",
+    "Luxembourg": "Luxembourg", "Cyprus": "Kypros", "Malta": "Malta",
+    "North Macedonia": "Nord-Makedonia", "Bosnia and Herzegovina": "Bosnia-Hercegovina",
+    "Albania": "Albania", "Moldova": "Moldova", "Belarus": "Hviterussland",
+    "Georgia": "Georgia", "Armenia": "Armenia", "Azerbaijan": "Aserbajdsjan",
+    "Kazakhstan": "Kasakhstan", "Pakistan": "Pakistan", "Bangladesh": "Bangladesh",
+    "Sri Lanka": "Sri Lanka", "Nepal": "Nepal", "Morocco": "Marokko",
+    "Algeria": "Algerie", "Tunisia": "Tunisia", "Nigeria": "Nigeria", "Kenya": "Kenya",
+    "Ethiopia": "Etiopia", "Ghana": "Ghana", "Peru": "Peru", "Venezuela": "Venezuela",
+    "Ecuador": "Ecuador", "Uruguay": "Uruguay", "Bolivia": "Bolivia",
+    "Costa Rica": "Costa Rica", "Panama": "Panama", "Cuba": "Cuba",
+    "Dominican Republic": "Den dominikanske republikk", "Greenland": "Grønland",
+    "Faroe Islands": "Færøyene",
+}
+
+
+def country_no(name: str | None) -> str | None:
+    """Norsk visningsnavn for land; ukjente navn passerer uendret."""
+    return COUNTRY_NO.get(name, name) if name else name
+
+
 def lookup(ip: str) -> tuple[str | None, str | None]:
     """(land, fylke) eller (None, None). By-nivå leses bevisst IKKE."""
     reader = _get_reader()

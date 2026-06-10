@@ -30,6 +30,7 @@ from starlette.routing import Route
 
 from app import mailer, notify, store
 from app.auth import check_token, hash_password, verify_password
+from app.geo import country_no
 from app.geo import lookup as geo_lookup
 from app.privacy import client_ip, visitor_hash
 from app.useragent import is_bot, parse_ua
@@ -1236,6 +1237,7 @@ async def demo(request):
     label, days = _PERIODS[period]
 
     s = store.stats(site["id"], days)
+    s["countries"] = [{**c, "k": country_no(c["k"])} for c in s["countries"]]
     prev = store.kpis(site["id"], days, offset=1)
     chart = _area_chart(store.timeseries(site["id"], days))
     flow = store.flow_stats(site["id"], days)
@@ -1280,6 +1282,7 @@ uten cookies og uten samtykke. Det du ser her, er det kundene får.</div>
   <div class=card><h3>Inngangssider</h3>{_stat_table(flow['entries'], 'path')}</div>
   <div class=card><h3>Utgangssider</h3>{_stat_table(flow['exits'], 'path')}</div>
   <div class=card><h3>Land</h3>{_stat_table(s['countries'], 'k')}</div>
+  <div class=card><h3>Fylke / region</h3>{_stat_table(s['regions'], 'k')}</div>
   <div class=card><h3>Enheter</h3>{_stat_table(s['devices'], 'k')}</div>
 </div>
 <div class="card block">{verify_html}</div>
@@ -1321,7 +1324,8 @@ async def export_csv(request):
     elif what in ("sider", "kilder", "land"):
         w.writerow([what[:-1] if what != "land" else "land", "sidevisninger", "unike besøkende"])
         for r in store.export_breakdown(site["id"], days, what):
-            w.writerow([r["k"], r["n"], r["u"]])
+            k = country_no(r["k"]) if what == "land" else r["k"]
+            w.writerow([k, r["n"], r["u"]])
     else:
         return PlainTextResponse("ukjent eksport", status_code=400)
 
@@ -1442,6 +1446,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
     label, days = _PERIODS[period]
 
     s = store.stats(site["id"], days)
+    s["countries"] = [{**c, "k": country_no(c["k"])} for c in s["countries"]]
     prev = store.kpis(site["id"], days, offset=1)
     series = store.timeseries(site["id"], days)
     events = store.top_events(site["id"], days)
