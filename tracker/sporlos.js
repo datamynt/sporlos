@@ -1,11 +1,22 @@
 /* Sporløs tracker — cookieløs, ingen localStorage, ingen fingerprint.
  * Bygg inn:  <script defer data-site="PUBLIC_ID" src="https://.../sporlos.js"></script>
- * Sender kun: site-id, sti, referrer-kilde. Ingen PII, ingen samtykke nødvendig. */
+ * Sender kun: site-id, sti, referrer-kilde + hvitlistede utm_*-kampanjeparametre.
+ * Ingen PII, ingen samtykke nødvendig. */
 (function () {
   var s = document.currentScript;
   var site = s && s.getAttribute("data-site");
   var endpoint = (s && s.getAttribute("data-api")) || "/api/event";
   if (!site) return;
+
+  // Kampanjeparametre: KUN hvitlistede utm_*-nøkler — aldri hele query-strengen.
+  var utm = {};
+  try {
+    var q = new URLSearchParams(location.search);
+    ["source", "medium", "campaign"].forEach(function (k) {
+      var v = q.get("utm_" + k);
+      if (v) utm[k] = v.slice(0, 120);
+    });
+  } catch (e) { /* eldre nettlesere: dropp kampanjedata, mål resten */ }
 
   function send(name) {
     try {
@@ -14,6 +25,9 @@
         n: name,
         p: location.pathname,        // ingen query-string => ingen utilsiktet PII
         r: document.referrer || null,
+        us: utm.source || null,
+        um: utm.medium || null,
+        uc: utm.campaign || null,
       });
       // sendBeacon overlever sidebytte og blokkerer ikke navigasjon
       if (navigator.sendBeacon) {

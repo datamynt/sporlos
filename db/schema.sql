@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS events (
     device        TEXT,                    -- desktop/mobile/tablet
     browser       TEXT,
     os            TEXT,
+    utm_source    TEXT,                    -- hvitlistede kampanjeparametre fra URL
+    utm_medium    TEXT,                    -- (aldri hele query-strengen — PII-vern)
+    utm_campaign  TEXT,
     visitor_hash  TEXT NOT NULL,           -- IKKE re-identifiserbar på tvers av dager
     session_id    TEXT
 );

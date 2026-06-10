@@ -143,6 +143,9 @@ async def ingest(request):
             "name": payload.get("n", "pageview"),
             "path": payload.get("p", "/"),
             "referrer_src": _normalize_referrer(payload.get("r")),
+            "utm_source": _clean_utm(payload.get("us")),
+            "utm_medium": _clean_utm(payload.get("um")),
+            "utm_campaign": _clean_utm(payload.get("uc")),
             "country": country,
             "region": region,
             "device": device,
@@ -152,6 +155,13 @@ async def ingest(request):
         },
     )
     return PlainTextResponse("", status_code=204)
+
+
+def _clean_utm(v) -> str | None:
+    """Kampanjeparameter fra tracker: trim + lengde-cap. Kun hvitlistede nøkler når hit."""
+    if not v or not isinstance(v, str):
+        return None
+    return v.strip()[:120] or None
 
 
 def _normalize_referrer(ref: str | None) -> str | None:
@@ -808,8 +818,8 @@ a{color:#3730a3}
     <li><b>Bruker-nivå analyse.</b> Utforskninger, segmenter på enkeltbrukere, reiser på tvers av
     enheter og dager, BigQuery-eksport. Sporløs viser aggregater, aldri enkeltpersoner.</li>
     <li><b>E-handelsrapporter på produktnivå.</b> Ikke støttet ennå.</li>
-    <li><b>UTM-kampanjeparametre.</b> Kilder måles via referrer i dag; utvidet kampanjesporing står på
-    planen. Trenger du detaljert kampanjeattribusjon nå, er GA sterkere.</li>
+    <li><b>Avansert kampanjeattribusjon.</b> UTM-kampanjer (kilde/medium/kampanje) måles, men
+    fler-stegs attribusjonsmodeller og <code>utm_content</code>/<code>utm_term</code> finnes ikke ennå.</li>
     <li><b>Prisen.</b> GA er gratis. Sporløs koster fra 99 kr/mnd — eller null, hvis du kjører
     åpen kildekode-versjonen på egen server. Du betaler for at <i>du</i> er kunden, ikke produktet.</li>
   </ul>
@@ -823,6 +833,8 @@ a{color:#3730a3}
     hvordan de fant den. Komplementært.</li>
     <li><b>Mål og konvertering.</b> Egendefinerte hendelser, mål med konverteringsrate og funnels med
     drop-off finnes i Sporløs.</li>
+    <li><b>Kampanjemåling.</b> UTM-merkede lenker (kilde, medium, kampanje) måles — uten at hele
+    URL-en med potensielt personidentifiserende parametre noensinne lagres.</li>
     <li><b>Kilder, enheter, geografi.</b> Hvor trafikken kommer fra, mobil/desktop, nettleser og
     fylke — uten å identifisere noen.</li>
     <li><b>Inngangs- og utgangssider, navigasjonsstier.</b> Hvor folk lander, hvor de forsvinner og
@@ -1097,6 +1109,22 @@ form.add button{{background:#1a1a1a;color:#fff;border:0;padding:0 1rem;border-ra
         f"{rr or '<tr><td>ingen forseglede dager enda</td><td></td><td></td><td></td><td></td></tr>'}</table>"
     )
 
+    # Kampanjer (UTM) — vises kun når det finnes kampanjetrafikk i perioden.
+    camp_rows = "".join(
+        f"<tr><td>{escape(' · '.join(x for x in (c['source'], c['medium'], c['campaign']) if x) or 'ukjent')}</td>"
+        f"<td style='text-align:right;color:#666;width:5rem'>{c['visitors']}</td>"
+        f"<td style='text-align:right;color:#666;width:5rem'>{c['n']}</td></tr>"
+        for c in s["campaigns"]
+    )
+    campaigns_html = ""
+    if camp_rows:
+        campaigns_html = (
+            "<h3>Kampanjer (UTM)</h3>"
+            "<table><tr><th style='text-align:left;color:#888;font-size:.85rem'>Kilde · medium · kampanje</th>"
+            "<th style='text-align:right;color:#888;font-size:.85rem'>Unike</th>"
+            f"<th style='text-align:right;color:#888;font-size:.85rem'>Visn.</th></tr>{camp_rows}</table>"
+        )
+
     return HTMLResponse(
         f"""<!doctype html><meta charset=utf-8>
 <title>Sporløs — {escape(site['domain'])}</title>
@@ -1135,6 +1163,7 @@ h3{{margin:1.5rem 0 .3rem;font-size:1rem}}</style>
   <div><h3>Nettlesere</h3>{table(s['browsers'], 'k')}</div>
   <div><h3>Operativsystem</h3>{table(s['os'], 'k')}</div>
 </div>
+{campaigns_html}
 {goals_html}
 {funnels_html}
 {nav_html}

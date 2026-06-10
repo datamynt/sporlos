@@ -74,6 +74,9 @@ CREATE TABLE IF NOT EXISTS events (
     device TEXT,
     browser TEXT,
     os TEXT,
+    utm_source TEXT,
+    utm_medium TEXT,
+    utm_campaign TEXT,
     visitor_hash TEXT NOT NULL,
     session_id TEXT
 );
@@ -159,6 +162,9 @@ def init_db() -> None:
             cur.execute("ALTER TABLE daily_rollups ADD COLUMN IF NOT EXISTS merkle_proof TEXT")
             cur.execute("ALTER TABLE daily_rollups ADD COLUMN IF NOT EXISTS txid TEXT")
             cur.execute("ALTER TABLE daily_rollups ADD COLUMN IF NOT EXISTS anchored_at TIMESTAMPTZ")
+            cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_source TEXT")
+            cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_medium TEXT")
+            cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_campaign TEXT")
     else:
         with _cursor() as cur:
             cur.executescript(_SQLITE_SCHEMA)
@@ -171,6 +177,9 @@ def init_db() -> None:
                 "ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE tenants ADD COLUMN stripe_customer_id TEXT",
                 "ALTER TABLE tenants ADD COLUMN stripe_subscription_id TEXT",
+                "ALTER TABLE events ADD COLUMN utm_source TEXT",
+                "ALTER TABLE events ADD COLUMN utm_medium TEXT",
+                "ALTER TABLE events ADD COLUMN utm_campaign TEXT",
             ):
                 try:
                     cur.execute(ddl)
@@ -694,8 +703,9 @@ def insert_event(site_id: int, ev: dict) -> None:
     with _cursor() as cur:
         cur.execute(
             f"""INSERT INTO events
-                (site_id, name, path, referrer_src, country, region, device, browser, os, visitor_hash, session_id)
-                VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P})""",
+                (site_id, name, path, referrer_src, country, region, device, browser, os,
+                 utm_source, utm_medium, utm_campaign, visitor_hash, session_id)
+                VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P})""",
             (
                 site_id,
                 ev.get("name", "pageview"),
@@ -706,6 +716,9 @@ def insert_event(site_id: int, ev: dict) -> None:
                 ev.get("device"),
                 ev.get("browser"),
                 ev.get("os"),
+                ev.get("utm_source"),
+                ev.get("utm_medium"),
+                ev.get("utm_campaign"),
                 ev["visitor_hash"],
                 ev.get("session_id"),
             ),
@@ -814,6 +827,17 @@ def stats(site_id: int, days: int = 7) -> dict:
             )
             breakdowns[col] = [dict(r) for r in cur.fetchall()]
 
+        # Kampanjer: kun events som faktisk har UTM-parametre
+        cur.execute(
+            f"SELECT COALESCE(utm_source,'') AS source, COALESCE(utm_medium,'') AS medium, "
+            f"COALESCE(utm_campaign,'') AS campaign, COUNT(*) AS n, "
+            f"COUNT(DISTINCT visitor_hash) AS visitors "
+            f"FROM events WHERE {where} AND (utm_source IS NOT NULL OR utm_campaign IS NOT NULL) "
+            "GROUP BY source, medium, campaign ORDER BY n DESC LIMIT 10",
+            args,
+        )
+        campaigns = [dict(r) for r in cur.fetchall()]
+
         # Rader for sessionisering (visitor_hash + tid)
         cur.execute(
             f"SELECT visitor_hash, ts FROM events WHERE {where} ORDER BY visitor_hash, ts",
@@ -833,6 +857,7 @@ def stats(site_id: int, days: int = 7) -> dict:
         "views_per_session": views_per,
         "top_paths": top_paths,
         "top_sources": top_src,
+        "campaigns": campaigns,
         "devices": breakdowns["device"],
         "browsers": breakdowns["browser"],
         "os": breakdowns["os"],
