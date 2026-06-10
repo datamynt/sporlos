@@ -169,10 +169,16 @@ def _normalize_referrer(ref: str | None) -> str | None:
 async def landing(request):
     """Offentlig landingsside (§3-15-budskapet). Design-runde kommer senere."""
     return HTMLResponse(
-        """<!doctype html><meta charset=utf-8>
+        """<!doctype html><html lang=no><meta charset=utf-8>
 <title>Sporløs — webanalyse uten cookie-banner</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name=description content="Cookieløs, samtykke-fri webanalyse bygget i Norge. Ingen cookie-banner. Data på norsk-eid infrastruktur.">
+<link rel=canonical href="https://sporlos.no/">
+<meta property=og:title content="Sporløs — webanalyse uten cookie-banner">
+<meta property=og:description content="Cookieløs, samtykke-fri webanalyse bygget i Norge. Ingen cookie-banner. Data på norsk-eid infrastruktur.">
+<meta property=og:type content="website">
+<meta property=og:url content="https://sporlos.no/">
+<meta property=og:locale content="nb_NO">
 <style>
 :root{font:18px/1.6 system-ui;color:#1a1a1a}
 body{margin:0}
@@ -741,10 +747,16 @@ databehandler. Da gjelder databehandleravtalen, ikke denne erklæringen.</p>""",
 async def ga_alternativ(request):
     """Ærlig sammenligning mot Google Analytics. Content/SEO-side, offentlig."""
     return HTMLResponse(
-        """<!doctype html><meta charset=utf-8>
+        """<!doctype html><html lang=no><meta charset=utf-8>
 <title>Norsk alternativ til Google Analytics — ærlig sammenligning | Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name=description content="Hva mister du og hva får du ved å bytte fra Google Analytics til Sporløs? Ærlig sammenligning: cookie-banner, datakvalitet, Google Ads, SEO og pris.">
+<link rel=canonical href="https://sporlos.no/google-analytics-alternativ">
+<meta property=og:title content="Norsk alternativ til Google Analytics — ærlig sammenligning">
+<meta property=og:description content="Hva mister du og hva får du ved å bytte fra Google Analytics? Ærlig sammenligning uten skjønnmaling.">
+<meta property=og:type content="article">
+<meta property=og:url content="https://sporlos.no/google-analytics-alternativ">
+<meta property=og:locale content="nb_NO">
 <style>
 :root{font:18px/1.6 system-ui;color:#1a1a1a}
 body{margin:0}
@@ -852,6 +864,22 @@ a{color:#3730a3}
   Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@datamynt.no
 </footer>
 </div>"""
+    )
+
+
+async def robots(request):
+    return PlainTextResponse(
+        "User-agent: *\nAllow: /\nDisallow: /app\n\nSitemap: https://sporlos.no/sitemap.xml\n"
+    )
+
+
+async def sitemap(request):
+    pages = ["/", "/google-analytics-alternativ", "/signup", "/vilkar", "/personvern"]
+    urls = "".join(f"<url><loc>https://sporlos.no{p}</loc></url>" for p in pages)
+    return Response(
+        f'<?xml version="1.0" encoding="UTF-8"?>'
+        f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>',
+        media_type="application/xml",
     )
 
 
@@ -1125,6 +1153,8 @@ routes = [
     Route("/vilkar", vilkar),
     Route("/personvern", personvern),
     Route("/google-analytics-alternativ", ga_alternativ),
+    Route("/robots.txt", robots),
+    Route("/sitemap.xml", sitemap),
     Route("/signup", signup, methods=["GET", "POST"]),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/forgot", forgot, methods=["GET", "POST"]),
