@@ -448,9 +448,11 @@ footer .brand svg{color:var(--accent)}
         + _WORDMARK
         + """<br>
   Personvennlig webanalyse, bygget i Norge.<br><br>
+  <a href="/demo">Live demo</a> ·
   <a href="/google-analytics-alternativ">Sporløs mot Google Analytics</a> ·
   <a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>
-  Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@datamynt.no
+  Et produkt fra <a href="https://datamynt.no">Datamynt AS</a> · org.nr 936 017 207 ·
+  Maridalsveien 163, 0461 Oslo · post@sporlos.no
 </div></footer>"""
     )
 
@@ -550,7 +552,7 @@ async def unsubscribe(request):
         return _shell(
             "Avmeldt",
             "<h1>Du er avmeldt</h1><p class=muted>Du får ikke flere ukerapporter på e-post. "
-            'Vil du ha dem tilbake, kontakt oss på post@datamynt.no.</p>'
+            'Vil du ha dem tilbake, kontakt oss på post@sporlos.no.</p>'
             '<p class=muted><a href="/app">Til Sporløs</a></p>',
         )
     return _shell(
@@ -841,18 +843,28 @@ async def funnel_delete(request):
     return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
 
 
+_SELF_SNIPPET = (
+    '<script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" '
+    'src="https://sporlos.no/sporlos.js"></script>'
+)
+
+
 def _legal(title, inner):
     return HTMLResponse(
-        f"""<!doctype html><meta charset=utf-8>
+        f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>{escape(title)} — Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<style>body{{font:17px/1.65 system-ui;max-width:680px;margin:0 auto;padding:3rem 1.2rem;color:#1a1a1a}}
-h1{{font-size:2rem}}h2{{font-size:1.15rem;margin-top:2rem}}a{{color:#3730a3}}
-.muted{{color:#888;font-size:.85rem}}table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-bottom:1px solid #eee;vertical-align:top}}</style>
-<p class=muted><a href="/">← Sporløs</a></p>
+{_BRAND_HEAD}
+<style>{_BRAND_CSS}
+body{{max-width:680px;margin:0 auto;padding:0 1.2rem 3rem}}
+h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
+table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}}
+.muted{{font-size:.85rem}}</style>
+{_SELF_SNIPPET}
+<p class=muted style="margin-top:2rem"><a href="/">← Sporløs</a></p>
 {inner}
-<p class=muted style="margin-top:3rem">Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@datamynt.no<br>
-Sist oppdatert 2026-06-09 · utkast, kvalitetssikres av jurist.</p>"""
+<p class=muted style="margin-top:3rem">Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@sporlos.no<br>
+Sist oppdatert 2026-06-10 · utkast, kvalitetssikres av jurist.</p>"""
     )
 
 
@@ -866,7 +878,7 @@ næringsdrivende; enkelte forbrukerrettigheter (f.eks. angrerett) gjelder kun fo
 
 <h2>1. Selger (avtalepart)</h2>
 <p><b>Datamynt AS</b>, org.nr 936 017 207<br>Maridalsveien 163, 0461 Oslo<br>
-E-post: <b>post@datamynt.no</b> · Telefon: +47 48 27 99 19</p>
+E-post: <b>post@sporlos.no</b> · Telefon: +47 48 27 99 19</p>
 
 <h2>2. Tjenesten og priser</h2>
 <p>Sporløs er personvernvennlig webanalyse. Planer og priser fremgår av <a href="/">sporlos.no</a>,
@@ -877,7 +889,7 @@ oppgitt i NOK. (Datamynt er foreløpig ikke mva-registrert; mva tilkommer fra re
 
 <h2>4. Betaling</h2>
 <p>Betaling skjer med Vipps eller betalingskort, forskuddsvis per betalingsperiode. Næringsdrivende
-kan etter avtale betale mot faktura/EHF (post@datamynt.no).</p>
+kan etter avtale betale mot faktura/EHF (post@sporlos.no).</p>
 
 <h2>5. Levering</h2>
 <p>Tjenesten gjøres tilgjengelig umiddelbart etter at avtalen er inngått.</p>
@@ -887,8 +899,10 @@ kan etter avtale betale mot faktura/EHF (post@datamynt.no).</p>
 (måned eller år) til gjeldende pris inntil det sies opp. <b>Du kan si opp når som helst</b>, med
 virkning fra utløpet av inneværende betalte periode.</p>
 <p><b>Slik sier du opp:</b> betaler du med Vipps, kan du se og avslutte den faste avtalen direkte i
-Vipps-appen. Ellers avslutter du i tjenesten eller ved å kontakte oss på <b>post@datamynt.no</b>.
-Allerede betalt periode refunderes ikke, men du belastes ikke videre. Prisendringer varsles i rimelig tid.</p>
+Vipps-appen. Ellers avslutter du i tjenesten eller ved å kontakte oss på <b>post@sporlos.no</b>.
+Allerede betalt periode refunderes ikke, men du belastes ikke videre.</p>
+<p><b>Prisendringer</b> varsles på e-post minst 30 dager før de trer i kraft, og gjelder først fra
+neste betalingsperiode. Er du uenig, kan du si opp før endringen trer i kraft.</p>
 
 <h2>7. Angrerett (forbrukere)</h2>
 <p>Som forbruker har du 14 dagers angrerett etter angrerettloven. For digitale tjenester som leveres
@@ -901,19 +915,29 @@ uansett teste kostnadsfritt før kjøp. (Angrerett gjelder ikke ved salg til næ
 over til betalt abonnement uten at du aktivt velger en plan.</p>
 
 <h2>9. Reklamasjon</h2>
-<p>Ved feil eller mangel, kontakt oss på post@datamynt.no. Forbrukere har rettigheter etter
+<p>Ved feil eller mangel, kontakt oss på post@sporlos.no. Forbrukere har rettigheter etter
 forbrukerkjøpsloven.</p>
 
-<h2>10. Behandling av data</h2>
+<h2>10. Behandling av data — og dine data</h2>
 <p>Sporløs samler ikke personopplysninger om dine besøkende. Se <a href="/personvern">personvernerklæringen</a>;
 for næringsdrivende gjelder i tillegg databehandleravtale (på forespørsel).</p>
+<p><b>Analysedataene for ditt nettsted er dine.</b> Du kan når som helst eksportere dem (CSV i
+tjenesten). Vi selger eller deler dem aldri med tredjepart. Ved opphør av kundeforholdet slettes
+innsamlede analysedata innen 90 dager.</p>
 
-<h2>11. Ansvar</h2>
-<p>Tjenesten leveres "som den er" med tilstrebet høy oppetid. For næringsdrivende er vårt samlede
-ansvar begrenset til vederlag betalt siste 12 måneder; forbrukeres ufravikelige rettigheter berøres ikke.</p>
+<h2>11. Tilgjengelighet og ansvar</h2>
+<p>Vi tilstreber høy oppetid og tar jevnlige sikkerhetskopier. Planlagt vedlikehold som påvirker
+tjenesten varsles. Hvis sporingsscriptet er utilgjengelig, påvirkes ikke nettstedet ditt —
+scriptet feiler stille uten å forstyrre siden.</p>
+<p>Tjenesten leveres "som den er". For næringsdrivende er vårt samlede ansvar begrenset til vederlag
+betalt siste 12 måneder; forbrukeres ufravikelige rettigheter berøres ikke.</p>
 
-<h2>12. Klage og konfliktløsning</h2>
-<p>Ta først kontakt med oss på post@datamynt.no. Forbrukere kan klage til Forbrukertilsynet/Forbrukerrådet.
+<h2>12. Endringer i vilkårene</h2>
+<p>Vesentlige endringer i disse vilkårene varsles på e-post i rimelig tid før de trer i kraft.
+Fortsatt bruk etter varslet ikrafttredelse regnes som aksept; du kan alltid si opp i stedet.</p>
+
+<h2>13. Klage og konfliktløsning</h2>
+<p>Ta først kontakt med oss på post@sporlos.no. Forbrukere kan klage til Forbrukertilsynet/Forbrukerrådet.
 Avtalen reguleres av norsk rett.</p>""",
     )
 
@@ -929,10 +953,15 @@ behandlingsansvarlig for kunder og besøkende på sporlos.no.</p>
 <p>Når du oppretter konto lagrer vi e-post, firmanavn og et kryptert passord (eller pålogging via
 Google). Faktureringsopplysninger håndteres av vår betalingspartner (Stripe/Vipps); vi lagrer ikke
 kortnummer.</p>
+<p>Når du logger inn, settes én <b>nødvendig innloggings-cookie</b> (sesjon). Den brukes kun til å
+holde deg innlogget, deles ikke med noen, og er unntatt samtykkekravet (strengt nødvendig).
+Den er det eneste vi noensinne lagrer i nettleseren din — og kun for innloggede kunder.</p>
 
 <h2>2. Besøkende på sporlos.no</h2>
 <p>Vi måler vårt eget nettsted med Sporløs — cookieløst, uten å lagre IP og uten
-personopplysninger. Derfor settes ingen sporings-cookies og det kreves ikke samtykke.</p>
+personopplysninger. Derfor settes ingen sporings-cookies og det kreves ikke samtykke.
+Vi bruker ingen tredjeparts sporings- eller analyseverktøy, og laster ingen ressurser
+(fonter, scripts) fra tredjepart på offentlige sider.</p>
 
 <h2>3. Formål og grunnlag</h2>
 <p>Vi behandler kontoopplysninger for å levere og fakturere tjenesten (avtale, personvern­forordningen
@@ -942,13 +971,16 @@ art. 6 nr. 1 b) og for support. Vi sender ikke markedsføring uten samtykke.</p>
 <table>
 <tr><td><b>UpCloud</b></td><td>Hosting — servere i Stavanger, Norge (EU-eid)</td></tr>
 <tr><td><b>Stripe / Vipps</b></td><td>Betaling</td></tr>
+<tr><td><b>Google Workspace</b></td><td>E-post (support og transaksjonsmeldinger til kunder)</td></tr>
 </table>
-<p>Kontoopplysninger lagres så lenge du er kunde, og slettes innen rimelig tid etter at
-kundeforholdet opphører.</p>
+<p><b>Lagringstider:</b> Kontoopplysninger lagres så lenge du er kunde, og slettes innen rimelig
+tid etter at kundeforholdet opphører (regnskapsplikt kan kreve lengre lagring av fakturadata).
+Analysehendelser inneholder ingen personopplysninger og lagres for statistikkformål;
+ved opphør slettes de innen 90 dager.</p>
 
 <h2>5. Dine rettigheter</h2>
 <p>Du har rett til innsyn, retting, sletting og dataportabilitet. Kontakt oss på
-post@datamynt.no. Du kan klage til Datatilsynet (datatilsynet.no).</p>
+post@sporlos.no. Du kan klage til Datatilsynet (datatilsynet.no).</p>
 
 <h2>6. Analyse på vegne av kunder</h2>
 <p>Når du bruker Sporløs på ditt eget nettsted, er du behandlingsansvarlig og vi er
@@ -1075,10 +1107,17 @@ a{color:#3730a3}
 <footer>
   <a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>
   Sporløs · personvernvennlig webanalyse<br>
-  Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@datamynt.no
+  Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@sporlos.no
 </footer>
 </div>"""
     )
+
+
+def _alias(to):
+    """Norsk URL-alias → kanonisk rute (redirect, ingen duplisert side for SEO)."""
+    async def handler(request):
+        return RedirectResponse(to, status_code=302)
+    return handler
 
 
 async def robots(request):
@@ -1123,6 +1162,7 @@ text-decoration:none;color:var(--muted);font-size:.85rem;background:var(--card)}
 .axis{display:flex;justify-content:space-between;color:var(--muted);font-size:.75rem;padding:0 .2rem}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.9rem;margin:.9rem 0}
 .block{margin:.9rem 0}
+body.nobars td{background:none !important}
 table{border-collapse:collapse;width:100%;margin:.3rem 0;table-layout:fixed}
 td,th{border-bottom:1px solid var(--line);padding:.42rem 0;text-align:left;font-size:.92rem;
 overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1135,6 +1175,21 @@ pre{background:#f3f1ec;padding:.8rem;border-radius:8px;overflow:auto;font-size:.
 .footnote{color:var(--muted);font-size:.8rem;margin-top:2rem}
 .footnote a{color:var(--muted)}
 """
+
+
+# Av/på for andelssøylene i tabellene — huskes i nettleseren (localStorage).
+_BARS_JS = """<script>
+(function () {
+  var k = 'sporlosBars';
+  if (localStorage.getItem(k) === 'av') document.body.classList.add('nobars');
+  var t = document.getElementById('barstoggle');
+  if (t) t.onclick = function (e) {
+    e.preventDefault();
+    var av = document.body.classList.toggle('nobars');
+    localStorage.setItem(k, av ? 'av' : 'pa');
+  };
+})();
+</script>"""
 
 
 def _stat_table(items, key):
@@ -1292,8 +1347,11 @@ uten cookies og uten samtykke. Det du ser her, er det kundene får.</div>
   <p class=fine style="margin-top:.7rem;color:var(--muted);font-size:.85rem">30 dager · uten kort</p>
 </div>
 <p class=footnote>Cookieløs · ingen IP lagret · samtykkefri ·
+<a href="#" id=barstoggle>andelssøyler av/på</a> ·
 Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
-</div>""",
+</div>
+{_BARS_JS}
+{_SELF_SNIPPET}""",
         headers={"cache-control": "public, max-age=60"},
     )
 
@@ -1589,7 +1647,8 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
   <a href="/app/export?site={escape(public_id)}&period={period}&what=tidsserie">tidsserie</a> ·
   <a href="/app/export?site={escape(public_id)}&period={period}&what=sider">sider</a> ·
   <a href="/app/export?site={escape(public_id)}&period={period}&what=kilder">kilder</a> ·
-  <a href="/app/export?site={escape(public_id)}&period={period}&what=land">land</a></p>
+  <a href="/app/export?site={escape(public_id)}&period={period}&what=land">land</a>
+  · <a href="#" id=barstoggle>andelssøyler av/på</a></p>
 <div class=grid>
   <div class=card><h3>Topp sider</h3>{table(s['top_paths'], 'path')}</div>
   <div class=card><h3>Topp kilder</h3>{table(s['top_sources'], 'src')}</div>
@@ -1606,7 +1665,8 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 <pre>{escape(f'<script defer data-site="{public_id}" data-api="{PUBLIC_BASE}/api/event" src="{PUBLIC_BASE}/sporlos.js"></script>')}</pre></details></div>
 <p class=footnote>Cookieløs · ingen IP lagret · samtykkefri ·
 Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
-</div>"""
+</div>
+{_BARS_JS}"""
     )
 
 
@@ -1625,6 +1685,9 @@ routes = [
     Route("/static/schibsted-grotesk.woff2", brand_font),
     Route("/signup", signup, methods=["GET", "POST"]),
     Route("/login", login, methods=["GET", "POST"]),
+    Route("/registrer", _alias("/signup")),
+    Route("/logg-inn", _alias("/login")),
+    Route("/sammenligning", _alias("/google-analytics-alternativ")),
     Route("/forgot", forgot, methods=["GET", "POST"]),
     Route("/reset", reset, methods=["GET", "POST"]),
     Route("/unsubscribe", unsubscribe),
