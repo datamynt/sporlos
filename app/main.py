@@ -1170,8 +1170,9 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1.2re
 nav a.ut{{color:var(--muted);text-decoration:none;font-size:.9rem}}
 h1{{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 .3rem}}
 .card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem;margin:.9rem 0}}
-table{{border-collapse:collapse;width:100%}}
-th,td{{border-bottom:1px solid var(--line);padding:.55rem .2rem;text-align:left;font-size:.95rem}}
+table{{border-collapse:collapse;width:100%;table-layout:fixed}}
+th,td{{border-bottom:1px solid var(--line);padding:.55rem .2rem;text-align:left;font-size:.95rem;
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 th{{color:var(--muted);font-weight:600;font-size:.8rem}}
 th:not(:first-child),td:not(:first-child){{text-align:right;width:5.5rem;color:var(--muted)}}
 tr:last-child td{{border-bottom:0}}
@@ -1221,8 +1222,10 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
     chart = _area_chart(series)
 
     def table(items, key):
+        # title = full verdi på hover; cellen selv ellipsis-trunkeres (lange peck-stier!)
         rows = "".join(
-            f"<tr><td>{escape(str(i[key]))}</td><td>{i['n']}</td></tr>" for i in items
+            f'<tr><td title="{escape(str(i[key]))}">{escape(str(i[key]))}</td><td>{i["n"]}</td></tr>'
+            for i in items
         )
         return f"<table>{rows or '<tr><td>ingen data enda</td></tr>'}</table>"
 
@@ -1282,7 +1285,8 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
         "</form>"
     )
     nav_rows = "".join(
-        f'<tr><td>{escape(tr["from"])} → {escape(tr["to"])}</td><td>{tr["n"]}</td></tr>'
+        f'<tr><td title="{escape(tr["from"])} → {escape(tr["to"])}">'
+        f'{escape(tr["from"])} → {escape(tr["to"])}</td><td>{tr["n"]}</td></tr>'
         for tr in transitions
     )
     nav_html = (
@@ -1360,8 +1364,9 @@ text-decoration:none;color:var(--muted);font-size:.85rem;background:var(--card)}
 .axis{{display:flex;justify-content:space-between;color:var(--muted);font-size:.75rem;padding:0 .2rem}}
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.9rem;margin:.9rem 0}}
 .block{{margin:.9rem 0}}
-table{{border-collapse:collapse;width:100%;margin:.3rem 0}}
-td,th{{border-bottom:1px solid var(--line);padding:.42rem 0;text-align:left;font-size:.92rem}}
+table{{border-collapse:collapse;width:100%;margin:.3rem 0;table-layout:fixed}}
+td,th{{border-bottom:1px solid var(--line);padding:.42rem 0;text-align:left;font-size:.92rem;
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 th{{color:var(--muted);font-weight:600;font-size:.8rem}}
 td:last-child,th:last-child{{text-align:right;color:var(--muted);width:5rem}}
 tr:last-child td{{border-bottom:0}}
