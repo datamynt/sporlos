@@ -1016,6 +1016,44 @@ async def sitemap(request):
 _PERIODS = {"1": ("i dag", 1), "7": ("7 dager", 7), "30": ("30 dager", 30)}
 
 
+def _area_chart(series, width=880, height=170):
+    """SVG-areagraf (unike per bucket): aksent-linje + gradientflate + hover-punkter.
+    Rene rette segmenter — ærlig dataviz, ingen utjevning som lyver mellom punktene."""
+    if not series:
+        return '<p class=muted style="font-size:.9rem">ingen data enda</p>'
+    pad_x, pad_top, pad_bot = 8, 14, 22
+    peak = max((b["visitors"] for b in series), default=0) or 1
+    n = len(series)
+    step = (width - 2 * pad_x) / max(n - 1, 1)
+    span = height - pad_top - pad_bot
+    pts = [
+        (pad_x + i * step, pad_top + span * (1 - b["visitors"] / peak))
+        for i, b in enumerate(series)
+    ]
+    if n == 1:  # ett punkt: tegn en flat strek over hele bredden
+        y = pts[0][1]
+        pts = [(pad_x, y), (width - pad_x, y)]
+    line = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+    area = f"{line} L{pts[-1][0]:.1f},{height - pad_bot} L{pts[0][0]:.1f},{height - pad_bot} Z"
+    dots = "".join(
+        f'<circle cx="{pad_x + i * step:.1f}" cy="{pad_top + span * (1 - b["visitors"] / peak):.1f}" r="9">'
+        f"<title>{escape(str(b['bucket']))}: {b['visitors']} unike · {b['pageviews']} visn.</title></circle>"
+        for i, b in enumerate(series)
+    ) if n > 1 else ""
+    first, last = escape(str(series[0]["bucket"])), escape(str(series[-1]["bucket"]))
+    return (
+        f'<svg viewBox="0 0 {width} {height}" preserveAspectRatio="none" class=chart role=img>'
+        '<defs><linearGradient id=cg x1=0 y1=0 x2=0 y2=1>'
+        '<stop offset=0 stop-color="#2f6fed" stop-opacity=".16"/>'
+        '<stop offset=1 stop-color="#2f6fed" stop-opacity="0"/></linearGradient></defs>'
+        f'<path d="{area}" fill="url(#cg)"/>'
+        f'<path d="{line}" fill=none stroke="#2f6fed" stroke-width="2.5" '
+        'stroke-linejoin=round stroke-linecap=round/>'
+        f"{dots}</svg>"
+        f'<div class=axis><span>{first}</span><span>topp: {peak} unike</span><span>{last}</span></div>'
+    )
+
+
 async def dashboard(request):
     """Dashboard m/ periodevelger, trendgraf og breakdowns. Styling: midlertidig (design-runde senere)."""
     user = _user(request)
@@ -1080,30 +1118,42 @@ async def dashboard(request):
                 f'font-size:.9rem"><b>Plan:</b> {label}{portal}</p>'
             )
         return HTMLResponse(
-            f"""<!doctype html><meta charset=utf-8>
+            f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>Sporløs — mine sites</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<style>body{{font:16px system-ui;max-width:640px;margin:3rem auto;padding:0 1rem;color:#222}}
-table{{border-collapse:collapse;width:100%;margin:1rem 0}}
-th,td{{border-bottom:1px solid #eee;padding:.6rem .4rem;text-align:left}}
-th:not(:first-child),td:not(:first-child){{text-align:right;width:6rem;color:#666}}
-a{{color:#3730a3;text-decoration:none}}
-form.add{{display:flex;gap:.5rem;margin:1rem 0}}form.add input{{flex:1;padding:.5rem;border:1px solid #ccc;border-radius:7px}}
-form.add button{{background:#1a1a1a;color:#fff;border:0;padding:0 1rem;border-radius:7px;cursor:pointer}}
-.top{{display:flex;justify-content:space-between;align-items:center}}.top a{{font-size:.85rem;color:#888}}</style>
-<div class=top><h1>Mine sites <small style="font-weight:400;color:#888;font-size:1rem">· i dag</small></h1>
-<a href="/logout">Logg ut</a></div>
+{_BRAND_HEAD}
+<style>{_BRAND_CSS}
+.wrap{{max-width:640px;margin:0 auto;padding:0 1.2rem 4rem}}
+nav{{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}}
+nav a.ut{{color:var(--muted);text-decoration:none;font-size:.9rem}}
+h1{{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 .3rem}}
+.card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem;margin:.9rem 0}}
+table{{border-collapse:collapse;width:100%}}
+th,td{{border-bottom:1px solid var(--line);padding:.55rem .2rem;text-align:left;font-size:.95rem}}
+th{{color:var(--muted);font-weight:600;font-size:.8rem}}
+th:not(:first-child),td:not(:first-child){{text-align:right;width:5.5rem;color:var(--muted)}}
+tr:last-child td{{border-bottom:0}}
+td a{{color:var(--ink);text-decoration:none;font-weight:600}}td a:hover{{color:var(--accent-deep)}}
+form.add{{display:flex;gap:.5rem}}
+form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:.95rem;background:var(--card)}}
+.fine{{color:var(--muted);font-size:.8rem}}</style>
+<div class=wrap>
+<nav>{_WORDMARK}<a class=ut href="/logout">Logg ut</a></nav>
+<h1>Mine sites</h1><p class="fine" style="margin:0 0 1rem">tall for i dag</p>
 {verify_banner}
 {trial}
 {planinfo}
 {upgrade}
+<div class=card>
 <table><tr><th>Nettsted</th><th>Unike</th><th>Visn.</th></tr>
 {rows or '<tr><td>ingen sites enda — legg til ett under</td><td></td><td></td></tr>'}</table>
+</div>
 <form class=add method=post action="/app/sites">
   <input name=domain placeholder="dittdomene.no" required>
-  <button>Legg til nettsted</button>
+  <button class=btn>Legg til nettsted</button>
 </form>
-<p style="color:#999;font-size:.8rem">Cookieløs · ingen IP lagret · samtykke-fri</p>"""
+<p class=fine style="margin-top:1.5rem">Cookieløs · ingen IP lagret · samtykkefri</p>
+</div>"""
         )
 
     period = request.query_params.get("period", "7")
@@ -1126,13 +1176,7 @@ form.add button{{background:#1a1a1a;color:#fff;border:0;padding:0 1rem;border-ra
         for k, v in _PERIODS.items()
     )
 
-    # CSS-trendgraf (unike besøkende per bucket)
-    peak = max((b["visitors"] for b in series), default=0) or 1
-    bars = "".join(
-        f'<div class=bar style="height:{max(2, round(b["visitors"] / peak * 100))}%" '
-        f'title="{escape(b["bucket"])}: {b["visitors"]} unike / {b["pageviews"]} visn."></div>'
-        for b in series
-    )
+    chart = _area_chart(series)
 
     def table(items, key):
         rows = "".join(
@@ -1243,52 +1287,79 @@ form.add button{{background:#1a1a1a;color:#fff;border:0;padding:0 1rem;border-ra
             f"<th style='text-align:right;color:#888;font-size:.85rem'>Visn.</th></tr>{camp_rows}</table>"
         )
 
+    blocks = "".join(
+        f'<div class="card block">{b}</div>'
+        for b in (campaigns_html, goals_html, funnels_html, nav_html, events_html, verify_html)
+        if b
+    )
+
     return HTMLResponse(
-        f"""<!doctype html><meta charset=utf-8>
+        f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>Sporløs — {escape(site['domain'])}</title>
-<style>body{{font:16px system-ui;max-width:760px;margin:3rem auto;padding:0 1rem;color:#222}}
-.tabs a{{padding:.3rem .7rem;margin-right:.3rem;border:1px solid #ddd;border-radius:6px;text-decoration:none;color:#555;font-size:.9rem}}
-.tabs a.on{{background:#222;color:#fff;border-color:#222}}
-.kpis{{display:flex;gap:2.5rem;margin:1.5rem 0}}.kpi b{{font-size:2.2rem;display:block;line-height:1}}.kpi span{{color:#888;font-size:.85rem}}
-.chart{{display:flex;align-items:flex-end;gap:3px;height:120px;margin:1rem 0;border-bottom:1px solid #eee}}
-.bar{{flex:1;background:#3b82f6;border-radius:2px 2px 0 0;min-height:2px}}.bar:hover{{background:#1d4ed8}}
-.grid{{display:grid;grid-template-columns:1fr 1fr;gap:0 2rem}}
-table{{border-collapse:collapse;width:100%;margin:.5rem 0}}td{{border-bottom:1px solid #eee;padding:.4rem 0}}td:last-child{{text-align:right;color:#666;width:5rem}}
-h3{{margin:1.5rem 0 .3rem;font-size:1rem}}</style>
-<p style="margin:0 0 .5rem"><a href="/app" style="color:#3730a3;text-decoration:none;font-size:.85rem">← Mine sites</a></p>
-<h1>{escape(site['domain'])}</h1>
+<meta name=viewport content="width=device-width, initial-scale=1">
+{_BRAND_HEAD}
+<style>{_BRAND_CSS}
+.wrap{{max-width:980px;margin:0 auto;padding:0 1.2rem 4rem}}
+nav{{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}}
+nav .links{{display:flex;gap:1.1rem;font-size:.9rem}}
+nav .links a{{color:var(--muted);text-decoration:none}}nav .links a:hover{{color:var(--ink)}}
+.head{{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}}
+h1{{font-size:1.7rem;letter-spacing:-.02em;margin:0}}
+.tabs a{{padding:.32rem .8rem;margin-left:.3rem;border:1px solid var(--line);border-radius:99px;
+text-decoration:none;color:var(--muted);font-size:.85rem;background:var(--card)}}
+.tabs a.on{{background:var(--ink);color:#fff;border-color:var(--ink)}}
+.card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem}}
+.kpis{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;margin:1rem 0}}
+.kpi b{{font-size:1.9rem;display:block;line-height:1.15;letter-spacing:-.02em}}
+.kpi span{{color:var(--muted);font-size:.8rem}}
+.chartcard{{margin:0 0 .9rem;padding-bottom:.6rem}}
+.chart{{width:100%;height:170px;display:block}}
+.chart circle{{fill:transparent}}.chart circle:hover{{fill:var(--accent)}}
+.axis{{display:flex;justify-content:space-between;color:var(--muted);font-size:.75rem;padding:0 .2rem}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.9rem;margin:.9rem 0}}
+.block{{margin:.9rem 0}}
+table{{border-collapse:collapse;width:100%;margin:.3rem 0}}
+td,th{{border-bottom:1px solid var(--line);padding:.42rem 0;text-align:left;font-size:.92rem}}
+th{{color:var(--muted);font-weight:600;font-size:.8rem}}
+td:last-child,th:last-child{{text-align:right;color:var(--muted);width:5rem}}
+tr:last-child td{{border-bottom:0}}
+h3{{margin:0 0 .5rem;font-size:1rem;letter-spacing:-.01em}}
+details summary{{cursor:pointer;color:var(--accent-deep);font-size:.9rem}}
+pre{{background:#f3f1ec;padding:.8rem;border-radius:8px;overflow:auto;font-size:.78rem}}
+.footnote{{color:var(--muted);font-size:.8rem;margin-top:2rem}}
+.footnote a{{color:var(--muted)}}</style>
+<div class=wrap>
+<nav>{_WORDMARK}<div class=links><a href="/app">Mine sites</a><a href="/logout">Logg ut</a></div></nav>
 {verify_banner}
-<div class=tabs>{tabs}</div>
-<details style="margin:1rem 0"><summary style="cursor:pointer;color:#3730a3;font-size:.9rem">Vis sporings-kode</summary>
-<pre style="background:#f6f6f6;padding:.8rem;border-radius:7px;overflow:auto;font-size:.78rem">{escape(f'<script defer data-site="{public_id}" data-api="{PUBLIC_BASE}/api/event" src="{PUBLIC_BASE}/sporlos.js"></script>')}</pre></details>
+<div class=head><h1>{escape(site['domain'])}</h1><div class=tabs>{tabs}</div></div>
 <div class=kpis>
-  <div class=kpi><b>{s['visitors']}</b><span>unike besøkende</span></div>
-  <div class=kpi><b>{s['sessions']}</b><span>besøk</span></div>
-  <div class=kpi><b>{s['pageviews']}</b><span>sidevisninger</span></div>
-  <div class=kpi><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span></div>
-  <div class=kpi><b>{s['views_per_session']}</b><span>visn./besøk</span></div>
+  <div class="card kpi"><b>{s['visitors']}</b><span>unike besøkende</span></div>
+  <div class="card kpi"><b>{s['sessions']}</b><span>besøk</span></div>
+  <div class="card kpi"><b>{s['pageviews']}</b><span>sidevisninger</span></div>
+  <div class="card kpi"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span></div>
+  <div class="card kpi"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
 </div>
-<p style="color:#888;font-size:.8rem;margin:-.5rem 0 1rem">{escape(label)}</p>
-<div class=chart>{bars}</div>
+<div class="card chartcard">
+<p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende · {escape(label)}</p>
+{chart}
+</div>
 <div class=grid>
-  <div><h3>Topp sider</h3>{table(s['top_paths'], 'path')}</div>
-  <div><h3>Topp kilder</h3>{table(s['top_sources'], 'src')}</div>
-  <div><h3>Inngangssider</h3>{table(flow['entries'], 'path')}</div>
-  <div><h3>Utgangssider</h3>{table(flow['exits'], 'path')}</div>
-  <div><h3>Land</h3>{table(s['countries'], 'k')}</div>
-  <div><h3>Fylke / region</h3>{table(s['regions'], 'k')}</div>
-  <div><h3>Enheter</h3>{table(s['devices'], 'k')}</div>
-  <div><h3>Nettlesere</h3>{table(s['browsers'], 'k')}</div>
-  <div><h3>Operativsystem</h3>{table(s['os'], 'k')}</div>
+  <div class=card><h3>Topp sider</h3>{table(s['top_paths'], 'path')}</div>
+  <div class=card><h3>Topp kilder</h3>{table(s['top_sources'], 'src')}</div>
+  <div class=card><h3>Inngangssider</h3>{table(flow['entries'], 'path')}</div>
+  <div class=card><h3>Utgangssider</h3>{table(flow['exits'], 'path')}</div>
+  <div class=card><h3>Land</h3>{table(s['countries'], 'k')}</div>
+  <div class=card><h3>Fylke / region</h3>{table(s['regions'], 'k')}</div>
+  <div class=card><h3>Enheter</h3>{table(s['devices'], 'k')}</div>
+  <div class=card><h3>Nettlesere</h3>{table(s['browsers'], 'k')}</div>
+  <div class=card><h3>Operativsystem</h3>{table(s['os'], 'k')}</div>
 </div>
-{campaigns_html}
-{goals_html}
-{funnels_html}
-{nav_html}
-{events_html}
-{verify_html}
-<p style="color:#999;font-size:.8rem;margin-top:2rem">Cookieløs · ingen IP lagret · samtykke-fri<br>
-<span style="font-size:.75rem">Geo: <a href="https://db-ip.com" style="color:#aaa">IP Geolocation by DB-IP</a> (CC BY 4.0)</span></p>"""
+{blocks}
+<div class="card block"><details><summary>Vis sporings-kode</summary>
+<pre>{escape(f'<script defer data-site="{public_id}" data-api="{PUBLIC_BASE}/api/event" src="{PUBLIC_BASE}/sporlos.js"></script>')}</pre></details></div>
+<p class=footnote>Cookieløs · ingen IP lagret · samtykkefri ·
+Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
+</div>"""
     )
 
 
