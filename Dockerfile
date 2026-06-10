@@ -7,10 +7,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Appkode + tracker + schema
+# Appkode + tracker + schema + brand-assets (self-hostet font)
 COPY app/ ./app/
 COPY tracker/ ./tracker/
 COPY db/ ./db/
+COPY static/ ./static/
 
 # Kjør som ikke-root
 RUN useradd -m appuser

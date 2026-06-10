@@ -188,8 +188,8 @@ _FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 
 _WORDMARK = (
     '<a class=brand href="/"><svg viewBox="0 0 64 64" aria-hidden=true>'
-    '<circle cx="32" cy="36" r="16" fill="none" stroke="currentColor" stroke-width="7"/>'
-    '<line x1="17" y1="55" x2="47" y2="13" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>'
+    '<circle cx="32" cy="32" r="16" fill="none" stroke="currentColor" stroke-width="7"/>'
+    '<line x1="17" y1="51" x2="47" y2="13" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>'
     "</svg>sporløs</a>"
 )
 
@@ -199,18 +199,24 @@ _BRAND_HEAD = (
 )
 
 _BRAND_CSS = """
+@font-face{font-family:'Schibsted Grotesk';font-style:normal;font-weight:400 900;
+font-display:swap;src:url(/static/schibsted-grotesk.woff2) format('woff2')}
 :root{--bg:#faf9f6;--ink:#17263e;--muted:#5f6b7d;--accent:#2f6fed;--accent-deep:#1d4ed8;
 --line:#e8e6e0;--card:#ffffff;--ok:#15803d;
-font:17px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
+font:17px/1.65 'Schibsted Grotesk',system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
 body{margin:0;background:var(--bg);-webkit-font-smoothing:antialiased}
+body::before{content:'';display:block;height:3px;
+background:linear-gradient(90deg,var(--accent-deep),var(--accent) 45%,#8fb3ff)}
 a{color:var(--accent-deep)}
 .brand{display:inline-flex;align-items:center;gap:.45rem;font-weight:700;font-size:1.15rem;
 letter-spacing:-.02em;color:var(--ink);text-decoration:none}
-.brand svg{width:1.15em;height:1.15em;color:var(--accent)}
+.brand svg{width:1.12em;height:1.12em;color:var(--accent);transform:translateY(-.06em)}
 .btn{display:inline-block;background:var(--ink);color:#fff;text-decoration:none;
-padding:.7rem 1.4rem;border-radius:9px;font-weight:600;border:0;font-size:1rem;cursor:pointer}
-.btn:hover{background:#0e1a2e}
-.btn-accent{background:var(--accent)}.btn-accent:hover{background:var(--accent-deep)}
+padding:.7rem 1.4rem;border-radius:9px;font-weight:600;border:0;font-size:1rem;cursor:pointer;
+transition:background .15s,transform .15s,box-shadow .15s}
+.btn:hover{background:#0e1a2e;transform:translateY(-1px)}
+.btn-accent{background:var(--accent);box-shadow:0 8px 20px -10px rgba(47,111,237,.55)}
+.btn-accent:hover{background:var(--accent-deep)}
 .muted{color:var(--muted)}
 """
 
@@ -218,6 +224,19 @@ padding:.7rem 1.4rem;border-radius:9px;font-weight:600;border:0;font-size:1rem;c
 async def favicon(request):
     return Response(_FAVICON_SVG, media_type="image/svg+xml",
                     headers={"cache-control": "public, max-age=604800"})
+
+
+# Schibsted Grotesk (SIL OFL, norsk) — self-hostet: et personvernprodukt laster
+# ikke fonter fra tredjepart. Latin-subset m/ æøå, variabel 400–900, ~46 kB.
+_FONT_PATH = Path(__file__).resolve().parent.parent / "static" / "schibsted-grotesk.woff2"
+_FONT = _FONT_PATH.read_bytes() if _FONT_PATH.exists() else b""
+
+
+async def brand_font(request):
+    if not _FONT:
+        return PlainTextResponse("not found", status_code=404)
+    return Response(_FONT, media_type="font/woff2",
+                    headers={"cache-control": "public, max-age=2592000, immutable"})
 
 
 async def landing(request):
@@ -238,16 +257,21 @@ async def landing(request):
         + "<style>"
         + _BRAND_CSS
         + """
+body{background:radial-gradient(1100px 480px at 78% -120px,rgba(47,111,237,.08),transparent 70%),var(--bg)}
 .wrap{max-width:880px;margin:0 auto;padding:0 1.3rem}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1.4rem 0}
 nav .links{display:flex;gap:1.2rem;align-items:center;font-size:.95rem}
 nav .links a{color:var(--muted);text-decoration:none}
 nav .links a:hover{color:var(--ink)}
 nav .links a.btn{color:#fff;padding:.5rem 1rem}
-header{padding:3.5rem 0 1rem;max-width:680px}
+header{padding:3.5rem 0 1rem;max-width:680px;position:relative}
+.wm{position:absolute;right:-270px;top:-30px;width:330px;height:330px;opacity:.055;
+color:var(--ink);pointer-events:none}
+@media(max-width:1080px){.wm{display:none}}
 .tag{display:inline-block;color:var(--accent-deep);font-size:.78rem;font-weight:600;
 letter-spacing:.09em;text-transform:uppercase;margin-bottom:1.2rem}
-h1{font-size:clamp(2.2rem,5.5vw,3.1rem);line-height:1.08;margin:0 0 1.1rem;letter-spacing:-.025em}
+h1{font-size:clamp(2.2rem,5.5vw,3.2rem);line-height:1.06;margin:0 0 1.1rem;
+letter-spacing:-.03em;font-weight:800}
 .lede{font-size:1.2rem;color:var(--muted);max-width:36em}
 .hero-ctas{margin:1.8rem 0 .6rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
 .fine{font-size:.85rem;color:var(--muted)}
@@ -255,6 +279,9 @@ h1{font-size:clamp(2.2rem,5.5vw,3.1rem);line-height:1.08;margin:0 0 1.1rem;lette
 padding:1.1rem 1.3rem 1rem;box-shadow:0 18px 50px -28px rgba(23,38,62,.28)}
 .demo-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem}
 .demo-top b{font-size:.95rem;letter-spacing:-.01em}
+.demo-id{display:flex;align-items:center;gap:.75rem}
+.dots{display:inline-flex;gap:5px}
+.dots i{width:9px;height:9px;border-radius:50%;background:#e6e2da;display:block}
 .demo-top .pills span{padding:.18rem .6rem;border:1px solid var(--line);border-radius:99px;
 font-size:.72rem;color:var(--muted);margin-left:.25rem}
 .demo-top .pills span.on{background:var(--ink);color:#fff;border-color:var(--ink)}
@@ -289,8 +316,11 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 .plan b{font-size:1.05rem}.plan .pris{font-size:1.5rem;font-weight:700;margin:.5rem 0 .2rem;letter-spacing:-.02em}
 .plan small{color:var(--muted);line-height:1.5}
 .plan .hva{margin-top:.4rem;flex:1}
-footer{padding:3rem 0 4rem;color:var(--muted);font-size:.85rem;line-height:1.9}
-footer a{color:var(--muted)}
+footer{background:var(--ink);color:#aeb9cb;font-size:.85rem;line-height:1.9;margin-top:4rem}
+footer .wrap{padding-top:2.6rem;padding-bottom:3rem}
+footer a{color:#cdd6e4}
+footer .brand{color:#fff;margin-bottom:.6rem}
+footer .brand svg{color:var(--accent)}
 </style>
 <script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" src="https://sporlos.no/sporlos.js"></script>
 <div class=wrap>
@@ -303,6 +333,10 @@ footer a{color:var(--muted)}
 </div></nav>
 
 <header>
+  <svg class=wm viewBox="0 0 64 64" aria-hidden=true>
+    <circle cx="32" cy="32" r="16" fill="none" stroke="currentColor" stroke-width="6"/>
+    <line x1="17" y1="51" x2="47" y2="13" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+  </svg>
   <span class=tag>Norsk · cookieløs · samtykkefri</span>
   <h1>Webanalyse uten cookie&#8209;banner.</h1>
   <p class=lede>Sporløs måler nettstedet ditt uten cookies, uten å lagre IP, og uten å samle
@@ -315,7 +349,8 @@ footer a{color:var(--muted)}
 </header>
 
 <div class=demo aria-hidden=true>
-  <div class=demo-top><b>dittdomene.no</b>
+  <div class=demo-top>
+    <span class=demo-id><span class=dots><i></i><i></i><i></i></span><b>dittdomene.no</b></span>
     <span class=pills><span>i dag</span><span class=on>7 dager</span><span>30 dager</span></span></div>
   <div class=demo-kpis>
     <div class=demo-kpi><b>4 312</b><span>unike besøkende</span></div>
@@ -403,13 +438,16 @@ footer a{color:var(--muted)}
   <p class=fine style="margin-top:.7rem"><a href="/login">Har du konto? Logg inn</a></p>
 </section>
 
-<footer>
+</div>
+<footer><div class=wrap>
+"""
+        + _WORDMARK
+        + """<br>
+  Personvennlig webanalyse, bygget i Norge.<br><br>
   <a href="/google-analytics-alternativ">Sporløs mot Google Analytics</a> ·
   <a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>
-  Sporløs · personvennlig webanalyse<br>
   Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@datamynt.no
-</footer>
-</div>"""
+</div></footer>"""
     )
 
 
@@ -1421,6 +1459,7 @@ routes = [
     Route("/robots.txt", robots),
     Route("/sitemap.xml", sitemap),
     Route("/favicon.svg", favicon),
+    Route("/static/schibsted-grotesk.woff2", brand_font),
     Route("/signup", signup, methods=["GET", "POST"]),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/forgot", forgot, methods=["GET", "POST"]),
