@@ -463,12 +463,14 @@ footer .brand svg{color:var(--accent)}
 
 <section>
   <h2>Priser</h2>
-  <p class=muted style="margin:0">Etter sidevisninger per måned · eks. mva · årlig = 2 måneder gratis.</p>
+  <p class=muted style="margin:0">Etter sidevisninger per måned (totale visninger, ikke unike besøkende) ·
+  eks. mva · årlig = 2 måneder gratis. Over grensen? Vi slutter aldri å måle og sender aldri
+  overraskelsesregninger — du får et varsel og velger selv om du vil oppgradere.</p>
   <div class=plans>
     <div class=plan><b>Liten</b><span class=pris>99 kr<small>/mnd</small></span>
       <small class=hva>10 000 visninger<br>1 nettsted</small></div>
     <div class="plan hl"><b>Vekst</b><span class=pris>249 kr<small>/mnd</small></span>
-      <small class=hva>100 000 visninger<br>5 nettsteder</small></div>
+      <small class=hva>100 000 visninger<br>10 nettsteder</small></div>
     <div class=plan><b>Pro</b><span class=pris>599 kr<small>/mnd</small></span>
       <small class=hva>1 mill. visninger<br>15 nettsteder<br>verifiserbare tall</small></div>
     <div class=plan><b>Byrå</b><span class=pris>fra 1 490 kr</span>
@@ -1195,7 +1197,7 @@ _PERIODS = {"1": ("i dag", 1), "7": ("7 dager", 7), "30": ("30 dager", 30)}
 _PLAN_LIMITS = {
     "trial": (100_000, 5),
     "liten": (10_000, 1),
-    "vekst": (100_000, 5),
+    "vekst": (100_000, 10),
     "pro": (1_000_000, 15),
     "byra": (None, None),
     "owner": (None, None),
