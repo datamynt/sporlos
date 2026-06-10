@@ -420,7 +420,8 @@ footer .brand svg{color:var(--accent)}
     <div class=card><h3>Mål, funnels og kampanjer</h3><p>Egendefinerte hendelser, konverteringsrate,
     funnels med drop-off og UTM-kampanjer. Uten at noen blir identifisert.</p></div>
     <div class=card><h3>Data i Norge</h3><p>Norsk-eid drift på servere i Stavanger, utenfor
-    rekkevidden til US CLOUD Act. Åpen kildekode — etterprøv selv.</p></div>
+    rekkevidden til US CLOUD Act. Sporingsscriptet er
+    <a href="https://github.com/datamynt/sporlos-tracker">åpen kildekode</a> — etterprøv selv.</p></div>
     <div class=card><h3>Lett som en fjær</h3><p>Sporingsscriptet er ~1,5 kB — rundt en
     sekstidel av Google Analytics. Siden din merker det ikke.</p></div>
     <div class=card><h3>Inngang, utgang og stier</h3><p>Hvor folk lander, hvor de forsvinner og

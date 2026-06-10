@@ -1,7 +1,8 @@
 /* Sporløs tracker — cookieløs, ingen localStorage, ingen fingerprint.
  * Bygg inn:  <script defer data-site="PUBLIC_ID" src="https://.../sporlos.js"></script>
  * Sender kun: site-id, sti, referrer-kilde + hvitlistede utm_*-kampanjeparametre.
- * Ingen PII, ingen samtykke nødvendig. */
+ * Ingen PII, ingen samtykke nødvendig.
+ * Åpen kildekode (MIT): https://github.com/datamynt/sporlos-tracker */
 (function () {
   var s = document.currentScript;
   var site = s && s.getAttribute("data-site");
