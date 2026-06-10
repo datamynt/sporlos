@@ -222,6 +222,12 @@ transition:background .15s,transform .15s,box-shadow .15s}
 .muted{color:var(--muted)}
 """
 
+# Sporløs måler sporlos.no med Sporløs — definert ÉN gang, brukt i alle templates.
+_SELF_SNIPPET = (
+    '<script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" '
+    'src="https://sporlos.no/sporlos.js"></script>'
+)
+
 
 async def favicon(request):
     return Response(_FAVICON_SVG, media_type="image/svg+xml",
@@ -324,8 +330,9 @@ footer a{color:#cdd6e4}
 footer .brand{color:#fff;margin-bottom:.6rem}
 footer .brand svg{color:var(--accent)}
 </style>
-<script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" src="https://sporlos.no/sporlos.js"></script>
-<div class=wrap>
+"""
+        + _SELF_SNIPPET
+        + """<div class=wrap>
 <nav>"""
         + _WORDMARK
         + """<div class=links>
@@ -459,16 +466,23 @@ footer .brand svg{color:var(--accent)}
 
 def _shell(title, inner):
     return HTMLResponse(
-        f"""<!doctype html><meta charset=utf-8>
+        f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>{escape(title)} — Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<style>body{{font:16px system-ui;max-width:380px;margin:4rem auto;padding:0 1rem;color:#1a1a1a}}
-h1{{font-size:1.5rem}}label{{display:block;margin:.8rem 0 .2rem;font-size:.9rem;color:#444}}
-input{{width:100%;padding:.6rem;border:1px solid #ccc;border-radius:7px;font-size:1rem;box-sizing:border-box}}
-button{{margin-top:1.2rem;width:100%;background:#1a1a1a;color:#fff;border:0;padding:.7rem;border-radius:8px;font-size:1rem;cursor:pointer}}
-.err{{background:#fee;color:#900;padding:.6rem;border-radius:7px;font-size:.9rem;margin:.5rem 0}}
-.muted{{color:#888;font-size:.85rem;margin-top:1.2rem}}a{{color:#3730a3}}</style>
-<script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" src="https://sporlos.no/sporlos.js"></script>
+{_BRAND_HEAD}
+<style>{_BRAND_CSS}
+body{{font-size:16px;max-width:380px;margin:0 auto;padding:0 1rem 4rem}}
+h1{{font-size:1.5rem;letter-spacing:-.02em}}
+label{{display:block;margin:.8rem 0 .2rem;font-size:.9rem;color:var(--muted)}}
+input{{width:100%;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:1rem;
+box-sizing:border-box;background:var(--card);font:inherit}}
+form .btn{{margin-top:1.2rem;width:100%}}
+button{{margin-top:1.2rem;width:100%;background:var(--ink);color:#fff;border:0;padding:.7rem;
+border-radius:8px;font-size:1rem;cursor:pointer;font:inherit;font-weight:600}}
+.err{{background:#fee;color:#900;padding:.6rem;border-radius:8px;font-size:.9rem;margin:.5rem 0}}
+.muted{{margin-top:1.2rem;font-size:.85rem}}</style>
+{_SELF_SNIPPET}
+<p style="margin:2.2rem 0 1.6rem">{_WORDMARK}</p>
 {inner}"""
     )
 
@@ -843,12 +857,6 @@ async def funnel_delete(request):
     return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
 
 
-_SELF_SNIPPET = (
-    '<script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" '
-    'src="https://sporlos.no/sporlos.js"></script>'
-)
-
-
 def _legal(title, inner):
     return HTMLResponse(
         f"""<!doctype html><html lang=no><meta charset=utf-8>
@@ -1020,8 +1028,9 @@ footer{padding:3rem 0;color:#888;font-size:.85rem}
 a{color:#3730a3}
 .muted{color:#888;font-size:.85rem}
 </style>
-<script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" src="https://sporlos.no/sporlos.js"></script>
-<div class=wrap>
+"""
+        + _SELF_SNIPPET
+        + """<div class=wrap>
 <p class=muted style="padding-top:1.5rem"><a href="/">← Sporløs</a></p>
 <header>
   <h1>Bytte fra Google Analytics? Her er den ærlige sammenligningen.</h1>
