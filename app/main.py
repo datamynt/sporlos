@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 
@@ -816,6 +817,13 @@ async def create_site_post(request):
     user = _user(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
+    # Plan-grense på antall nettsteder (eneste harde grensen — data kastes aldri)
+    tenant = store.get_tenant(user["tid"]) or {}
+    _, site_lim = _plan_limits(tenant.get("plan") or "trial")
+    if _trial_expired(tenant):
+        site_lim = 0
+    if site_lim is not None and store.monthly_usage(user["tid"])["sites"] >= site_lim:
+        return RedirectResponse("/app?limit=sites", status_code=302)
     f = await request.form()
     domain = (f.get("domain") or "").strip().lower()
     if domain:
@@ -1180,6 +1188,38 @@ async def sitemap(request):
 
 _PERIODS = {"1": ("i dag", 1), "7": ("7 dager", 7), "30": ("30 dager", 30)}
 
+# Plan-grenser: (visninger/mnd, antall nettsteder). None = ubegrenset.
+# Filosofi: vi KASTER ALDRI kundens data — over grensen vises varsel og
+# oppgraderings-nudge, men målingen fortsetter. Hard grense kun på å legge
+# til flere nettsteder. Trial får Vekst-nivå (raus prøve).
+_PLAN_LIMITS = {
+    "trial": (100_000, 5),
+    "liten": (10_000, 1),
+    "vekst": (100_000, 5),
+    "pro": (1_000_000, 15),
+    "byra": (None, None),
+    "owner": (None, None),
+    "cancelled": (0, 0),
+}
+
+
+def _plan_limits(plan: str) -> tuple[int | None, int | None]:
+    return _PLAN_LIMITS.get(plan or "trial", _PLAN_LIMITS["trial"])
+
+
+def _trial_expired(tenant: dict) -> bool:
+    if (tenant.get("plan") or "trial") != "trial" or not tenant.get("trial_ends_at"):
+        return False
+    try:
+        ends = datetime.strptime(str(tenant["trial_ends_at"])[:19], "%Y-%m-%d %H:%M:%S")
+        return ends.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc)
+    except Exception:
+        return False
+
+
+def _fmt_n(n: int) -> str:
+    return f"{n:,}".replace(",", " ")
+
 # Delt dashboard-CSS (innlogget dashboard + offentlig live-demo).
 _DASH_CSS = """
 .wrap{max-width:980px;margin:0 auto;padding:0 1.2rem 4rem}
@@ -1466,11 +1506,52 @@ async def dashboard(request):
             f'<td>{s["visitors"]}</td><td>{s["pv"]}</td></tr>'
             for s in sites
         )
+        plan = tenant.get("plan") or "trial"
+        pv_lim, site_lim = _plan_limits(plan)
+        expired = _trial_expired(tenant)
+        usage = store.monthly_usage(user["tid"])
+
         trial = ""
-        if tenant.get("plan") == "trial" and tenant.get("trial_ends_at"):
+        if expired:
+            trial = (
+                '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;'
+                'font-size:.9rem"><b>Prøveperioden er utløpt.</b> Tallene dine samles fortsatt '
+                "(vi kaster aldri data) — velg en plan under for å fortsette.</p>"
+            )
+        elif plan == "trial" and tenant.get("trial_ends_at"):
             trial = (
                 '<p style="background:#eef2ff;color:#3730a3;padding:.5rem .8rem;border-radius:7px;'
                 f'font-size:.9rem">Prøveperiode — utløper {escape(str(tenant["trial_ends_at"])[:10])}.</p>'
+            )
+
+        # Forbruk mot plan (skjules for ubegrensede planer)
+        usage_html = ""
+        if pv_lim:
+            pct = min(100, round(usage["pageviews"] / pv_lim * 100))
+            over = usage["pageviews"] > pv_lim
+            color = "#b91c1c" if over else ("#a16207" if pct >= 80 else "#15803d")
+            warn = ""
+            if over:
+                warn = (
+                    '<p style="color:#b91c1c;margin:.4rem 0 0">Over planens visninger denne '
+                    "måneden — alt måles fortsatt, men vurder å oppgradere.</p>"
+                )
+            usage_html = (
+                '<div style="background:#fff;border:1px solid #e8e6e0;border-radius:12px;'
+                'padding:.9rem 1.1rem;font-size:.85rem;color:#5f6b7d;margin:.9rem 0">'
+                f'Visninger denne måneden: <b style="color:#17263e">{_fmt_n(usage["pageviews"])}</b> '
+                f"av {_fmt_n(pv_lim)}"
+                f'<div style="background:#eee;border-radius:99px;height:6px;margin:.35rem 0">'
+                f'<div style="width:{pct}%;background:{color};height:6px;border-radius:99px"></div></div>'
+                f'Nettsteder: {usage["sites"]} av {site_lim}{warn}</div>'
+            )
+
+        limit_msg = ""
+        if request.query_params.get("limit") == "sites":
+            limit_msg = (
+                '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;'
+                f'font-size:.9rem">Planen din har plass til {site_lim} nettsted'
+                f'{"er" if (site_lim or 0) != 1 else ""} — oppgrader for å legge til flere.</p>'
             )
         upgrade = ""
         if stripe and tenant.get("plan") in ("trial", "cancelled", None):
@@ -1526,7 +1607,9 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 <h1>Mine sites</h1><p class="fine" style="margin:0 0 1rem">tall for i dag</p>
 {verify_banner}
 {trial}
+{limit_msg}
 {planinfo}
+{usage_html}
 {upgrade}
 <div class=card>
 <table><tr><th>Nettsted</th><th>Unike</th><th>Visn.</th></tr>

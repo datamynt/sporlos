@@ -393,6 +393,21 @@ def weekly_report_data(days: int = 7) -> list[dict]:
     return out
 
 
+def monthly_usage(tenant_id: int) -> dict:
+    """Forbruk mot plan-grensene: visninger denne kalendermåneden + antall nettsteder."""
+    start = datetime.now(timezone.utc).strftime("%Y-%m-01 00:00:00")
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT COUNT(*) AS n FROM events e JOIN sites s ON s.id = e.site_id "
+            f"WHERE s.tenant_id = {P} AND e.ts >= {P} AND e.name = 'pageview'",
+            (tenant_id, start),
+        )
+        pv = cur.fetchone()["n"]
+        cur.execute(f"SELECT COUNT(*) AS n FROM sites WHERE tenant_id = {P}", (tenant_id,))
+        sites = cur.fetchone()["n"]
+    return {"pageviews": pv, "sites": sites}
+
+
 def get_tenant(tenant_id: int) -> dict | None:
     with _cursor() as cur:
         cur.execute(
