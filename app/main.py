@@ -479,6 +479,7 @@ footer .brand svg{color:var(--accent)}
   Personvennlig webanalyse, bygget i Norge.<br><br>
   <a href="/demo">Live demo</a> ·
   <a href="/google-analytics-alternativ">Sporløs mot Google Analytics</a> ·
+  <a href="https://status.sporlos.no">Status</a> ·
   <a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>
   Et produkt fra <a href="https://datamynt.no">Datamynt AS</a> · org.nr 936 017 207 ·
   Maridalsveien 163, 0461 Oslo · post@sporlos.no
