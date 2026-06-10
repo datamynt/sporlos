@@ -89,8 +89,8 @@ function sporlos_settings_page()
     <?php
 }
 
-/** Snippet i <head> på offentlige sider. */
-function sporlos_head_snippet()
+/** Snippet på offentlige sider — enqueued etter WP-reglene, defer-strategi. */
+function sporlos_enqueue_script()
 {
     $site_id = get_option('sporlos_site_id', '');
     if ($site_id === '') {
@@ -100,14 +100,31 @@ function sporlos_head_snippet()
         return;
     }
     $base = rtrim(get_option('sporlos_api_base', SPORLOS_DEFAULT_BASE), '/');
-    printf(
-        "<script defer data-site=\"%s\" data-api=\"%s/api/event\" src=\"%s/sporlos.js\"></script>\n",
-        esc_attr($site_id),
-        esc_url($base),
-        esc_url($base)
+    wp_enqueue_script(
+        'sporlos-analytics',
+        $base . '/sporlos.js',
+        array(),
+        null, // ekstern, versjonsløs — cache styres av Sporløs-serveren
+        array('strategy' => 'defer', 'in_footer' => false)
     );
 }
-add_action('wp_head', 'sporlos_head_snippet');
+add_action('wp_enqueue_scripts', 'sporlos_enqueue_script');
+
+/** Trackeren leser data-site/data-api fra sin egen script-tag — legg dem på. */
+function sporlos_script_attributes($tag, $handle)
+{
+    if ($handle !== 'sporlos-analytics') {
+        return $tag;
+    }
+    $site_id = get_option('sporlos_site_id', '');
+    $base = rtrim(get_option('sporlos_api_base', SPORLOS_DEFAULT_BASE), '/');
+    return str_replace(
+        ' src=',
+        sprintf(' data-site="%s" data-api="%s" src=', esc_attr($site_id), esc_url($base . '/api/event')),
+        $tag
+    );
+}
+add_filter('script_loader_tag', 'sporlos_script_attributes', 10, 2);
 
 /** Lenke til innstillinger fra plugin-listen. */
 function sporlos_action_links($links)

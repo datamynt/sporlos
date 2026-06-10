@@ -1,54 +1,65 @@
 === Sporløs Analytics ===
 Contributors: datamynt
-Tags: analytics, statistikk, personvern, gdpr, cookieless
-Requires at least: 5.0
-Tested up to: 6.8
+Tags: analytics, privacy, cookieless, statistics, gdpr
+Requires at least: 6.3
+Tested up to: 7.0
 Stable tag: 0.1.0
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Cookieløs, samtykke-fri webanalyse — uten cookie-banner. Norsk, åpen og personvennlig.
+Cookieless, consent-free web analytics — no cookie banner needed. Privacy-first, hosted in Norway, open source tracker.
 
 == Description ==
 
-Sporløs måler nettstedet ditt uten cookies, uten å lagre IP-adresser og uten å
-samle personopplysninger. Dermed utløses verken samtykkekravet i ekomloven § 3-15
-eller GDPR — og du kan fjerne cookie-banneret.
+Sporløs measures your website without cookies, without storing IP addresses and
+without collecting any personal data. Because nothing is ever stored or read on
+the visitor's device, no consent is required under the EU ePrivacy rules and the
+Norwegian Electronic Communications Act — which means **you can remove your
+cookie banner**.
 
-* Ingen cookies, ingen lagring i nettleseren
-* Ingen IP-adresser lagret
-* Data i Norge, på norsk-eid infrastruktur
-* Lett script (~1,5 kB) som ikke bremser siden
-* Sidevisninger, kilder, UTM-kampanjer, mål, funnels og mer
+* No cookies, nothing written to the browser
+* No IP addresses stored
+* Data hosted in Norway on European-owned infrastructure
+* Lightweight script (~1.5 kB) that never slows your site down
+* Page views, sources, UTM campaigns, goals, funnels and more
+* The tracking script is open source (MIT) so anyone can verify the claims:
+  https://github.com/datamynt/sporlos-tracker
 
-Pluginen legger inn Sporløs-snippeten på alle offentlige sider. Du trenger en
-konto på [sporlos.no](https://sporlos.no) (30 dagers gratis prøve) eller en
-self-hostet Sporløs-server.
+This plugin adds the Sporløs tracking script to all public pages of your site.
+You need an account at [sporlos.no](https://sporlos.no) (30-day free trial) or a
+self-hosted Sporløs server. The service interface is currently in Norwegian.
 
 == Installation ==
 
-1. Installer og aktiver pluginen.
-2. Gå til Innstillinger → Sporløs.
-3. Lim inn site-ID-en fra Sporløs-dashbordet («Vis sporings-kode»).
+1. Install and activate the plugin.
+2. Go to Settings → Sporløs.
+3. Paste the site ID from your Sporløs dashboard ("Show tracking code").
 
 == Frequently Asked Questions ==
 
-= Trenger jeg cookie-banner? =
+= Do I need a cookie banner? =
 
-Nei. Sporløs lagrer ingenting på besøkerens enhet og samler ingen
-personopplysninger, så samtykke kreves ikke.
+No. Sporløs never stores anything on the visitor's device and collects no
+personal data, so consent is not required.
 
-= Måles innloggede brukere? =
+= Are logged-in users tracked? =
 
-Som standard nei (så egne redaktører ikke forstyrrer tallene). Kan slås på
-under Innstillinger → Sporløs.
+By default no, so your own editors do not pollute the numbers. You can enable
+it under Settings → Sporløs.
 
-= Kan jeg self-hoste? =
+= Can I self-host? =
 
-Ja, Sporløs er åpen kildekode. Pek «Sporløs-server» på din egen installasjon.
+Yes. Sporløs' tracker is open source and the service supports self-hosting.
+Point the "Sporløs server" setting to your own installation.
+
+= What data is sent? =
+
+Site ID, page path, referrer and whitelisted utm_source/utm_medium/utm_campaign
+parameters. Never the full URL, never cookies, never fingerprints. The script
+source is public: https://github.com/datamynt/sporlos-tracker
 
 == Changelog ==
 
 = 0.1.0 =
-* Første versjon: snippet-injeksjon, innstillingsside, hopp over innloggede brukere.
+* First release: script enqueue with defer strategy, settings page, logged-in users excluded by default.
