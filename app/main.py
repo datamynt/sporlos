@@ -210,7 +210,7 @@ background:linear-gradient(90deg,var(--accent-deep),var(--accent) 45%,#8fb3ff)}
 a{color:var(--accent-deep)}
 .brand{display:inline-flex;align-items:center;gap:.45rem;font-weight:700;font-size:1.15rem;
 letter-spacing:-.02em;color:var(--ink);text-decoration:none}
-.brand svg{width:1.12em;height:1.12em;color:var(--accent);transform:translateY(-.06em)}
+.brand svg{width:1.12em;height:1.12em;color:var(--accent);transform:translateY(-.02em)}
 .btn{display:inline-block;background:var(--ink);color:#fff;text-decoration:none;
 padding:.7rem 1.4rem;border-radius:9px;font-weight:600;border:0;font-size:1rem;cursor:pointer;
 transition:background .15s,transform .15s,box-shadow .15s}
@@ -327,6 +327,7 @@ footer .brand svg{color:var(--accent)}
 <nav>"""
         + _WORDMARK
         + """<div class=links>
+  <a href="/demo">Live demo</a>
   <a href="/google-analytics-alternativ">Mot Google Analytics</a>
   <a href="/login">Logg inn</a>
   <a class="btn btn-accent" href="/signup">Prøv gratis</a>
@@ -379,6 +380,7 @@ footer .brand svg{color:var(--accent)}
     </div>
   </div>
 </div>
+<p class=fine style="text-align:right;margin:.5rem 0 0"><a href="/demo">Se ekte live-tall for denne siden →</a></p>
 
 <div class=strip>
   <b>Måler allerede våre egne nettsteder:</b>
@@ -1084,7 +1086,7 @@ async def robots(request):
 
 
 async def sitemap(request):
-    pages = ["/", "/google-analytics-alternativ", "/signup", "/vilkar", "/personvern"]
+    pages = ["/", "/demo", "/google-analytics-alternativ", "/signup", "/vilkar", "/personvern"]
     urls = "".join(f"<url><loc>https://sporlos.no{p}</loc></url>" for p in pages)
     return Response(
         f'<?xml version="1.0" encoding="UTF-8"?>'
@@ -1094,6 +1096,66 @@ async def sitemap(request):
 
 
 _PERIODS = {"1": ("i dag", 1), "7": ("7 dager", 7), "30": ("30 dager", 30)}
+
+# Delt dashboard-CSS (innlogget dashboard + offentlig live-demo).
+_DASH_CSS = """
+.wrap{max-width:980px;margin:0 auto;padding:0 1.2rem 4rem}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}
+nav .links{display:flex;gap:1.1rem;align-items:center;font-size:.9rem}
+nav .links a{color:var(--muted);text-decoration:none}nav .links a:hover{color:var(--ink)}
+nav .links a.btn{color:#fff;padding:.45rem .9rem}
+.head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
+h1{font-size:1.7rem;letter-spacing:-.02em;margin:0}
+.tabs a{padding:.32rem .8rem;margin-left:.3rem;border:1px solid var(--line);border-radius:99px;
+text-decoration:none;color:var(--muted);font-size:.85rem;background:var(--card)}
+.tabs a.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;margin:1rem 0}
+.kpi b{font-size:1.9rem;display:block;line-height:1.15;letter-spacing:-.02em}
+.kpi span{color:var(--muted);font-size:.8rem}
+.chartcard{margin:0 0 .9rem;padding-bottom:.6rem}
+.chart{width:100%;height:170px;display:block}
+.chart circle{fill:transparent}.chart circle:hover{fill:var(--accent)}
+.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:.75rem;padding:0 .2rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.9rem;margin:.9rem 0}
+.block{margin:.9rem 0}
+table{border-collapse:collapse;width:100%;margin:.3rem 0;table-layout:fixed}
+td,th{border-bottom:1px solid var(--line);padding:.42rem 0;text-align:left;font-size:.92rem;
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th{color:var(--muted);font-weight:600;font-size:.8rem}
+td:last-child,th:last-child{text-align:right;color:var(--muted);width:5rem}
+tr:last-child td{border-bottom:0}
+h3{margin:0 0 .5rem;font-size:1rem;letter-spacing:-.01em}
+details summary{cursor:pointer;color:var(--accent-deep);font-size:.9rem}
+pre{background:#f3f1ec;padding:.8rem;border-radius:8px;overflow:auto;font-size:.78rem}
+.footnote{color:var(--muted);font-size:.8rem;margin-top:2rem}
+.footnote a{color:var(--muted)}
+"""
+
+
+def _stat_table(items, key):
+    """Nøkkel/antall-tabell m/ ellipsis-trunkering og full verdi som tooltip."""
+    rows = "".join(
+        f'<tr><td title="{escape(str(i[key]))}">{escape(str(i[key]))}</td><td>{i["n"]}</td></tr>'
+        for i in items
+    )
+    return f"<table>{rows or '<tr><td>ingen data enda</td></tr>'}</table>"
+
+
+def _verify_table(rollups):
+    rr = "".join(
+        f'<tr><td>{escape(str(r["day"])[:10])}</td><td>{r["visitors"]}</td><td>{r["pageviews"]}</td>'
+        f'<td style="font-family:monospace;font-size:.72rem;color:#999">{escape((r["rollup_hash"] or "")[:12])}…</td>'
+        f'<td>{"✓ forankret" if r.get("txid") else "venter"}</td></tr>'
+        for r in rollups
+    )
+    return (
+        "<h3>Verifiserbare tall</h3>"
+        '<p style="color:#666;font-size:.85rem">Daglige tall forsegles med en kryptografisk hash og '
+        "forankres i en uavhengig, offentlig logg — så de ikke kan endres i ettertid.</p>"
+        "<table><tr><th>Dag</th><th>Unike</th><th>Visn.</th><th>Segl</th><th>Status</th></tr>"
+        f"{rr or '<tr><td>ingen forseglede dager enda</td><td></td><td></td><td></td><td></td></tr>'}</table>"
+    )
 
 
 def _area_chart(series, width=880, height=170):
@@ -1131,6 +1193,77 @@ def _area_chart(series, width=880, height=170):
         'stroke-linejoin=round stroke-linecap=round/>'
         f"{dots}</svg>"
         f'<div class=axis><span>{first}</span><span>topp: {peak} unike</span><span>{last}</span></div>'
+    )
+
+
+async def demo(request):
+    """Offentlig live-demo: ekte tall for sporlos.no selv, read-only.
+    Produktet i drift som bevis — og grunnmur for fremtidig public-dashboard-toggle per site."""
+    site = store.resolve_site(os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7"))
+    if not site:
+        return PlainTextResponse("not found", status_code=404)
+
+    period = request.query_params.get("period", "7")
+    if period not in _PERIODS:
+        period = "7"
+    label, days = _PERIODS[period]
+
+    s = store.stats(site["id"], days)
+    chart = _area_chart(store.timeseries(site["id"], days))
+    flow = store.flow_stats(site["id"], days)
+    verify_html = _verify_table(store.recent_rollups(site["id"]))
+
+    tabs = " ".join(
+        f'<a href="/demo?period={k}" class="{"on" if k == period else ""}">{escape(v[0])}</a>'
+        for k, v in _PERIODS.items()
+    )
+
+    return HTMLResponse(
+        f"""<!doctype html><html lang=no><meta charset=utf-8>
+<title>Live demo — ekte tall for sporlos.no | Sporløs</title>
+<meta name=viewport content="width=device-width, initial-scale=1">
+<meta name=description content="Sporløs i drift: ekte, levende statistikk for sporlos.no — cookieløst og uten samtykke. Slik ser dashbordet ut.">
+<link rel=canonical href="https://sporlos.no/demo">
+{_BRAND_HEAD}
+<style>{_BRAND_CSS}{_DASH_CSS}
+.demobar{{background:#eef3ff;border:1px solid #d6e2ff;color:var(--accent-deep);border-radius:10px;
+padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
+<div class=wrap>
+<nav>{_WORDMARK}<div class=links><a href="/google-analytics-alternativ">Mot Google Analytics</a>
+<a href="/login">Logg inn</a><a class="btn btn-accent" href="/signup">Prøv gratis</a></div></nav>
+<div class=demobar>Dette er ekte, levende tall for <b>sporlos.no</b> — målt av Sporløs selv,
+uten cookies og uten samtykke. Det du ser her, er det kundene får.</div>
+<div class=head><h1>sporlos.no <span class=muted style="font-size:1rem;font-weight:400">· live demo</span></h1>
+<div class=tabs>{tabs}</div></div>
+<div class=kpis>
+  <div class="card kpi"><b>{s['visitors']}</b><span>unike besøkende</span></div>
+  <div class="card kpi"><b>{s['sessions']}</b><span>besøk</span></div>
+  <div class="card kpi"><b>{s['pageviews']}</b><span>sidevisninger</span></div>
+  <div class="card kpi"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span></div>
+  <div class="card kpi"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
+</div>
+<div class="card chartcard">
+<p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende · {escape(label)}</p>
+{chart}
+</div>
+<div class=grid>
+  <div class=card><h3>Topp sider</h3>{_stat_table(s['top_paths'], 'path')}</div>
+  <div class=card><h3>Topp kilder</h3>{_stat_table(s['top_sources'], 'src')}</div>
+  <div class=card><h3>Inngangssider</h3>{_stat_table(flow['entries'], 'path')}</div>
+  <div class=card><h3>Utgangssider</h3>{_stat_table(flow['exits'], 'path')}</div>
+  <div class=card><h3>Land</h3>{_stat_table(s['countries'], 'k')}</div>
+  <div class=card><h3>Enheter</h3>{_stat_table(s['devices'], 'k')}</div>
+</div>
+<div class="card block">{verify_html}</div>
+<div class="card block" style="text-align:center;padding:2rem">
+  <p style="margin:0 0 1rem;font-size:1.05rem"><b>Vil du ha dette for ditt nettsted — uten cookie-banner?</b></p>
+  <a class="btn btn-accent" href="/signup">Start gratis prøve</a>
+  <p class=fine style="margin-top:.7rem;color:var(--muted);font-size:.85rem">30 dager · uten kort</p>
+</div>
+<p class=footnote>Cookieløs · ingen IP lagret · samtykkefri ·
+Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
+</div>""",
+        headers={"cache-control": "public, max-age=60"},
     )
 
 
@@ -1259,13 +1392,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 
     chart = _area_chart(series)
 
-    def table(items, key):
-        # title = full verdi på hover; cellen selv ellipsis-trunkeres (lange peck-stier!)
-        rows = "".join(
-            f'<tr><td title="{escape(str(i[key]))}">{escape(str(i[key]))}</td><td>{i["n"]}</td></tr>'
-            for i in items
-        )
-        return f"<table>{rows or '<tr><td>ingen data enda</td></tr>'}</table>"
+    table = _stat_table
 
     # Mål / konverteringer
     goal_rows = "".join(
@@ -1341,19 +1468,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
         f"{event_rows or '<tr><td>ingen hendelser enda</td><td></td><td></td></tr>'}</table>"
     )
     # Verifiserbare tall (B): forseglet hash per dag, status forankret/venter
-    rr = "".join(
-        f'<tr><td>{escape(str(r["day"])[:10])}</td><td>{r["visitors"]}</td><td>{r["pageviews"]}</td>'
-        f'<td style="font-family:monospace;font-size:.72rem;color:#999">{escape((r["rollup_hash"] or "")[:12])}…</td>'
-        f'<td>{"✓ forankret" if r.get("txid") else "venter"}</td></tr>'
-        for r in rollups
-    )
-    verify_html = (
-        "<h3>Verifiserbare tall</h3>"
-        '<p style="color:#666;font-size:.85rem">Daglige tall forsegles med en kryptografisk hash og '
-        "forankres i en uavhengig, offentlig logg — så de ikke kan endres i ettertid.</p>"
-        "<table><tr><th>Dag</th><th>Unike</th><th>Visn.</th><th>Segl</th><th>Status</th></tr>"
-        f"{rr or '<tr><td>ingen forseglede dager enda</td><td></td><td></td><td></td><td></td></tr>'}</table>"
-    )
+    verify_html = _verify_table(rollups)
 
     # Kampanjer (UTM) — vises kun når det finnes kampanjetrafikk i perioden.
     camp_rows = "".join(
@@ -1382,37 +1497,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 <title>Sporløs — {escape(site['domain'])}</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}
-.wrap{{max-width:980px;margin:0 auto;padding:0 1.2rem 4rem}}
-nav{{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}}
-nav .links{{display:flex;gap:1.1rem;font-size:.9rem}}
-nav .links a{{color:var(--muted);text-decoration:none}}nav .links a:hover{{color:var(--ink)}}
-.head{{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}}
-h1{{font-size:1.7rem;letter-spacing:-.02em;margin:0}}
-.tabs a{{padding:.32rem .8rem;margin-left:.3rem;border:1px solid var(--line);border-radius:99px;
-text-decoration:none;color:var(--muted);font-size:.85rem;background:var(--card)}}
-.tabs a.on{{background:var(--ink);color:#fff;border-color:var(--ink)}}
-.card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem}}
-.kpis{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;margin:1rem 0}}
-.kpi b{{font-size:1.9rem;display:block;line-height:1.15;letter-spacing:-.02em}}
-.kpi span{{color:var(--muted);font-size:.8rem}}
-.chartcard{{margin:0 0 .9rem;padding-bottom:.6rem}}
-.chart{{width:100%;height:170px;display:block}}
-.chart circle{{fill:transparent}}.chart circle:hover{{fill:var(--accent)}}
-.axis{{display:flex;justify-content:space-between;color:var(--muted);font-size:.75rem;padding:0 .2rem}}
-.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.9rem;margin:.9rem 0}}
-.block{{margin:.9rem 0}}
-table{{border-collapse:collapse;width:100%;margin:.3rem 0;table-layout:fixed}}
-td,th{{border-bottom:1px solid var(--line);padding:.42rem 0;text-align:left;font-size:.92rem;
-overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
-th{{color:var(--muted);font-weight:600;font-size:.8rem}}
-td:last-child,th:last-child{{text-align:right;color:var(--muted);width:5rem}}
-tr:last-child td{{border-bottom:0}}
-h3{{margin:0 0 .5rem;font-size:1rem;letter-spacing:-.01em}}
-details summary{{cursor:pointer;color:var(--accent-deep);font-size:.9rem}}
-pre{{background:#f3f1ec;padding:.8rem;border-radius:8px;overflow:auto;font-size:.78rem}}
-.footnote{{color:var(--muted);font-size:.8rem;margin-top:2rem}}
-.footnote a{{color:var(--muted)}}</style>
+<style>{_BRAND_CSS}{_DASH_CSS}</style>
 <div class=wrap>
 <nav>{_WORDMARK}<div class=links><a href="/app">Mine sites</a><a href="/logout">Logg ut</a></div></nav>
 {verify_banner}
@@ -1456,6 +1541,7 @@ routes = [
     Route("/vilkar", vilkar),
     Route("/personvern", personvern),
     Route("/google-analytics-alternativ", ga_alternativ),
+    Route("/demo", demo),
     Route("/robots.txt", robots),
     Route("/sitemap.xml", sitemap),
     Route("/favicon.svg", favicon),
