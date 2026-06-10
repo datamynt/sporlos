@@ -176,8 +176,52 @@ def _normalize_referrer(ref: str | None) -> str | None:
         return None
 
 
+# --- Brand: Sporløs designspråk (2026-06-10) ---------------------------------
+# Konsept: ø-en i «sporløs» = sirkel med strek = «ingen sporing»-merket.
+# Palett: varm papir-bakgrunn, marine blekk, én klar blå aksent. System-fonter
+# (ingen Google Fonts — et personvernprodukt lekker ikke besøk til tredjepart).
+
+_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<circle cx="32" cy="36" r="16" fill="none" stroke="#2f6fed" stroke-width="7"/>
+<line x1="17" y1="55" x2="47" y2="13" stroke="#2f6fed" stroke-width="7" stroke-linecap="round"/>
+</svg>"""
+
+_WORDMARK = (
+    '<a class=brand href="/"><svg viewBox="0 0 64 64" aria-hidden=true>'
+    '<circle cx="32" cy="36" r="16" fill="none" stroke="currentColor" stroke-width="7"/>'
+    '<line x1="17" y1="55" x2="47" y2="13" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>'
+    "</svg>sporløs</a>"
+)
+
+_BRAND_HEAD = (
+    '<link rel=icon href="/favicon.svg" type="image/svg+xml">'
+    '<meta name=theme-color content="#faf9f6">'
+)
+
+_BRAND_CSS = """
+:root{--bg:#faf9f6;--ink:#17263e;--muted:#5f6b7d;--accent:#2f6fed;--accent-deep:#1d4ed8;
+--line:#e8e6e0;--card:#ffffff;--ok:#15803d;
+font:17px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
+body{margin:0;background:var(--bg);-webkit-font-smoothing:antialiased}
+a{color:var(--accent-deep)}
+.brand{display:inline-flex;align-items:center;gap:.45rem;font-weight:700;font-size:1.15rem;
+letter-spacing:-.02em;color:var(--ink);text-decoration:none}
+.brand svg{width:1.15em;height:1.15em;color:var(--accent)}
+.btn{display:inline-block;background:var(--ink);color:#fff;text-decoration:none;
+padding:.7rem 1.4rem;border-radius:9px;font-weight:600;border:0;font-size:1rem;cursor:pointer}
+.btn:hover{background:#0e1a2e}
+.btn-accent{background:var(--accent)}.btn-accent:hover{background:var(--accent-deep)}
+.muted{color:var(--muted)}
+"""
+
+
+async def favicon(request):
+    return Response(_FAVICON_SVG, media_type="image/svg+xml",
+                    headers={"cache-control": "public, max-age=604800"})
+
+
 async def landing(request):
-    """Offentlig landingsside (§3-15-budskapet). Design-runde kommer senere."""
+    """Offentlig landingsside (§3-15-budskapet)."""
     return HTMLResponse(
         """<!doctype html><html lang=no><meta charset=utf-8>
 <title>Sporløs — webanalyse uten cookie-banner</title>
@@ -189,64 +233,138 @@ async def landing(request):
 <meta property=og:type content="website">
 <meta property=og:url content="https://sporlos.no/">
 <meta property=og:locale content="nb_NO">
-<style>
-:root{font:18px/1.6 system-ui;color:#1a1a1a}
-body{margin:0}
-.wrap{max-width:680px;margin:0 auto;padding:0 1.2rem}
-header{padding:5rem 0 3rem}
-h1{font-size:2.6rem;line-height:1.1;margin:0 0 1rem}
-.lede{font-size:1.25rem;color:#444}
-.tag{display:inline-block;background:#eef2ff;color:#3730a3;font-size:.8rem;padding:.25rem .7rem;border-radius:99px;margin-bottom:1.5rem}
-section{padding:2rem 0;border-top:1px solid #eee}
-h2{font-size:1.2rem;margin:0 0 .6rem}
-ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.3rem 0}
-.cta{display:inline-block;background:#1a1a1a;color:#fff;text-decoration:none;padding:.7rem 1.3rem;border-radius:8px;margin-top:1rem}
-footer{padding:3rem 0;color:#888;font-size:.85rem}
-a{color:#3730a3}
+"""
+        + _BRAND_HEAD
+        + "<style>"
+        + _BRAND_CSS
+        + """
+.wrap{max-width:880px;margin:0 auto;padding:0 1.3rem}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1.4rem 0}
+nav .links{display:flex;gap:1.2rem;align-items:center;font-size:.95rem}
+nav .links a{color:var(--muted);text-decoration:none}
+nav .links a:hover{color:var(--ink)}
+nav .links a.btn{color:#fff;padding:.5rem 1rem}
+header{padding:3.5rem 0 1rem;max-width:680px}
+.tag{display:inline-block;color:var(--accent-deep);font-size:.78rem;font-weight:600;
+letter-spacing:.09em;text-transform:uppercase;margin-bottom:1.2rem}
+h1{font-size:clamp(2.2rem,5.5vw,3.1rem);line-height:1.08;margin:0 0 1.1rem;letter-spacing:-.025em}
+.lede{font-size:1.2rem;color:var(--muted);max-width:36em}
+.hero-ctas{margin:1.8rem 0 .6rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+.fine{font-size:.85rem;color:var(--muted)}
+.spark{width:100%;height:120px;display:block;margin:2.5rem 0 0}
+.strip{padding:1.2rem 0 2.2rem;border-bottom:1px solid var(--line);font-size:.88rem;color:var(--muted)}
+.strip b{color:var(--ink);font-weight:600}
+.strip span{white-space:nowrap}
+section{padding:3rem 0;border-bottom:1px solid var(--line)}
+h2{font-size:1.5rem;letter-spacing:-.015em;margin:0 0 1.2rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.2rem 1.3rem}
+.card h3{margin:0 0 .4rem;font-size:1.02rem}
+.card p{margin:0;font-size:.92rem;color:var(--muted)}
+.law{max-width:42em}
+ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;margin:1.4rem 0}
+.plan{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.2rem 1.3rem;display:flex;flex-direction:column}
+.plan.hl{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.plan b{font-size:1.05rem}.plan .pris{font-size:1.5rem;font-weight:700;margin:.5rem 0 .2rem;letter-spacing:-.02em}
+.plan small{color:var(--muted);line-height:1.5}
+.plan .hva{margin-top:.4rem;flex:1}
+footer{padding:3rem 0 4rem;color:var(--muted);font-size:.85rem;line-height:1.9}
+footer a{color:var(--muted)}
 </style>
 <script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" src="https://sporlos.no/sporlos.js"></script>
 <div class=wrap>
+<nav>"""
+        + _WORDMARK
+        + """<div class=links>
+  <a href="/google-analytics-alternativ">Mot Google Analytics</a>
+  <a href="/login">Logg inn</a>
+  <a class="btn btn-accent" href="/signup">Prøv gratis</a>
+</div></nav>
+
 <header>
-  <span class=tag>Norsk · cookieløs · samtykke-fri</span>
-  <h1>Webanalyse uten cookie-banner.</h1>
-  <p class=lede>Sporløs måler nettstedet ditt uten cookies, uten å lagre IP, og uten å samle personopplysninger — så du slipper samtykke-banner, og besøkerne dine slipper å bli sporet.</p>
+  <span class=tag>Norsk · cookieløs · samtykkefri</span>
+  <h1>Webanalyse uten cookie&#8209;banner.</h1>
+  <p class=lede>Sporløs måler nettstedet ditt uten cookies, uten å lagre IP, og uten å samle
+  personopplysninger — så du slipper banneret, og besøkerne dine slipper å bli sporet.</p>
+  <div class=hero-ctas>
+    <a class=btn href="/signup">Start gratis prøve</a>
+    <a href="/google-analytics-alternativ" style="font-size:.95rem">Ærlig sammenligning med GA →</a>
+  </div>
+  <p class=fine>30 dager gratis · uten kort · åpen kildekode</p>
 </header>
+
+<svg class=spark viewBox="0 0 880 120" preserveAspectRatio="none" aria-hidden=true>
+  <defs><linearGradient id=g x1=0 y1=0 x2=0 y2=1>
+    <stop offset=0 stop-color=#2f6fed stop-opacity=.18 />
+    <stop offset=1 stop-color=#2f6fed stop-opacity=0 />
+  </linearGradient></defs>
+  <path d="M0,95 C80,88 120,70 200,72 C280,74 320,52 410,56 C500,60 540,38 640,34 C730,31 800,40 880,22 L880,120 L0,120 Z" fill=url(#g) />
+  <path d="M0,95 C80,88 120,70 200,72 C280,74 320,52 410,56 C500,60 540,38 640,34 C730,31 800,40 880,22" fill=none stroke=#2f6fed stroke-width=2.5 />
+</svg>
+
+<div class=strip>
+  <b>Måler allerede våre egne nettsteder:</b>
+  <span>peck.to</span> · <span>merdata.no</span> · <span>datamynt.no</span> ·
+  <span>peck.world</span> · <span>docs.peck.to</span> · <span>peck.cat</span> ·
+  <span>overlay.social</span> — og denne siden.
+</div>
+
 <section>
   <h2>Hvorfor slipper du banner?</h2>
-  <p>Ekomloven § 3-15 (i kraft 2025) krever samtykke for å <em>lagre eller lese</em> noe på besøkerens enhet. Sporløs rører aldri enheten — ingen cookies, ingen identifikatorer — så kravet utløses ikke.</p>
-  <p>Kommer du fra Google Analytics? <a href="/google-analytics-alternativ">Les den ærlige sammenligningen →</a></p>
-</section>
-<section>
-  <h2>Hva Sporløs aldri gjør</h2>
+  <div class=law>
+  <p>Ekomloven § 3-15 (i kraft 2025) krever samtykke for å <em>lagre eller lese</em> noe på
+  besøkerens enhet. Sporløs rører aldri enheten — ingen cookies, ingen identifikatorer — så kravet
+  utløses ikke. Og uten personopplysninger utløses heller ikke GDPR-samtykke.</p>
   <ul>
-    <li>Setter cookies eller lagrer noe i nettleseren</li>
-    <li>Lagrer IP-adresser (brukes flyktig til en daglig-roterende hash, så forkastes)</li>
-    <li>Fingerprinter eller følger besøkende på tvers av dager og nettsteder</li>
+    <li>Setter aldri cookies eller lagrer noe i nettleseren</li>
+    <li>Lagrer aldri IP-adresser (brukes flyktig til en daglig-roterende hash, så forkastes)</li>
+    <li>Fingerprinter aldri, følger aldri besøkende på tvers av dager og nettsteder</li>
   </ul>
+  </div>
 </section>
+
 <section>
-  <h2>Bygget i Norge, data i Norge</h2>
-  <p>Kjører på norsk-eid infrastruktur (EU-eid sky, servere i Norge) — utenfor rekkevidden til US CLOUD Act. Åpen kildekode, så du kan etterprøve det selv.</p>
+  <h2>Alt du faktisk trenger</h2>
+  <div class=cards>
+    <div class=card><h3>Hele bildet, ikke et utvalg</h3><p>Uten samtykkekrav måles alle besøk —
+    ikke bare de som trykker «godta». Tallene blir mer riktige enn med GA, ikke mindre.</p></div>
+    <div class=card><h3>Mål, funnels og kampanjer</h3><p>Egendefinerte hendelser, konverteringsrate,
+    funnels med drop-off og UTM-kampanjer. Uten at noen blir identifisert.</p></div>
+    <div class=card><h3>Data i Norge</h3><p>Norsk-eid drift på servere i Stavanger, utenfor
+    rekkevidden til US CLOUD Act. Åpen kildekode — etterprøv selv.</p></div>
+    <div class=card><h3>Lett som en fjær</h3><p>Sporingsscriptet er ~1,5 kB — rundt en
+    sekstidel av Google Analytics. Siden din merker det ikke.</p></div>
+    <div class=card><h3>Inngang, utgang og stier</h3><p>Hvor folk lander, hvor de forsvinner og
+    hvordan de beveger seg — som aggregat, aldri som enkeltpersoner.</p></div>
+    <div class=card><h3>Verifiserbare tall</h3><p>Dagstallene forsegles i en uavhengig offentlig
+    logg, så de kan ikke pyntes i etterkant. Dokumentasjon som holder. (Pro)</p></div>
+  </div>
 </section>
+
 <section>
   <h2>Priser</h2>
-  <p style="color:#444">Pris etter sidevisninger per måned. Eks. mva · årlig betaling = 2 måneder gratis.</p>
-  <table style="width:100%;border-collapse:collapse;margin:1rem 0">
-    <tr style="border-bottom:1px solid #eee"><td style="padding:.6rem 0"><b>Liten</b><br><small style="color:#888">10 000 visninger · 1 nettsted</small></td><td style="text-align:right">99 kr/mnd</td></tr>
-    <tr style="border-bottom:1px solid #eee"><td style="padding:.6rem 0"><b>Vekst</b><br><small style="color:#888">100 000 visninger · 5 nettsteder</small></td><td style="text-align:right">249 kr/mnd</td></tr>
-    <tr style="border-bottom:1px solid #eee"><td style="padding:.6rem 0"><b>Pro</b><br><small style="color:#888">1 mill. visninger · 15 nettsteder · verifiserbare tall</small></td><td style="text-align:right">599 kr/mnd</td></tr>
-    <tr style="border-bottom:1px solid #eee"><td style="padding:.6rem 0"><b>Byrå / white-label</b><br><small style="color:#888">fra 25 kundenettsteder · anchring inkl.</small></td><td style="text-align:right">fra 1 490 kr/mnd</td></tr>
-    <tr><td style="padding:.6rem 0"><b>Self-host</b><br><small style="color:#888">din egen server · åpen kildekode</small></td><td style="text-align:right">gratis</td></tr>
-  </table>
-  <p style="color:#666;font-size:.9rem">Prøv hostet gratis i 30 dager — uten kort. Vil du ha det helt gratis? Kjør det selv.</p>
+  <p class=muted style="margin:0">Etter sidevisninger per måned · eks. mva · årlig = 2 måneder gratis.</p>
+  <div class=plans>
+    <div class=plan><b>Liten</b><span class=pris>99 kr<small>/mnd</small></span>
+      <small class=hva>10 000 visninger<br>1 nettsted</small></div>
+    <div class="plan hl"><b>Vekst</b><span class=pris>249 kr<small>/mnd</small></span>
+      <small class=hva>100 000 visninger<br>5 nettsteder</small></div>
+    <div class=plan><b>Pro</b><span class=pris>599 kr<small>/mnd</small></span>
+      <small class=hva>1 mill. visninger<br>15 nettsteder<br>verifiserbare tall</small></div>
+    <div class=plan><b>Byrå</b><span class=pris>fra 1 490 kr</span>
+      <small class=hva>fra 25 kundenettsteder<br>white-label · forsegling inkl.</small></div>
+  </div>
+  <p class=fine>Prøv hostet gratis i 30 dager — uten kort. Vil du ha det helt gratis?
+  Sporløs er åpen kildekode — kjør det på egen server. Enterprise/kommune: ta kontakt.</p>
+  <a class=btn href="/signup" style="margin-top:.8rem">Start gratis prøve</a>
+  <p class=fine style="margin-top:.7rem"><a href="/login">Har du konto? Logg inn</a></p>
 </section>
-<section>
-  <a class=cta href="/signup">Start gratis prøve</a>
-  <p class=muted style="margin-top:.8rem"><a href="/login">Har du konto? Logg inn</a></p>
-</section>
+
 <footer>
+  <a href="/google-analytics-alternativ">Sporløs mot Google Analytics</a> ·
   <a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>
-  Sporløs · personvernvennlig webanalyse<br>
+  Sporløs · personvennlig webanalyse<br>
   Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@datamynt.no
 </footer>
 </div>"""
@@ -1184,6 +1302,7 @@ routes = [
     Route("/google-analytics-alternativ", ga_alternativ),
     Route("/robots.txt", robots),
     Route("/sitemap.xml", sitemap),
+    Route("/favicon.svg", favicon),
     Route("/signup", signup, methods=["GET", "POST"]),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/forgot", forgot, methods=["GET", "POST"]),
