@@ -198,6 +198,7 @@ a{color:#3730a3}
 <section>
   <h2>Hvorfor slipper du banner?</h2>
   <p>Ekomloven § 3-15 (i kraft 2025) krever samtykke for å <em>lagre eller lese</em> noe på besøkerens enhet. Sporløs rører aldri enheten — ingen cookies, ingen identifikatorer — så kravet utløses ikke.</p>
+  <p>Kommer du fra Google Analytics? <a href="/google-analytics-alternativ">Les den ærlige sammenligningen →</a></p>
 </section>
 <section>
   <h2>Hva Sporløs aldri gjør</h2>
@@ -737,6 +738,123 @@ databehandler. Da gjelder databehandleravtalen, ikke denne erklæringen.</p>""",
     )
 
 
+async def ga_alternativ(request):
+    """Ærlig sammenligning mot Google Analytics. Content/SEO-side, offentlig."""
+    return HTMLResponse(
+        """<!doctype html><meta charset=utf-8>
+<title>Norsk alternativ til Google Analytics — ærlig sammenligning | Sporløs</title>
+<meta name=viewport content="width=device-width, initial-scale=1">
+<meta name=description content="Hva mister du og hva får du ved å bytte fra Google Analytics til Sporløs? Ærlig sammenligning: cookie-banner, datakvalitet, Google Ads, SEO og pris.">
+<style>
+:root{font:18px/1.6 system-ui;color:#1a1a1a}
+body{margin:0}
+.wrap{max-width:680px;margin:0 auto;padding:0 1.2rem}
+header{padding:4rem 0 2rem}
+h1{font-size:2.1rem;line-height:1.15;margin:0 0 1rem}
+.lede{font-size:1.15rem;color:#444}
+section{padding:1.6rem 0;border-top:1px solid #eee}
+h2{font-size:1.25rem;margin:0 0 .6rem}
+ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
+table{border-collapse:collapse;width:100%;font-size:.95rem;margin:1rem 0}
+td,th{padding:.5rem .6rem;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+th{font-size:.85rem;color:#888;font-weight:600}
+.ja{color:#15803d}.nei{color:#b91c1c}.delvis{color:#a16207}
+.cta{display:inline-block;background:#1a1a1a;color:#fff;text-decoration:none;padding:.7rem 1.3rem;border-radius:8px;margin-top:1rem}
+footer{padding:3rem 0;color:#888;font-size:.85rem}
+a{color:#3730a3}
+.muted{color:#888;font-size:.85rem}
+</style>
+<script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" src="https://sporlos.no/sporlos.js"></script>
+<div class=wrap>
+<p class=muted style="padding-top:1.5rem"><a href="/">← Sporløs</a></p>
+<header>
+  <h1>Bytte fra Google Analytics? Her er den ærlige sammenligningen.</h1>
+  <p class=lede>Sporløs er ikke en kopi av Google Analytics, og later ikke som. Her er hva du faktisk
+  mister, hva du får — og hva du tror du mister, men ikke gjør.</p>
+</header>
+
+<section>
+  <h2>Det viktigste først: cookie-banneret</h2>
+  <p>Google Analytics krever samtykke, altså banner. Sporløs setter ingen cookies, lagrer ingenting i
+  nettleseren og samler ingen personopplysninger — da utløses verken samtykkekravet i ekomloven § 3-15
+  eller GDPR. <b>Banneret kan rett og slett fjernes.</b></p>
+  <p>Det gir en roligere og raskere side, og et førsteinntrykk uten juridisk støy. Og det har en
+  målbar bieffekt folk undervurderer:</p>
+  <p><b>Tallene dine blir mer riktige, ikke mindre.</b> GA måler bare de som trykker «godta» og slipper
+  gjennom annonseblokkere — en stor andel gjør ikke det, og hullene fylles delvis med modellerte
+  estimater. Sporløs trenger ikke samtykke og måler dermed alle besøk, som faktiske tall.</p>
+</section>
+
+<section>
+  <h2>Dette mister du — ærlig talt</h2>
+  <ul>
+    <li><b>Google Ads-integrasjonen.</b> Konverteringsimport, remarketing-målgrupper og smart
+    bidding-signaler finnes ikke hos oss. Kjører du tung Google Ads-annonsering, bør du beholde GA
+    ved siden av (eller koble Ads-konvertering direkte i Ads).</li>
+    <li><b>Demografi og interesser.</b> GA gjetter alder/interesser via Googles annonsenettverk.
+    Sporløs vet ikke hvem folk er — det er hele poenget.</li>
+    <li><b>Bruker-nivå analyse.</b> Utforskninger, segmenter på enkeltbrukere, reiser på tvers av
+    enheter og dager, BigQuery-eksport. Sporløs viser aggregater, aldri enkeltpersoner.</li>
+    <li><b>E-handelsrapporter på produktnivå.</b> Ikke støttet ennå.</li>
+    <li><b>UTM-kampanjeparametre.</b> Kilder måles via referrer i dag; utvidet kampanjesporing står på
+    planen. Trenger du detaljert kampanjeattribusjon nå, er GA sterkere.</li>
+    <li><b>Prisen.</b> GA er gratis. Sporløs koster fra 99 kr/mnd — eller null, hvis du kjører
+    åpen kildekode-versjonen på egen server. Du betaler for at <i>du</i> er kunden, ikke produktet.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Dette tror mange at de mister — men ikke gjør</h2>
+  <ul>
+    <li><b>SEO- og søkeordsdata.</b> Den kommer fra Google Search Console, ikke fra Analytics — og
+    Search Console beholder du uansett. Sporløs viser hva folk gjør på siden; Search Console viser
+    hvordan de fant den. Komplementært.</li>
+    <li><b>Mål og konvertering.</b> Egendefinerte hendelser, mål med konverteringsrate og funnels med
+    drop-off finnes i Sporløs.</li>
+    <li><b>Kilder, enheter, geografi.</b> Hvor trafikken kommer fra, mobil/desktop, nettleser og
+    fylke — uten å identifisere noen.</li>
+    <li><b>Inngangs- og utgangssider, navigasjonsstier.</b> Hvor folk lander, hvor de forsvinner og
+    hvordan de beveger seg.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Side om side</h2>
+  <table>
+    <tr><th></th><th>Google Analytics</th><th>Sporløs</th></tr>
+    <tr><td>Cookie-banner nødvendig</td><td class=nei>Ja</td><td class=ja>Nei</td></tr>
+    <tr><td>Måler besøkende uten samtykke</td><td class=delvis>Delvis (modellert)</td><td class=ja>Alle, faktiske tall</td></tr>
+    <tr><td>Scriptvekt</td><td class=nei>~90 kB+</td><td class=ja>~1,5 kB</td></tr>
+    <tr><td>Datalagring</td><td class=nei>Google (USA-tilknyttet)</td><td class=ja>Norge, norsk-eid drift</td></tr>
+    <tr><td>Google Ads-integrasjon</td><td class=ja>Ja</td><td class=nei>Nei</td></tr>
+    <tr><td>Bruker-/segmentanalyse, BigQuery</td><td class=ja>Ja</td><td class=nei>Nei (kun aggregater)</td></tr>
+    <tr><td>Mål, funnels, kilder, enheter</td><td class=ja>Ja</td><td class=ja>Ja</td></tr>
+    <tr><td>Åpen kildekode / self-host</td><td class=nei>Nei</td><td class=ja>Ja</td></tr>
+    <tr><td>Etterprøvbare, forseglede tall</td><td class=nei>Nei</td><td class=ja>Ja (Pro)</td></tr>
+    <tr><td>Pris</td><td class=ja>Gratis</td><td class=delvis>Fra 99 kr/mnd · self-host gratis</td></tr>
+  </table>
+  <p class=muted>Etterprøvbare tall: dagstallene forsegles kryptografisk i en uavhengig offentlig
+  logg, så de kan ikke pyntes på i etterkant. Nyttig når tall skal dokumenteres overfor kunder
+  eller annonsører.</p>
+</section>
+
+<section>
+  <h2>Trygg overgang: kjør begge en periode</h2>
+  <p>Vanligste vei: legg inn Sporløs ved siden av GA, sammenlign tallene noen uker, og fjern GA (og
+  banneret) når du er trygg. Husk bare at banneret må stå så lenge GA er på siden.</p>
+  <a class=cta href="/signup">Prøv gratis i 30 dager</a>
+  <p class=muted style="margin-top:.8rem">Uten kort. <a href="/">Les mer om Sporløs →</a></p>
+</section>
+
+<footer>
+  <a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>
+  Sporløs · personvernvennlig webanalyse<br>
+  Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@datamynt.no
+</footer>
+</div>"""
+    )
+
+
 _PERIODS = {"1": ("i dag", 1), "7": ("7 dager", 7), "30": ("30 dager", 30)}
 
 
@@ -1006,6 +1124,7 @@ routes = [
     Route("/", landing),
     Route("/vilkar", vilkar),
     Route("/personvern", personvern),
+    Route("/google-analytics-alternativ", ga_alternativ),
     Route("/signup", signup, methods=["GET", "POST"]),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/forgot", forgot, methods=["GET", "POST"]),
