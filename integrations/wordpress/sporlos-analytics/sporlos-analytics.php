@@ -5,7 +5,7 @@
  * Description: Cookieløs, samtykke-fri webanalyse fra Sporløs — uten cookie-banner. Legger inn sporings-snippeten på alle offentlige sider.
  * Version: 0.1.0
  * Author: Datamynt AS
- * Author URI: https://sporlos.no
+ * Author URI: https://datamynt.no
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: sporlos-analytics
