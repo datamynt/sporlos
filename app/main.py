@@ -237,6 +237,41 @@ _SELF_SNIPPET = (
     'src="https://sporlos.no/sporlos.js"></script>'
 )
 
+# Felles header/footer for alle offentlige sider — samme ramme overalt,
+# så ingen side føles som å «dette ut» av nettstedet.
+_CHROME_CSS = """
+.wrap{max-width:980px;margin:0 auto;padding:0 1.3rem}
+nav.site{display:flex;align-items:center;justify-content:space-between;padding:1.4rem 0;gap:.8rem}
+nav.site .links{display:flex;gap:1.2rem;align-items:center;font-size:.95rem;flex-wrap:wrap}
+nav.site .links a{color:var(--muted);text-decoration:none}
+nav.site .links a:hover{color:var(--ink)}
+nav.site .links a.btn{color:#fff;padding:.5rem 1rem}
+footer.site{background:var(--ink);color:#aeb9cb;font-size:.85rem;line-height:1.9;margin-top:4rem}
+footer.site .wrap{padding-top:2.6rem;padding-bottom:3rem}
+footer.site a{color:#cdd6e4}
+footer.site .brand{color:#fff;margin-bottom:.6rem}
+footer.site .brand svg{color:var(--accent)}
+"""
+
+_SITE_NAV = (
+    "<nav class=site>" + _WORDMARK + '<div class=links>'
+    '<a href="/demo">Live demo</a>'
+    '<a href="/google-analytics-alternativ">Mot Google Analytics</a>'
+    '<a href="/login">Logg inn</a>'
+    '<a class="btn btn-accent" href="/signup">Prøv gratis</a></div></nav>'
+)
+
+_SITE_FOOTER = (
+    "<footer class=site><div class=wrap>" + _WORDMARK + "<br>"
+    "Personvennlig webanalyse, bygget i Norge.<br><br>"
+    '<a href="/demo">Live demo</a> · '
+    '<a href="/google-analytics-alternativ">Sporløs mot Google Analytics</a> · '
+    '<a href="https://status.sporlos.no">Status</a> · '
+    '<a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>'
+    'Et produkt fra <a href="https://datamynt.no">Datamynt AS</a> · org.nr 936 017 207 · '
+    "Maridalsveien 163, 0461 Oslo · post@sporlos.no</div></footer>"
+)
+
 
 async def favicon(request):
     return Response(_FAVICON_SVG, media_type="image/svg+xml",
@@ -294,14 +329,9 @@ async def landing(request):
         + _OG_META
         + "<style>"
         + _BRAND_CSS
+        + _CHROME_CSS
         + """
 body{background:radial-gradient(1100px 480px at 78% -120px,rgba(47,111,237,.08),transparent 70%),var(--bg)}
-.wrap{max-width:980px;margin:0 auto;padding:0 1.3rem}
-nav{display:flex;align-items:center;justify-content:space-between;padding:1.4rem 0}
-nav .links{display:flex;gap:1.2rem;align-items:center;font-size:.95rem}
-nav .links a{color:var(--muted);text-decoration:none}
-nav .links a:hover{color:var(--ink)}
-nav .links a.btn{color:#fff;padding:.5rem 1rem}
 header{padding:3.5rem 0 1rem;max-width:680px;position:relative}
 .wm{position:absolute;right:-270px;top:-30px;width:330px;height:330px;opacity:.055;
 color:var(--ink);pointer-events:none}
@@ -354,24 +384,13 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 .plan b{font-size:1.05rem}.plan .pris{font-size:1.5rem;font-weight:700;margin:.5rem 0 .2rem;letter-spacing:-.02em}
 .plan small{color:var(--muted);line-height:1.5}
 .plan .hva{margin-top:.4rem;flex:1}
-footer{background:var(--ink);color:#aeb9cb;font-size:.85rem;line-height:1.9;margin-top:4rem}
-footer .wrap{padding-top:2.6rem;padding-bottom:3rem}
-footer a{color:#cdd6e4}
-footer .brand{color:#fff;margin-bottom:.6rem}
-footer .brand svg{color:var(--accent)}
 </style>
 """
         + _SELF_SNIPPET
         + """<div class=wrap>
-<nav>"""
-        + _WORDMARK
-        + """<div class=links>
-  <a href="/demo">Live demo</a>
-  <a href="/google-analytics-alternativ">Mot Google Analytics</a>
-  <a href="/login">Logg inn</a>
-  <a class="btn btn-accent" href="/signup">Prøv gratis</a>
-</div></nav>
-
+"""
+        + _SITE_NAV
+        + """
 <header>
   <svg class=wm viewBox="0 0 64 64" aria-hidden=true>
     <circle cx="32" cy="32" r="16" fill="none" stroke="currentColor" stroke-width="6"/>
@@ -483,18 +502,8 @@ footer .brand svg{color:var(--accent)}
 </section>
 
 </div>
-<footer><div class=wrap>
 """
-        + _WORDMARK
-        + """<br>
-  Personvennlig webanalyse, bygget i Norge.<br><br>
-  <a href="/demo">Live demo</a> ·
-  <a href="/google-analytics-alternativ">Sporløs mot Google Analytics</a> ·
-  <a href="https://status.sporlos.no">Status</a> ·
-  <a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>
-  Et produkt fra <a href="https://datamynt.no">Datamynt AS</a> · org.nr 936 017 207 ·
-  Maridalsveien 163, 0461 Oslo · post@sporlos.no
-</div></footer>"""
+        + _SITE_FOOTER
     )
 
 
@@ -504,8 +513,8 @@ def _shell(title, inner):
 <title>{escape(title)} — Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}
-body{{font-size:16px;max-width:380px;margin:0 auto;padding:0 1rem 4rem}}
+<style>{_BRAND_CSS}{_CHROME_CSS}
+.auth{{font-size:16px;max-width:380px;margin:1.5rem auto 0;padding:0 1rem 3rem}}
 h1{{font-size:1.5rem;letter-spacing:-.02em}}
 label{{display:block;margin:.8rem 0 .2rem;font-size:.9rem;color:var(--muted)}}
 input{{width:100%;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:1rem;
@@ -516,8 +525,11 @@ border-radius:8px;font-size:1rem;cursor:pointer;font:inherit;font-weight:600}}
 .err{{background:#fee;color:#900;padding:.6rem;border-radius:8px;font-size:.9rem;margin:.5rem 0}}
 .muted{{margin-top:1.2rem;font-size:.85rem}}</style>
 {_SELF_SNIPPET}
-<p style="margin:2.2rem 0 1.6rem">{_WORDMARK}</p>
-{inner}"""
+<div class=wrap>{_SITE_NAV}</div>
+<div class=auth>
+{inner}
+</div>
+{_SITE_FOOTER}"""
     )
 
 
@@ -904,16 +916,20 @@ def _legal(title, inner):
 <title>{escape(title)} — Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}
-body{{max-width:680px;margin:0 auto;padding:0 1.2rem 3rem}}
+<style>{_BRAND_CSS}{_CHROME_CSS}
+.content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
 h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
 table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}}
 .muted{{font-size:.85rem}}</style>
 {_SELF_SNIPPET}
-<p class=muted style="margin-top:2rem"><a href="/">← Sporløs</a></p>
+<div class=wrap>
+{_SITE_NAV}
+<div class=content>
 {inner}
 <p class=muted style="margin-top:3rem">Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@sporlos.no<br>
-Sist oppdatert 2026-06-10 · utkast, kvalitetssikres av jurist.</p>"""
+Sist oppdatert 2026-06-10 · utkast, kvalitetssikres av jurist.</p>
+</div></div>
+{_SITE_FOOTER}"""
     )
 
 
@@ -1051,30 +1067,32 @@ async def ga_alternativ(request):
 <meta property=og:url content="https://sporlos.no/google-analytics-alternativ">
 <meta property=og:locale content="nb_NO">
 """
+        + _BRAND_HEAD
         + _OG_META
-        + """<style>
-:root{font:18px/1.6 system-ui;color:#1a1a1a}
-body{margin:0}
-.wrap{max-width:680px;margin:0 auto;padding:0 1.2rem}
-header{padding:4rem 0 2rem}
-h1{font-size:2.1rem;line-height:1.15;margin:0 0 1rem}
-.lede{font-size:1.15rem;color:#444}
-section{padding:1.6rem 0;border-top:1px solid #eee}
+        + "<style>"
+        + _BRAND_CSS
+        + _CHROME_CSS
+        + """
+.content{max-width:680px;margin:0 auto}
+header{padding:2.5rem 0 2rem}
+h1{font-size:2.1rem;line-height:1.15;margin:0 0 1rem;letter-spacing:-.02em}
+.lede{font-size:1.15rem;color:var(--muted)}
+section{padding:1.6rem 0;border-top:1px solid var(--line)}
 h2{font-size:1.25rem;margin:0 0 .6rem}
 ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 table{border-collapse:collapse;width:100%;font-size:.95rem;margin:1rem 0}
-td,th{padding:.5rem .6rem;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
-th{font-size:.85rem;color:#888;font-weight:600}
+td,th{padding:.5rem .6rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-size:.85rem;color:var(--muted);font-weight:600}
 .ja{color:#15803d}.nei{color:#b91c1c}.delvis{color:#a16207}
-.cta{display:inline-block;background:#1a1a1a;color:#fff;text-decoration:none;padding:.7rem 1.3rem;border-radius:8px;margin-top:1rem}
-footer{padding:3rem 0;color:#888;font-size:.85rem}
-a{color:#3730a3}
-.muted{color:#888;font-size:.85rem}
+.cta{display:inline-block;background:var(--ink);color:#fff;text-decoration:none;padding:.7rem 1.3rem;border-radius:8px;margin-top:1rem}
+.fine{font-size:.85rem;color:var(--muted)}
 </style>
 """
         + _SELF_SNIPPET
         + """<div class=wrap>
-<p class=muted style="padding-top:1.5rem"><a href="/">← Sporløs</a></p>
+"""
+        + _SITE_NAV
+        + """<div class=content>
 <header>
   <h1>Bytte fra Google Analytics? Her er den ærlige sammenligningen.</h1>
   <p class=lede>Sporløs er ikke en kopi av Google Analytics, og later ikke som. Her er hva du faktisk
@@ -1155,13 +1173,9 @@ a{color:#3730a3}
   <a class=cta href="/signup">Prøv gratis i 30 dager</a>
   <p class=muted style="margin-top:.8rem">Uten kort. <a href="/">Les mer om Sporløs →</a></p>
 </section>
-
-<footer>
-  <a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>
-  Sporløs · personvernvennlig webanalyse<br>
-  Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@sporlos.no
-</footer>
-</div>"""
+</div></div>
+"""
+        + _SITE_FOOTER
     )
 
 
@@ -1394,12 +1408,11 @@ async def demo(request):
 <meta name=description content="Sporløs i drift: ekte, levende statistikk for sporlos.no — cookieløst og uten samtykke. Slik ser dashbordet ut.">
 <link rel=canonical href="https://sporlos.no/demo">
 {_BRAND_HEAD}{_OG_META}
-<style>{_BRAND_CSS}{_DASH_CSS}
+<style>{_BRAND_CSS}{_CHROME_CSS}{_DASH_CSS}
 .demobar{{background:#eef3ff;border:1px solid #d6e2ff;color:var(--accent-deep);border-radius:10px;
 padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
 <div class=wrap>
-<nav>{_WORDMARK}<div class=links><a href="/google-analytics-alternativ">Mot Google Analytics</a>
-<a href="/login">Logg inn</a><a class="btn btn-accent" href="/signup">Prøv gratis</a></div></nav>
+{_SITE_NAV}
 <div class=demobar>Dette er ekte, levende tall for <b>sporlos.no</b> — målt av Sporløs selv,
 uten cookies og uten samtykke. Det du ser her, er det kundene får.</div>
 <div class=head><h1>sporlos.no <span class=muted style="font-size:1rem;font-weight:400">· live demo</span></h1>
@@ -1434,6 +1447,7 @@ uten cookies og uten samtykke. Det du ser her, er det kundene får.</div>
 <a href="#" id=barstoggle>andelssøyler av/på</a> ·
 Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
 </div>
+{_SITE_FOOTER}
 {_BARS_JS}
 {_SELF_SNIPPET}""",
         headers={"cache-control": "public, max-age=60"},
