@@ -187,6 +187,17 @@ def init_db() -> None:
                     pass
 
 
+def ping() -> bool:
+    """Lever databasen? Brukes av /healthz/db (overvåkes eksternt)."""
+    try:
+        with _cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        return True
+    except Exception:
+        return False
+
+
 def create_tenant(name: str) -> int:
     with _cursor() as cur:
         if _USE_PG:

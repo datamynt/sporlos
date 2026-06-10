@@ -107,6 +107,14 @@ async def healthz(request):
     return PlainTextResponse("ok")
 
 
+async def healthz_db(request):
+    """Hele kjeden inkl. database — målet for «Datainnsamling»-monitoren.
+    Forsiden trenger ikke DB, så uten denne kan innsamlingen dø «usynlig»."""
+    if store.ping():
+        return PlainTextResponse("ok")
+    return PlainTextResponse("db unavailable", status_code=503)
+
+
 async def tracker(request):
     return Response(
         _TRACKER,
@@ -1706,6 +1714,7 @@ Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
 
 routes = [
     Route("/healthz", healthz),
+    Route("/healthz/db", healthz_db),
     Route("/sporlos.js", tracker),
     Route("/api/event", ingest, methods=["POST"]),
     Route("/", landing),
