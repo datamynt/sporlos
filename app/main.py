@@ -251,7 +251,27 @@ h1{font-size:clamp(2.2rem,5.5vw,3.1rem);line-height:1.08;margin:0 0 1.1rem;lette
 .lede{font-size:1.2rem;color:var(--muted);max-width:36em}
 .hero-ctas{margin:1.8rem 0 .6rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
 .fine{font-size:.85rem;color:var(--muted)}
-.spark{width:100%;height:120px;display:block;margin:2.5rem 0 0}
+.demo{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:2.6rem 0 0;
+padding:1.1rem 1.3rem 1rem;box-shadow:0 18px 50px -28px rgba(23,38,62,.28)}
+.demo-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem}
+.demo-top b{font-size:.95rem;letter-spacing:-.01em}
+.demo-top .pills span{padding:.18rem .6rem;border:1px solid var(--line);border-radius:99px;
+font-size:.72rem;color:var(--muted);margin-left:.25rem}
+.demo-top .pills span.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.demo-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:.9rem}
+.demo-kpi{border:1px solid var(--line);border-radius:9px;padding:.5rem .7rem}
+.demo-kpi b{font-size:1.25rem;display:block;letter-spacing:-.02em}
+.demo-kpi span{font-size:.68rem;color:var(--muted)}
+.demo svg{width:100%;height:110px;display:block}
+.demo-axis{display:flex;justify-content:space-between;color:var(--muted);font-size:.68rem;margin:-.1rem 0 .8rem}
+.demo-cols{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
+.demo-cols h4{margin:0 0 .25rem;font-size:.72rem;color:var(--muted);font-weight:600;
+letter-spacing:.05em;text-transform:uppercase}
+.demo-row{display:flex;justify-content:space-between;font-size:.8rem;padding:.22rem 0;
+border-bottom:1px solid var(--line)}
+.demo-row:last-child{border-bottom:0}
+.demo-row span:last-child{color:var(--muted)}
+@media(max-width:560px){.demo-cols{grid-template-columns:1fr}.demo-kpis{grid-template-columns:repeat(3,1fr)}}
 .strip{padding:1.2rem 0 2.2rem;border-bottom:1px solid var(--line);font-size:.88rem;color:var(--muted)}
 .strip b{color:var(--ink);font-weight:600}
 .strip span{white-space:nowrap}
@@ -294,14 +314,36 @@ footer a{color:var(--muted)}
   <p class=fine>30 dager gratis · uten kort · åpen kildekode</p>
 </header>
 
-<svg class=spark viewBox="0 0 880 120" preserveAspectRatio="none" aria-hidden=true>
-  <defs><linearGradient id=g x1=0 y1=0 x2=0 y2=1>
-    <stop offset=0 stop-color=#2f6fed stop-opacity=.18 />
-    <stop offset=1 stop-color=#2f6fed stop-opacity=0 />
-  </linearGradient></defs>
-  <path d="M0,95 C80,88 120,70 200,72 C280,74 320,52 410,56 C500,60 540,38 640,34 C730,31 800,40 880,22 L880,120 L0,120 Z" fill=url(#g) />
-  <path d="M0,95 C80,88 120,70 200,72 C280,74 320,52 410,56 C500,60 540,38 640,34 C730,31 800,40 880,22" fill=none stroke=#2f6fed stroke-width=2.5 />
-</svg>
+<div class=demo aria-hidden=true>
+  <div class=demo-top><b>dittdomene.no</b>
+    <span class=pills><span>i dag</span><span class=on>7 dager</span><span>30 dager</span></span></div>
+  <div class=demo-kpis>
+    <div class=demo-kpi><b>4 312</b><span>unike besøkende</span></div>
+    <div class=demo-kpi><b>6 980</b><span>sidevisninger</span></div>
+    <div class=demo-kpi><b>38 %</b><span>fluktfrekvens</span></div>
+  </div>
+  <svg viewBox="0 0 880 110" preserveAspectRatio="none">
+    <defs><linearGradient id=g x1=0 y1=0 x2=0 y2=1>
+      <stop offset=0 stop-color=#2f6fed stop-opacity=.16 />
+      <stop offset=1 stop-color=#2f6fed stop-opacity=0 />
+    </linearGradient></defs>
+    <path d="M8,88 L132,76 L256,80 L380,54 L504,60 L628,34 L752,40 L872,20 L872,104 L8,104 Z" fill=url(#g) />
+    <path d="M8,88 L132,76 L256,80 L380,54 L504,60 L628,34 L752,40 L872,20" fill=none stroke=#2f6fed stroke-width=2.5 stroke-linejoin=round stroke-linecap=round />
+  </svg>
+  <div class=demo-axis><span>3. juni</span><span>10. juni</span></div>
+  <div class=demo-cols>
+    <div><h4>Topp sider</h4>
+      <div class=demo-row><span>/</span><span>2 841</span></div>
+      <div class=demo-row><span>/priser</span><span>1 322</span></div>
+      <div class=demo-row><span>/blogg/uten-banner</span><span>904</span></div>
+    </div>
+    <div><h4>Topp kilder</h4>
+      <div class=demo-row><span>direkte</span><span>1 988</span></div>
+      <div class=demo-row><span>google</span><span>1 471</span></div>
+      <div class=demo-row><span>dn.no</span><span>512</span></div>
+    </div>
+  </div>
+</div>
 
 <div class=strip>
   <b>Måler allerede våre egne nettsteder:</b>
