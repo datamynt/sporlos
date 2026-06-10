@@ -725,15 +725,39 @@ def insert_event(site_id: int, ev: dict) -> None:
         )
 
 
-def _period_window(days: int) -> tuple[str, str]:
+def _period_window(days: int, offset: int = 0) -> tuple[str, str]:
     """[start, end)-vindu (UTC) som dekker `days` kalenderdager t.o.m. i dag.
+    offset=1 gir det FORRIGE like lange vinduet (for periodesammenligning).
 
     Naive UTC-strenger → samme SQL kjører identisk på Postgres og SQLite.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc) - timedelta(days=days * offset)
     start = (now - timedelta(days=days - 1)).strftime("%Y-%m-%d 00:00:00")
     end = (now + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
     return start, end
+
+
+def kpis(site_id: int, days: int = 7, offset: int = 0) -> dict:
+    """Lett KPI-sett (pv/unike/økter/flukt) for et vindu — brukes til
+    forrige-periode-sammenligning uten å dra hele stats()."""
+    start, end = _period_window(days, offset)
+    where = f"site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview'"
+    args = (site_id, start, end)
+    with _cursor() as cur:
+        cur.execute(f"SELECT COUNT(*) AS n FROM events WHERE {where}", args)
+        pv = cur.fetchone()["n"]
+        cur.execute(f"SELECT COUNT(DISTINCT visitor_hash) AS n FROM events WHERE {where}", args)
+        vis = cur.fetchone()["n"]
+        cur.execute(
+            f"SELECT visitor_hash, ts FROM events WHERE {where} ORDER BY visitor_hash, ts", args
+        )
+        sessions, bounces = _sessionize(cur.fetchall())
+    return {
+        "pageviews": pv,
+        "visitors": vis,
+        "sessions": sessions,
+        "bounce_rate": round(bounces / sessions * 100) if sessions else 0,
+    }
 
 
 def _bucket_expr(unit: str) -> str:

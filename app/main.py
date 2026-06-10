@@ -1113,6 +1113,8 @@ text-decoration:none;color:var(--muted);font-size:.85rem;background:var(--card)}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;margin:1rem 0}
 .kpi b{font-size:1.9rem;display:block;line-height:1.15;letter-spacing:-.02em}
 .kpi span{color:var(--muted);font-size:.8rem}
+.kpi .d{display:block;font-size:.78rem;font-weight:600;margin-top:.2rem}
+.dg{color:var(--ok)}.dr{color:#b91c1c}.d0{color:var(--muted)}
 .chartcard{margin:0 0 .9rem;padding-bottom:.6rem}
 .chart{width:100%;height:170px;display:block}
 .chart circle{fill:transparent}.chart circle:hover{fill:var(--accent)}
@@ -1134,12 +1136,36 @@ pre{background:#f3f1ec;padding:.8rem;border-radius:8px;overflow:auto;font-size:.
 
 
 def _stat_table(items, key):
-    """Nøkkel/antall-tabell m/ ellipsis-trunkering og full verdi som tooltip."""
-    rows = "".join(
-        f'<tr><td title="{escape(str(i[key]))}">{escape(str(i[key]))}</td><td>{i["n"]}</td></tr>'
-        for i in items
-    )
+    """Nøkkel/antall-tabell: andelssøyle bak hver rad (relativt til toppraden),
+    ellipsis-trunkering og full verdi som tooltip."""
+    mx = max((i["n"] for i in items), default=0) or 1
+    rows = ""
+    for i in items:
+        pct = i["n"] / mx * 100
+        rows += (
+            f'<tr><td title="{escape(str(i[key]))}" style="background:linear-gradient(90deg,'
+            f'#e9effd {pct:.0f}%,transparent {pct:.0f}%);border-radius:4px;padding-left:.45rem">'
+            f'{escape(str(i[key]))}</td><td>{i["n"]}</td></tr>'
+        )
     return f"<table>{rows or '<tr><td>ingen data enda</td></tr>'}</table>"
+
+
+_VS_LABEL = {"1": "i går", "7": "forrige 7 dager", "30": "forrige 30 dager"}
+
+
+def _delta(now, before, invert=False):
+    """↑/↓-endring mot forrige periode. invert=True når lavere er bedre (flukt)."""
+    if not before:
+        return ""
+    pct = round((now - before) / before * 100)
+    if pct == 0:
+        return '<small class="d d0" title="mot forrige periode">±0 %</small>'
+    up = pct > 0
+    good = (not up) if invert else up
+    return (
+        f'<small class="d {"dg" if good else "dr"}" title="mot forrige periode">'
+        f'{"↑" if up else "↓"} {abs(pct)} %</small>'
+    )
 
 
 def _verify_table(rollups):
@@ -1209,6 +1235,7 @@ async def demo(request):
     label, days = _PERIODS[period]
 
     s = store.stats(site["id"], days)
+    prev = store.kpis(site["id"], days, offset=1)
     chart = _area_chart(store.timeseries(site["id"], days))
     flow = store.flow_stats(site["id"], days)
     verify_html = _verify_table(store.recent_rollups(site["id"]))
@@ -1236,14 +1263,14 @@ uten cookies og uten samtykke. Det du ser her, er det kundene får.</div>
 <div class=head><h1>sporlos.no <span class=muted style="font-size:1rem;font-weight:400">· live demo</span></h1>
 <div class=tabs>{tabs}</div></div>
 <div class=kpis>
-  <div class="card kpi"><b>{s['visitors']}</b><span>unike besøkende</span></div>
-  <div class="card kpi"><b>{s['sessions']}</b><span>besøk</span></div>
-  <div class="card kpi"><b>{s['pageviews']}</b><span>sidevisninger</span></div>
-  <div class="card kpi"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span></div>
+  <div class="card kpi"><b>{s['visitors']}</b><span>unike besøkende</span>{_delta(s['visitors'], prev['visitors'])}</div>
+  <div class="card kpi"><b>{s['sessions']}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
+  <div class="card kpi"><b>{s['pageviews']}</b><span>sidevisninger</span>{_delta(s['pageviews'], prev['pageviews'])}</div>
+  <div class="card kpi"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
   <div class="card kpi"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
 </div>
 <div class="card chartcard">
-<p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende · {escape(label)}</p>
+<p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende · {escape(label)} <span style="float:right">endring målt mot {_VS_LABEL[period]}</span></p>
 {chart}
 </div>
 <div class=grid>
@@ -1376,6 +1403,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
     label, days = _PERIODS[period]
 
     s = store.stats(site["id"], days)
+    prev = store.kpis(site["id"], days, offset=1)
     series = store.timeseries(site["id"], days)
     events = store.top_events(site["id"], days)
     goals = store.goal_stats(site["id"], days)
@@ -1503,14 +1531,14 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 {verify_banner}
 <div class=head><h1>{escape(site['domain'])}</h1><div class=tabs>{tabs}</div></div>
 <div class=kpis>
-  <div class="card kpi"><b>{s['visitors']}</b><span>unike besøkende</span></div>
-  <div class="card kpi"><b>{s['sessions']}</b><span>besøk</span></div>
-  <div class="card kpi"><b>{s['pageviews']}</b><span>sidevisninger</span></div>
-  <div class="card kpi"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span></div>
+  <div class="card kpi"><b>{s['visitors']}</b><span>unike besøkende</span>{_delta(s['visitors'], prev['visitors'])}</div>
+  <div class="card kpi"><b>{s['sessions']}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
+  <div class="card kpi"><b>{s['pageviews']}</b><span>sidevisninger</span>{_delta(s['pageviews'], prev['pageviews'])}</div>
+  <div class="card kpi"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
   <div class="card kpi"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
 </div>
 <div class="card chartcard">
-<p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende · {escape(label)}</p>
+<p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende · {escape(label)} <span style="float:right">endring målt mot {_VS_LABEL[period]}</span></p>
 {chart}
 </div>
 <div class=grid>
