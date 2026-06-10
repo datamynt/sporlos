@@ -204,6 +204,7 @@ font-display:swap;src:url(/static/schibsted-grotesk.woff2) format('woff2')}
 :root{--bg:#faf9f6;--ink:#17263e;--muted:#5f6b7d;--accent:#2f6fed;--accent-deep:#1d4ed8;
 --line:#e8e6e0;--card:#ffffff;--ok:#15803d;
 font:17px/1.65 'Schibsted Grotesk',system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
+html{overflow-y:scroll}
 body{margin:0;background:var(--bg);-webkit-font-smoothing:antialiased}
 body::before{content:'';display:block;height:3px;
 background:linear-gradient(90deg,var(--accent-deep),var(--accent) 45%,#8fb3ff)}
@@ -258,7 +259,7 @@ async def landing(request):
         + _BRAND_CSS
         + """
 body{background:radial-gradient(1100px 480px at 78% -120px,rgba(47,111,237,.08),transparent 70%),var(--bg)}
-.wrap{max-width:880px;margin:0 auto;padding:0 1.3rem}
+.wrap{max-width:980px;margin:0 auto;padding:0 1.3rem}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1.4rem 0}
 nav .links{display:flex;gap:1.2rem;align-items:center;font-size:.95rem}
 nav .links a{color:var(--muted);text-decoration:none}
@@ -1294,6 +1295,44 @@ Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
     )
 
 
+async def export_csv(request):
+    """CSV-eksport for regneark. Semikolon + UTF-8 BOM = norsk Excel åpner den riktig."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    site = store.resolve_site(request.query_params.get("site") or "")
+    if not site or site["tenant_id"] != user["tid"]:
+        return PlainTextResponse("not found", status_code=404)
+    period = request.query_params.get("period", "7")
+    if period not in _PERIODS:
+        period = "7"
+    days = _PERIODS[period][1]
+    what = request.query_params.get("what", "tidsserie")
+
+    import csv
+    import io
+
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";")
+    if what == "tidsserie":
+        w.writerow(["dag", "unike besøkende", "sidevisninger"])
+        for b in store.timeseries(site["id"], days):
+            w.writerow([b["bucket"], b["visitors"], b["pageviews"]])
+    elif what in ("sider", "kilder", "land"):
+        w.writerow([what[:-1] if what != "land" else "land", "sidevisninger", "unike besøkende"])
+        for r in store.export_breakdown(site["id"], days, what):
+            w.writerow([r["k"], r["n"], r["u"]])
+    else:
+        return PlainTextResponse("ukjent eksport", status_code=400)
+
+    fname = f"sporlos-{site['domain']}-{what}-{days}d.csv"
+    return Response(
+        "\ufeff" + buf.getvalue(),  # BOM: Excel skal lese æøå riktig
+        media_type="text/csv; charset=utf-8",
+        headers={"content-disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 async def dashboard(request):
     """Dashboard m/ periodevelger, trendgraf og breakdowns. Styling: midlertidig (design-runde senere)."""
     user = _user(request)
@@ -1541,6 +1580,11 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 <p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende · {escape(label)} <span style="float:right">endring målt mot {_VS_LABEL[period]}</span></p>
 {chart}
 </div>
+<p class=muted style="font-size:.8rem;margin:-.2rem 0 .9rem">Last ned CSV (regneark):
+  <a href="/app/export?site={escape(public_id)}&period={period}&what=tidsserie">tidsserie</a> ·
+  <a href="/app/export?site={escape(public_id)}&period={period}&what=sider">sider</a> ·
+  <a href="/app/export?site={escape(public_id)}&period={period}&what=kilder">kilder</a> ·
+  <a href="/app/export?site={escape(public_id)}&period={period}&what=land">land</a></p>
 <div class=grid>
   <div class=card><h3>Topp sider</h3>{table(s['top_paths'], 'path')}</div>
   <div class=card><h3>Topp kilder</h3>{table(s['top_sources'], 'src')}</div>
@@ -1588,6 +1632,7 @@ routes = [
     Route("/billing/portal", billing_portal),
     Route("/webhooks/stripe", stripe_webhook, methods=["POST"]),
     Route("/app", dashboard),
+    Route("/app/export", export_csv),
     Route("/app/sites", create_site_post, methods=["POST"]),
     Route("/app/goals", goal_create, methods=["POST"]),
     Route("/app/goals/delete", goal_delete, methods=["POST"]),

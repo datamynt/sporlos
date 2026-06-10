@@ -890,6 +890,27 @@ def stats(site_id: int, days: int = 7) -> dict:
     }
 
 
+_EXPORT_DIMS = {
+    "sider": "path",
+    "kilder": "COALESCE(referrer_src, 'direkte')",
+    "land": "COALESCE(country, 'ukjent')",
+}
+
+
+def export_breakdown(site_id: int, days: int, what: str) -> list[dict]:
+    """Full (ulimitert) breakdown for CSV-eksport. `what` er hvitlistet."""
+    dim = _EXPORT_DIMS[what]
+    start, end = _period_window(days)
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT {dim} AS k, COUNT(*) AS n, COUNT(DISTINCT visitor_hash) AS u "
+            f"FROM events WHERE site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview' "
+            "GROUP BY k ORDER BY n DESC",
+            (site_id, start, end),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
 def timeseries(site_id: int, days: int = 7) -> list[dict]:
     """Per-dag (eller per-time for days=1) buckets med pv + unike. Tomme fylles med 0."""
     unit = "hour" if days == 1 else "day"
