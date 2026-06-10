@@ -247,6 +247,26 @@ async def brand_font(request):
                     headers={"cache-control": "public, max-age=2592000, immutable"})
 
 
+# Delebilde for sosiale medier (1200x630). Regenerer: scripts/make_og.py
+_OG_PATH = Path(__file__).resolve().parent.parent / "static" / "og.png"
+_OG = _OG_PATH.read_bytes() if _OG_PATH.exists() else b""
+
+
+async def og_image(request):
+    if not _OG:
+        return PlainTextResponse("not found", status_code=404)
+    return Response(_OG, media_type="image/png",
+                    headers={"cache-control": "public, max-age=86400"})
+
+
+_OG_META = (
+    '<meta property=og:image content="https://sporlos.no/static/og.png">'
+    '<meta property=og:image:width content="1200">'
+    '<meta property=og:image:height content="630">'
+    '<meta name=twitter:card content="summary_large_image">'
+)
+
+
 async def landing(request):
     """Offentlig landingsside (§3-15-budskapet)."""
     return HTMLResponse(
@@ -262,6 +282,7 @@ async def landing(request):
 <meta property=og:locale content="nb_NO">
 """
         + _BRAND_HEAD
+        + _OG_META
         + "<style>"
         + _BRAND_CSS
         + """
@@ -1010,7 +1031,9 @@ async def ga_alternativ(request):
 <meta property=og:type content="article">
 <meta property=og:url content="https://sporlos.no/google-analytics-alternativ">
 <meta property=og:locale content="nb_NO">
-<style>
+"""
+        + _OG_META
+        + """<style>
 :root{font:18px/1.6 system-ui;color:#1a1a1a}
 body{margin:0}
 .wrap{max-width:680px;margin:0 auto;padding:0 1.2rem}
@@ -1319,7 +1342,7 @@ async def demo(request):
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name=description content="Sporløs i drift: ekte, levende statistikk for sporlos.no — cookieløst og uten samtykke. Slik ser dashbordet ut.">
 <link rel=canonical href="https://sporlos.no/demo">
-{_BRAND_HEAD}
+{_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_DASH_CSS}
 .demobar{{background:#eef3ff;border:1px solid #d6e2ff;color:var(--accent-deep);border-radius:10px;
 padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
@@ -1693,6 +1716,7 @@ routes = [
     Route("/sitemap.xml", sitemap),
     Route("/favicon.svg", favicon),
     Route("/static/schibsted-grotesk.woff2", brand_font),
+    Route("/static/og.png", og_image),
     Route("/signup", signup, methods=["GET", "POST"]),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/registrer", _alias("/signup")),
