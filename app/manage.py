@@ -74,6 +74,11 @@ def main(argv: list[str]) -> int:
         print(f"grense-varsler sendt: {send_overage_alerts()}")
         return 0
 
+    if cmd == "vipps-charges":
+        from app import vipps
+        print(vipps.sweep())
+        return 0
+
     if cmd == "stripe-products":
         import stripe  # noqa
         stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
