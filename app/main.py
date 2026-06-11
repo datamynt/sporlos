@@ -10,9 +10,10 @@ Prod-lik (Postgres i Docker): se docker-compose.yml / DEPLOY.md.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from html import escape
 from pathlib import Path
 
@@ -29,7 +30,7 @@ from starlette.responses import (
 )
 from starlette.routing import Route
 
-from app import api, mailer, notify, store
+from app import api, mailer, notify, store, vipps
 from app.auth import check_token, hash_password, verify_password
 from app.datacenter import is_datacenter
 from app.geo import country_no
@@ -829,6 +830,68 @@ async def billing_portal(request):
     except Exception:
         return RedirectResponse("/app", status_code=302)
     return RedirectResponse(sess.url, status_code=303)
+
+
+async def vipps_start(request):
+    """Start Vipps-abonnement: opprett avtale (m/ første måned) og send bruker til Vipps."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    plan = request.query_params.get("plan", "")
+    if not vipps.configured() or plan not in vipps.PLAN_ORE:
+        return RedirectResponse("/app", status_code=302)
+    try:
+        ag = vipps.create_agreement(plan, PUBLIC_BASE)
+    except Exception:
+        return RedirectResponse("/app?vipps=feil", status_code=302)
+    store.set_vipps_pending(user["tid"], ag["agreementId"], plan)
+    return RedirectResponse(ag["vippsConfirmationUrl"], status_code=303)
+
+
+async def vipps_return(request):
+    """Bruker kommer tilbake fra Vipps-appen. Aktivering er ikke garantert ferdig
+    ved redirect (Vipps-dokumentert) — poll kort, ellers tar nattlig sweep det."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    tenant = store.get_tenant(user["tid"]) or {}
+    agid = tenant.get("vipps_agreement_id")
+    pending = tenant.get("vipps_pending_plan")
+    if not (vipps.configured() and agid and pending):
+        return RedirectResponse("/app", status_code=302)
+    status = ""
+    for _ in range(6):
+        try:
+            status = vipps.get_agreement(agid).get("status", "")
+        except Exception:
+            status = ""
+        if status in ("ACTIVE", "STOPPED", "EXPIRED"):
+            break
+        await asyncio.sleep(1)
+    if status == "ACTIVE":
+        store.activate_vipps(user["tid"], pending, vipps.next_month(date.today()).isoformat())
+        return RedirectResponse("/app?vipps=ok", status_code=302)
+    if status in ("STOPPED", "EXPIRED"):
+        store.clear_vipps(user["tid"])
+        return RedirectResponse("/app?vipps=avbrutt", status_code=302)
+    return RedirectResponse("/app?vipps=venter", status_code=302)
+
+
+async def vipps_cancel(request):
+    """Stopp Vipps-avtalen. Planen beholdes ut betalt periode — nattlig sweep
+    setter cancelled når forfallet passeres."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    tenant = store.get_tenant(user["tid"]) or {}
+    agid = tenant.get("vipps_agreement_id")
+    if not (vipps.configured() and agid):
+        return RedirectResponse("/app", status_code=302)
+    try:
+        vipps.stop_agreement(agid)
+    except Exception:
+        return RedirectResponse("/app?vipps=feil", status_code=302)
+    return RedirectResponse("/app?vipps=stoppet", status_code=302)
 
 
 async def create_site_post(request):
@@ -1693,18 +1756,30 @@ async def dashboard(request):
                 f'{"er" if (site_lim or 0) != 1 else ""} — oppgrader for å legge til flere.</p>'
             )
         upgrade = ""
-        if stripe and tenant.get("plan") in ("trial", "cancelled", None):
-            btns = "".join(
-                f'<a href="/billing/checkout?plan={k}" style="display:inline-block;'
-                "margin:.2rem .4rem .2rem 0;padding:.4rem .7rem;border:1px solid #3730a3;"
-                'border-radius:7px;text-decoration:none;color:#3730a3;font-size:.9rem">'
-                f"{escape(_PLAN_LABELS[k])}</a>"
-                for k in ("liten", "vekst", "pro")
-                if STRIPE_PRICES.get(k)
-            )
-            if btns:
+        if tenant.get("plan") in ("trial", "cancelled", None):
+            btns = ""
+            if stripe:
+                btns = "".join(
+                    f'<a href="/billing/checkout?plan={k}" style="display:inline-block;'
+                    "margin:.2rem .4rem .2rem 0;padding:.4rem .7rem;border:1px solid #3730a3;"
+                    'border-radius:7px;text-decoration:none;color:#3730a3;font-size:.9rem">'
+                    f"{escape(_PLAN_LABELS[k])}</a>"
+                    for k in ("liten", "vekst", "pro")
+                    if STRIPE_PRICES.get(k)
+                )
+            vbtns = ""
+            if vipps.configured():
+                vbtns = "".join(
+                    f'<a href="/billing/vipps/start?plan={k}" style="display:inline-block;'
+                    "margin:.2rem .4rem .2rem 0;padding:.4rem .7rem;border:1px solid #ff5b24;"
+                    'border-radius:7px;text-decoration:none;color:#ff5b24;font-size:.9rem">'
+                    f"{escape(_PLAN_LABELS[k])} med Vipps</a>"
+                    for k in ("liten", "vekst", "pro")
+                )
+            if btns or vbtns:
+                sep = "<br>" if (btns and vbtns) else ""
                 upgrade = (
-                    f'<div style="margin:1rem 0"><b>Oppgrader:</b><br>{btns}<br>'
+                    f'<div style="margin:1rem 0"><b>Oppgrader:</b><br>{btns}{sep}{vbtns}<br>'
                     '<span style="color:#888;font-size:.8rem">Faktura/EHF for byrå/kommune? '
                     '<a href="/vilkar">Kontakt oss</a></span></div>'
                 )
@@ -1764,15 +1839,30 @@ async def dashboard(request):
         planinfo = ""
         if tenant.get("plan") in ("liten", "vekst", "pro"):
             label = {"liten": "Liten", "vekst": "Vekst", "pro": "Pro"}[tenant["plan"]]
-            portal = (
-                ' · <a href="/billing/portal" style="color:#3730a3">Administrer abonnement</a>'
-                if stripe and tenant.get("stripe_customer_id")
-                else ""
-            )
+            if stripe and tenant.get("stripe_customer_id"):
+                portal = ' · <a href="/billing/portal" style="color:#3730a3">Administrer abonnement</a>'
+            elif tenant.get("vipps_agreement_id") and not tenant.get("vipps_pending_plan"):
+                portal = (
+                    " · betales med Vipps · "
+                    '<form method=post action="/billing/vipps/avslutt" style="display:inline" '
+                    "onsubmit=\"return confirm('Stoppe Vipps-avtalen? Planen gjelder ut betalt periode.')\">"
+                    '<button style="background:none;border:0;padding:0;color:#b91c1c;cursor:pointer;'
+                    'font-size:inherit;text-decoration:underline">Avslutt abonnement</button></form>'
+                )
+            else:
+                portal = ""
+            # <div>, ikke <p>: nettlesere lukker <p> ved <form> (Vipps-avslutt-knappen)
             planinfo = (
-                '<p style="background:#ecfdf5;color:#065f46;padding:.5rem .8rem;border-radius:7px;'
-                f'font-size:.9rem"><b>Plan:</b> {label}{portal}</p>'
+                '<div style="background:#ecfdf5;color:#065f46;padding:.5rem .8rem;border-radius:7px;'
+                f'font-size:.9rem;margin:1rem 0"><b>Plan:</b> {label}{portal}</div>'
             )
+        vipps_flash = {
+            "ok": '<p style="background:#ecfdf5;color:#065f46;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-avtalen er aktiv — velkommen! 🎉</p>',
+            "venter": '<p style="background:#eef2ff;color:#3730a3;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Venter på bekreftelse fra Vipps — oppdater siden om et øyeblikk.</p>',
+            "avbrutt": '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-betalingen ble avbrutt — ingenting er trukket.</p>',
+            "feil": '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Noe gikk galt mot Vipps — prøv igjen, eller bruk kort.</p>',
+            "stoppet": '<p style="background:#eef2ff;color:#3730a3;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-avtalen er stoppet. Planen gjelder ut betalt periode.</p>',
+        }.get(request.query_params.get("vipps") or "", "")
         return HTMLResponse(
             f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>Sporløs — mine sites</title>
@@ -1800,6 +1890,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 {verify_banner}
 {trial}
 {limit_msg}
+{vipps_flash}
 {planinfo}
 {usage_html}
 {upgrade}
@@ -2043,6 +2134,9 @@ routes = [
     Route("/auth/google/callback", google_callback, name="google_callback"),
     Route("/billing/checkout", billing_checkout),
     Route("/billing/portal", billing_portal),
+    Route("/billing/vipps/start", vipps_start),
+    Route("/billing/vipps/retur", vipps_return),
+    Route("/billing/vipps/avslutt", vipps_cancel, methods=["POST"]),
     Route("/webhooks/stripe", stripe_webhook, methods=["POST"]),
     Route("/app", dashboard),
     Route("/app/export", export_csv),

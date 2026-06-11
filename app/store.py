@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS tenants (
     overage_notified_month TEXT,
     stripe_customer_id TEXT,
     stripe_subscription_id TEXT,
+    vipps_agreement_id TEXT,
+    vipps_pending_plan TEXT,
+    vipps_charged_through TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS users (
@@ -201,6 +204,9 @@ def init_db() -> None:
                 "ALTER TABLE sites ADD COLUMN IF NOT EXISTS public_dash INTEGER NOT NULL DEFAULT 0"
             )
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS overage_notified_month TEXT")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vipps_agreement_id TEXT")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vipps_pending_plan TEXT")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vipps_charged_through TEXT")
     else:
         with _cursor() as cur:
             cur.executescript(_SQLITE_SCHEMA)
@@ -218,6 +224,9 @@ def init_db() -> None:
                 "ALTER TABLE events ADD COLUMN utm_campaign TEXT",
                 "ALTER TABLE sites ADD COLUMN public_dash INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE tenants ADD COLUMN overage_notified_month TEXT",
+                "ALTER TABLE tenants ADD COLUMN vipps_agreement_id TEXT",
+                "ALTER TABLE tenants ADD COLUMN vipps_pending_plan TEXT",
+                "ALTER TABLE tenants ADD COLUMN vipps_charged_through TEXT",
             ):
                 try:
                     cur.execute(ddl)
@@ -472,7 +481,8 @@ def monthly_usage(tenant_id: int) -> dict:
 def get_tenant(tenant_id: int) -> dict | None:
     with _cursor() as cur:
         cur.execute(
-            f"SELECT id, name, plan, trial_ends_at, stripe_customer_id, stripe_subscription_id "
+            f"SELECT id, name, plan, trial_ends_at, stripe_customer_id, stripe_subscription_id, "
+            f"vipps_agreement_id, vipps_pending_plan, vipps_charged_through "
             f"FROM tenants WHERE id = {P}",
             (tenant_id,),
         )
@@ -501,6 +511,55 @@ def get_tenant_by_customer(customer_id: str) -> dict | None:
         cur.execute(f"SELECT id FROM tenants WHERE stripe_customer_id = {P}", (customer_id,))
         r = cur.fetchone()
         return dict(r) if r else None
+
+
+def set_vipps_pending(tenant_id: int, agreement_id: str, plan: str) -> None:
+    """Bruker har startet Vipps-flyt — avtale opprettet, venter på godkjenning i appen."""
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE tenants SET vipps_agreement_id = {P}, vipps_pending_plan = {P} WHERE id = {P}",
+            (agreement_id, plan, tenant_id),
+        )
+
+
+def activate_vipps(tenant_id: int, plan: str, charged_through: str) -> None:
+    """Avtalen ble ACTIVE — sett plan og neste forfallsdato (første mnd er trukket)."""
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE tenants SET plan = {P}, vipps_pending_plan = NULL, "
+            f"vipps_charged_through = {P} WHERE id = {P}",
+            (plan, charged_through, tenant_id),
+        )
+
+
+def set_vipps_charged_through(tenant_id: int, charged_through: str) -> None:
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE tenants SET vipps_charged_through = {P} WHERE id = {P}",
+            (charged_through, tenant_id),
+        )
+
+
+def clear_vipps(tenant_id: int, new_plan: str | None = None) -> None:
+    """Avtalen er stoppet/utløpt — rydd Vipps-feltene (og ev. sett plan)."""
+    sets = "vipps_agreement_id = NULL, vipps_pending_plan = NULL, vipps_charged_through = NULL"
+    with _cursor() as cur:
+        if new_plan:
+            cur.execute(
+                f"UPDATE tenants SET {sets}, plan = {P} WHERE id = {P}", (new_plan, tenant_id)
+            )
+        else:
+            cur.execute(f"UPDATE tenants SET {sets} WHERE id = {P}", (tenant_id,))
+
+
+def vipps_tenants() -> list[dict]:
+    """Alle tenants med Vipps-avtale — grunnlaget for nattlig trekk/avstemming."""
+    with _cursor() as cur:
+        cur.execute(
+            "SELECT id, plan, vipps_agreement_id, vipps_pending_plan, vipps_charged_through "
+            "FROM tenants WHERE vipps_agreement_id IS NOT NULL"
+        )
+        return [dict(r) for r in cur.fetchall()]
 
 
 def reassign_site(public_id: str, tenant_id: int) -> None:

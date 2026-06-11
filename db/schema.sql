@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS tenants (
     overage_notified_month TEXT,          -- 'YYYY-MM' sist varslet om grense-passering
     stripe_customer_id     TEXT,
     stripe_subscription_id TEXT,
+    vipps_agreement_id     TEXT,           -- aktiv/påbegynt Vipps-avtale (Recurring v3)
+    vipps_pending_plan     TEXT,           -- plan som venter på godkjenning i Vipps-appen
+    vipps_charged_through  TEXT,           -- 'YYYY-MM-DD' neste forfall som IKKE er trukket ennå
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
