@@ -29,7 +29,7 @@ from starlette.responses import (
 )
 from starlette.routing import Route
 
-from app import mailer, notify, store
+from app import api, mailer, notify, store
 from app.auth import check_token, hash_password, verify_password
 from app.geo import country_no
 from app.geo import lookup as geo_lookup
@@ -910,6 +910,83 @@ async def funnel_delete(request):
     return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
 
 
+async def api_key_create(request):
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    f = await request.form()
+    label = ((f.get("label") or "").strip() or "Uten navn")[:60]
+    new = store.create_api_key(user["tid"], label)
+    request.session["new_api_key"] = new["key"]  # vises én gang på /app
+    return RedirectResponse("/app", status_code=302)
+
+
+async def api_key_revoke(request):
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    f = await request.form()
+    try:
+        store.revoke_api_key(int(f.get("key_id") or 0), user["tid"])
+    except Exception:
+        pass
+    return RedirectResponse("/app", status_code=302)
+
+
+async def utviklere(request):
+    """API-dokumentasjon — kort nok til å limes inn i en AI-chat i sin helhet."""
+    return HTMLResponse(
+        f"""<!doctype html><html lang=no><meta charset=utf-8>
+<title>API — Sporløs</title>
+<meta name=viewport content="width=device-width, initial-scale=1">
+<meta name=description content="Read-only Stats-API for AI-verktøy og integrasjoner. Kun aggregater — aldri rådata.">
+{_BRAND_HEAD}
+<style>{_BRAND_CSS}{_CHROME_CSS}
+.content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
+h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
+pre{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.8rem;overflow-x:auto;font-size:.82rem}}
+code{{font-size:.88em}}
+table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-bottom:1px solid var(--line);vertical-align:top;font-size:.9rem}}
+.muted{{font-size:.85rem;color:var(--muted)}}</style>
+{_SELF_SNIPPET}
+<div class=wrap>
+{_SITE_NAV}
+<div class=content>
+<h1>API for utviklere og AI-verktøy</h1>
+<p>Sporløs har et read-only Stats-API så du kan hente tallene dine inn i rapporter, regneark
+og AI-verktøy. Det er trygt å dele en nøkkel med en AI-assistent: API-et serverer kun
+<b>aggregater</b> — enkeltpersoner kan ikke slås opp, fordi rådataene ikke finnes
+(<a href="/personvern">ingen IP, ingen cookie, daglig-roterende hash</a>).</p>
+
+<h2>Kom i gang</h2>
+<p>Lag en nøkkel under «API-tilgang» i <a href="/app">dashbordet</a>, og send den som Bearer-token:</p>
+<pre>curl -H "Authorization: Bearer sl_..." \\
+  "https://sporlos.no/api/v1/stats?site=DIN_SITE_ID&amp;period=7"</pre>
+<p class=muted><code>site</code> er nettstedets public-ID (samme som i sporings-snippeten —
+eller hent alle med <code>/api/v1/sites</code>). <code>period</code> er 1, 7 eller 30 dager.</p>
+
+<h2>Endepunkter</h2>
+<table>
+<tr><td><code>GET /api/v1/sites</code></td><td>nettstedene dine (domene + site-ID)</td></tr>
+<tr><td><code>GET /api/v1/stats</code></td><td>KPI-er (unike, visninger, økter, fluktrate) + topplister, med forrige periode til sammenligning</td></tr>
+<tr><td><code>GET /api/v1/timeseries</code></td><td>per dag (per time når period=1)</td></tr>
+<tr><td><code>GET /api/v1/breakdown</code></td><td>full liste per dimensjon: <code>prop=pages|sources|countries|regions|devices|browsers|os</code> (+ <code>limit</code>, maks 1000)</td></tr>
+<tr><td><code>GET /api/v1/goals</code></td><td>mål/konverteringer med rate</td></tr>
+<tr><td><code>GET /api/v1/events</code></td><td>egendefinerte hendelser</td></tr>
+<tr><td><code>GET /api/v1/anchors</code></td><td>forseglede dags-aggregater: sha256-hash + blokkjede-txid — bevis på at historiske tall ikke er endret i etterkant</td></tr>
+</table>
+<p class=muted>Alle svar er JSON. Land returneres som ISO-koder. Feil gir
+<code>{{"error": "..."}}</code> med 400/401/404. Nøkler kan trekkes tilbake når som helst i dashbordet.</p>
+
+<h2>Eksempel: spør en AI om tallene dine</h2>
+<p>Lim denne siden + nøkkelen din inn i Claude eller ChatGPT og be den f.eks.
+«hent siste 30 dager for nettstedet mitt og forklar hva som driver trafikken».
+Verktøy som kan gjøre HTTP-kall trenger ikke mer enn dette.</p>
+</div></div>
+{_SITE_FOOTER}"""
+    )
+
+
 def _legal(title, inner):
     return HTMLResponse(
         f"""<!doctype html><html lang=no><meta charset=utf-8>
@@ -1193,7 +1270,7 @@ async def robots(request):
 
 
 async def sitemap(request):
-    pages = ["/", "/demo", "/google-analytics-alternativ", "/signup", "/vilkar", "/personvern"]
+    pages = ["/", "/demo", "/google-analytics-alternativ", "/signup", "/vilkar", "/personvern", "/utviklere"]
     urls = "".join(f"<url><loc>https://sporlos.no{p}</loc></url>" for p in pages)
     return Response(
         f'<?xml version="1.0" encoding="UTF-8"?>'
@@ -1585,6 +1662,41 @@ async def dashboard(request):
                     '<span style="color:#888;font-size:.8rem">Faktura/EHF for byrå/kommune? '
                     '<a href="/vilkar">Kontakt oss</a></span></div>'
                 )
+        # API-tilgang: read-only nøkler for AI-verktøy/integrasjoner
+        keys = store.list_api_keys(user["tid"])
+        new_key = request.session.pop("new_api_key", None)
+        new_key_html = ""
+        if new_key:
+            new_key_html = (
+                '<p style="background:#ecfdf5;color:#065f46;padding:.6rem .8rem;border-radius:7px;'
+                'font-size:.85rem;word-break:break-all"><b>Ny nøkkel — kopier den nå, den vises '
+                f"ikke igjen:</b><br><code>{escape(new_key)}</code></p>"
+            )
+        key_rows = "".join(
+            f'<tr><td>{escape(k["label"])} <small style="color:#999">{escape(k["prefix"])}…</small></td>'
+            f'<td>{escape(str(k["created_at"])[:10])}</td>'
+            f'<td>{escape(str(k["last_used_at"])[:10]) if k["last_used_at"] else "aldri"}</td>'
+            f'<td><form method=post action="/app/api-keys/revoke" style="display:inline">'
+            f'<input type=hidden name=key_id value="{k["id"]}">'
+            '<button title="Trekk tilbake" style="background:none;border:0;color:#c00;cursor:pointer">✕</button>'
+            "</form></td></tr>"
+            for k in keys
+        )
+        keys_table = (
+            f"<table><tr><th>Nøkkel</th><th>Laget</th><th>Sist brukt</th><th></th></tr>{key_rows}</table>"
+            if key_rows
+            else ""
+        )
+        api_html = (
+            '<div class=card><h3 style="margin-top:0">API-tilgang</h3>'
+            '<p class=fine style="margin:.2rem 0 .6rem">Read-only nøkler for AI-verktøy og '
+            'integrasjoner — kun aggregater, aldri rådata. <a href="/utviklere">Dokumentasjon</a>.</p>'
+            f"{new_key_html}{keys_table}"
+            '<form class=add method=post action="/app/api-keys" style="margin-top:.6rem">'
+            '<input name=label placeholder="Navn (f.eks. Claude)" maxlength=60>'
+            "<button class=btn>Lag API-nøkkel</button></form></div>"
+        )
+
         planinfo = ""
         if tenant.get("plan") in ("liten", "vekst", "pro"):
             label = {"liten": "Liten", "vekst": "Vekst", "pro": "Pro"}[tenant["plan"]]
@@ -1635,6 +1747,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
   <input name=domain placeholder="dittdomene.no" required>
   <button class=btn>Legg til nettsted</button>
 </form>
+{api_html}
 <p class=fine style="margin-top:1.5rem">Cookieløs · ingen IP lagret · samtykkefri</p>
 </div>"""
         )
@@ -1844,6 +1957,16 @@ routes = [
     Route("/webhooks/stripe", stripe_webhook, methods=["POST"]),
     Route("/app", dashboard),
     Route("/app/export", export_csv),
+    Route("/app/api-keys", api_key_create, methods=["POST"]),
+    Route("/app/api-keys/revoke", api_key_revoke, methods=["POST"]),
+    Route("/utviklere", utviklere),
+    Route("/api/v1/sites", api.sites),
+    Route("/api/v1/stats", api.stats),
+    Route("/api/v1/timeseries", api.timeseries),
+    Route("/api/v1/breakdown", api.breakdown),
+    Route("/api/v1/goals", api.goals),
+    Route("/api/v1/events", api.events),
+    Route("/api/v1/anchors", api.anchors),
     Route("/app/sites", create_site_post, methods=["POST"]),
     Route("/app/goals", goal_create, methods=["POST"]),
     Route("/app/goals/delete", goal_delete, methods=["POST"]),
@@ -1858,7 +1981,7 @@ middleware = [
         CORSMiddleware,
         allow_origins=["*"],
         allow_methods=["GET", "POST"],
-        allow_headers=["content-type"],
+        allow_headers=["content-type", "authorization"],
     ),
     Middleware(
         SessionMiddleware,
