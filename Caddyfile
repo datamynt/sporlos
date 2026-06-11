@@ -2,3 +2,8 @@
 {$SPORLOS_DOMAIN} {
 	reverse_proxy app:8000
 }
+
+# www → apex (eget sertifikat hentes automatisk)
+www.{$SPORLOS_DOMAIN} {
+	redir https://{$SPORLOS_DOMAIN}{uri} permanent
+}
