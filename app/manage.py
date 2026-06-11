@@ -69,6 +69,11 @@ def main(argv: list[str]) -> int:
         print(f"ukerapporter sendt: {send_weekly_reports()}")
         return 0
 
+    if cmd == "overage-alerts":
+        from app.notify import send_overage_alerts
+        print(f"grense-varsler sendt: {send_overage_alerts()}")
+        return 0
+
     if cmd == "stripe-products":
         import stripe  # noqa
         stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")

@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     trial_ends_at TEXT,
     trial_reminded_at TEXT,
     email_optout INTEGER NOT NULL DEFAULT 0,
+    overage_notified_month TEXT,
     stripe_customer_id TEXT,
     stripe_subscription_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -129,6 +130,26 @@ CREATE TABLE IF NOT EXISTS api_keys (
 """
 
 
+# Plan-grenser: (visninger/mnd, antall nettsteder). None = ubegrenset.
+# Filosofi: vi KASTER ALDRI kundens data — over grensen vises varsel og
+# oppgraderings-nudge, men målingen fortsetter. Hard grense kun på å legge
+# til flere nettsteder. Trial får Vekst-nivå (raus prøve).
+# (Bor her så både web (main) og varsler (notify) leser samme sannhet.)
+PLAN_LIMITS = {
+    "trial": (100_000, 5),
+    "liten": (10_000, 1),
+    "vekst": (100_000, 10),
+    "pro": (1_000_000, 15),
+    "byra": (None, None),
+    "owner": (None, None),
+    "cancelled": (0, 0),
+}
+
+
+def plan_limits(plan: str) -> tuple[int | None, int | None]:
+    return PLAN_LIMITS.get(plan or "trial", PLAN_LIMITS["trial"])
+
+
 @contextlib.contextmanager
 def _cursor():
     """Uniform markør for begge backends. Committer ved exit, ruller tilbake ved feil.
@@ -179,6 +200,7 @@ def init_db() -> None:
             cur.execute(
                 "ALTER TABLE sites ADD COLUMN IF NOT EXISTS public_dash INTEGER NOT NULL DEFAULT 0"
             )
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS overage_notified_month TEXT")
     else:
         with _cursor() as cur:
             cur.executescript(_SQLITE_SCHEMA)
@@ -195,6 +217,7 @@ def init_db() -> None:
                 "ALTER TABLE events ADD COLUMN utm_medium TEXT",
                 "ALTER TABLE events ADD COLUMN utm_campaign TEXT",
                 "ALTER TABLE sites ADD COLUMN public_dash INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE tenants ADD COLUMN overage_notified_month TEXT",
             ):
                 try:
                     cur.execute(ddl)
@@ -406,6 +429,29 @@ def weekly_report_data(days: int = 7) -> list[dict]:
             if total > 0:
                 out.append({"tenant_id": t["id"], "email": t["email"], "sites": site_stats})
     return out
+
+
+def overage_candidates() -> list[dict]:
+    """Tenants som ikke er varslet om grense-passering DENNE måneden (og ikke optout).
+    Forbrukssjekken gjøres av kalleren (notify) — én e-post per kalendermåned."""
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT t.id, t.plan, "
+            f"(SELECT email FROM users WHERE tenant_id = t.id ORDER BY id LIMIT 1) AS email "
+            f"FROM tenants t WHERE COALESCE(t.email_optout, 0) = 0 "
+            f"AND (t.overage_notified_month IS NULL OR t.overage_notified_month <> {P})",
+            (month,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def mark_overage_notified(tenant_id: int) -> None:
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE tenants SET overage_notified_month = {P} WHERE id = {P}", (month, tenant_id)
+        )
 
 
 def monthly_usage(tenant_id: int) -> dict:

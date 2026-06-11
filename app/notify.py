@@ -54,6 +54,34 @@ def send_trial_reminders(within_days: int = 3) -> int:
     return sent
 
 
+def send_overage_alerts() -> int:
+    """Vennlig varsel når en tenant passerer planens månedlige visningsgrense.
+    Maks én e-post per kalendermåned (overage_notified_month). Data kastes aldri
+    — dette er informasjon + oppgraderings-nudge, ingen avstenging."""
+    sent = 0
+    for t in store.overage_candidates():
+        pv_lim, _ = store.plan_limits(t.get("plan"))
+        if not pv_lim or not t.get("email") or t.get("plan") == "cancelled":
+            continue
+        usage = store.monthly_usage(t["id"])
+        if usage["pageviews"] <= pv_lim:
+            continue
+        tid = str(t["id"])
+        unsub = f"{_base()}/unsubscribe?tid={tid}&t={auth.sign_token('unsub', tid)}"
+        fmt = lambda n: f"{n:,}".replace(",", " ")  # noqa: E731 — tusenskille med mellomrom
+        body = (
+            "Hei,\n\nGratulerer - nettstedene dine vokser! Du har passert planens "
+            f"{fmt(pv_lim)} visninger denne maneden ({fmt(usage['pageviews'])} sa langt).\n\n"
+            "Alt males fortsatt som for - vi kaster aldri data. Men vurder gjerne "
+            f"a oppgradere sa planen matcher trafikken:\n{_base()}/app\n\n"
+            f"Vil du ikke ha slike varsler? Meld av her:\n{unsub}\n\nSporlos"
+        )
+        if mailer.send(t["email"], "Nettstedene dine vokser - du har passert planens visninger", body):
+            store.mark_overage_notified(t["id"])
+            sent += 1
+    return sent
+
+
 def send_weekly_reports(days: int = 7) -> int:
     """Ukentlig sammendrag (pv + unike per site) til hver tenant med trafikk. Antall sendt."""
     sent = 0
