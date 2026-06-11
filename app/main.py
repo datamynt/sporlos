@@ -1458,13 +1458,8 @@ def _area_chart(series, width=880, height=170):
     )
 
 
-async def demo(request):
-    """Offentlig live-demo: ekte tall for sporlos.no selv, read-only.
-    Produktet i drift som bevis — og grunnmur for fremtidig public-dashboard-toggle per site."""
-    site = store.resolve_site(os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7"))
-    if not site:
-        return PlainTextResponse("not found", status_code=404)
-
+def _public_stats_page(request, site, base_path, *, suffix, intro, title, description, canonical):
+    """Delt renderer for offentlige statistikk-sider (/demo + /p/<site>). Read-only."""
     period = request.query_params.get("period", "7")
     if period not in _PERIODS:
         period = "7"
@@ -1478,25 +1473,24 @@ async def demo(request):
     verify_html = _verify_table(store.recent_rollups(site["id"]))
 
     tabs = " ".join(
-        f'<a href="/demo?period={k}" class="{"on" if k == period else ""}">{escape(v[0])}</a>'
+        f'<a href="{base_path}?period={k}" class="{"on" if k == period else ""}">{escape(v[0])}</a>'
         for k, v in _PERIODS.items()
     )
 
     return HTMLResponse(
         f"""<!doctype html><html lang=no><meta charset=utf-8>
-<title>Live demo — ekte tall for sporlos.no | Sporløs</title>
+<title>{escape(title)}</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<meta name=description content="Sporløs i drift: ekte, levende statistikk for sporlos.no — cookieløst og uten samtykke. Slik ser dashbordet ut.">
-<link rel=canonical href="https://sporlos.no/demo">
+<meta name=description content="{escape(description)}">
+<link rel=canonical href="{escape(canonical)}">
 {_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_CHROME_CSS}{_DASH_CSS}
 .demobar{{background:#eef3ff;border:1px solid #d6e2ff;color:var(--accent-deep);border-radius:10px;
 padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
 <div class=wrap>
 {_SITE_NAV}
-<div class=demobar>Dette er ekte, levende tall for <b>sporlos.no</b> — målt av Sporløs selv,
-uten cookies og uten samtykke. Det du ser her, er det kundene får.</div>
-<div class=head><h1>sporlos.no <span class=muted style="font-size:1rem;font-weight:400">· live demo</span></h1>
+{intro}
+<div class=head><h1>{escape(site["domain"])} <span class=muted style="font-size:1rem;font-weight:400">· {escape(suffix)}</span></h1>
 <div class=tabs>{tabs}</div></div>
 <div class=kpis>
   <div class="card kpi"><b>{s['visitors']}</b><span>unike besøkende</span>{_delta(s['visitors'], prev['visitors'])}</div>
@@ -1533,6 +1527,48 @@ Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
 {_SELF_SNIPPET}""",
         headers={"cache-control": "public, max-age=60"},
     )
+
+
+async def demo(request):
+    """Offentlig live-demo: ekte tall for sporlos.no selv — produktet i drift som bevis."""
+    site = store.resolve_site(os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7"))
+    if not site:
+        return PlainTextResponse("not found", status_code=404)
+    intro = (
+        "<div class=demobar>Dette er ekte, levende tall for <b>sporlos.no</b> — målt av "
+        "Sporløs selv, uten cookies og uten samtykke. Det du ser her, er det kundene får.</div>"
+    )
+    return _public_stats_page(
+        request, site, "/demo",
+        suffix="live demo", intro=intro,
+        title="Live demo — ekte tall for sporlos.no | Sporløs",
+        description="Sporløs i drift: ekte, levende statistikk for sporlos.no — cookieløst og uten samtykke. Slik ser dashbordet ut.",
+        canonical="https://sporlos.no/demo",
+    )
+
+
+async def public_dash(request):
+    """Opt-in offentlig dashboard per site — deles med lenke, ingen innlogging."""
+    pid = request.path_params["public_id"]
+    site = store.get_public_site(pid)
+    if not site or not site.get("public_dash"):
+        return PlainTextResponse("not found", status_code=404)
+    return _public_stats_page(
+        request, site, f"/p/{escape(pid)}",
+        suffix="offentlig statistikk", intro="",
+        title=f"{site['domain']} — offentlig statistikk | Sporløs",
+        description=f"Åpen, cookieløs statistikk for {site['domain']} — målt av Sporløs, uten cookies og uten samtykke.",
+        canonical=f"https://sporlos.no/p/{pid}",
+    )
+
+
+async def site_public_toggle(request):
+    """Slå offentlig dashboard av/på for egen site (form i dashbordet)."""
+    f = await request.form()
+    site, pid = _own_site(request, f)
+    if site:
+        store.set_public_dash(pid, site["tenant_id"], f.get("on") == "1")
+    return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
 
 
 async def export_csv(request):
@@ -1880,6 +1916,26 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
         if b
     )
 
+    # Opt-in offentlig dashboard (delbar lenke, som /demo) — av som standard
+    pub_on = bool((store.get_public_site(public_id) or {}).get("public_dash"))
+    toggle_btn = (
+        f'<form method=post action="/app/sites/public" style="display:inline;margin-left:.6rem">'
+        f'<input type=hidden name=site value="{escape(public_id)}">'
+        f'<input type=hidden name=on value="{0 if pub_on else 1}">'
+        f'<button class=btn style="font-size:.8rem;padding:.25rem .6rem">Slå {"av" if pub_on else "på"}</button></form>'
+    )
+    if pub_on:
+        pub_text = (
+            f'Åpent på <a href="/p/{escape(public_id)}">sporlos.no/p/{escape(public_id)}</a> — '
+            "alle med lenken ser tallene (read-only)."
+        )
+    else:
+        pub_text = "Del tallene dine med en åpen lenke (slik vi gjør på /demo). Av som standard."
+    public_html = (
+        '<div class="card block"><h3>Offentlig dashboard</h3>'
+        f'<p class=muted style="font-size:.85rem">{pub_text}{toggle_btn}</p></div>'
+    )
+
     return HTMLResponse(
         f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>Sporløs — {escape(site['domain'])}</title>
@@ -1921,6 +1977,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 {blocks}
 <div class="card block"><details><summary>Vis sporings-kode</summary>
 <pre>{escape(f'<script defer data-site="{public_id}" data-api="{PUBLIC_BASE}/api/event" src="{PUBLIC_BASE}/sporlos.js"></script>')}</pre></details></div>
+{public_html}
 <p class=footnote>Cookieløs · ingen IP lagret · samtykkefri ·
 Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
 </div>
@@ -1938,6 +1995,8 @@ routes = [
     Route("/personvern", personvern),
     Route("/google-analytics-alternativ", ga_alternativ),
     Route("/demo", demo),
+    Route("/p/{public_id}", public_dash),
+    Route("/app/sites/public", site_public_toggle, methods=["POST"]),
     Route("/robots.txt", robots),
     Route("/sitemap.xml", sitemap),
     Route("/favicon.svg", favicon),

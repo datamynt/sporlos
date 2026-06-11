@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS sites (
     tenant_id INTEGER NOT NULL REFERENCES tenants(id),
     domain TEXT NOT NULL,
     public_id TEXT NOT NULL UNIQUE,
+    public_dash INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (tenant_id, domain)
 );
@@ -175,6 +176,9 @@ def init_db() -> None:
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_source TEXT")
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_medium TEXT")
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_campaign TEXT")
+            cur.execute(
+                "ALTER TABLE sites ADD COLUMN IF NOT EXISTS public_dash INTEGER NOT NULL DEFAULT 0"
+            )
     else:
         with _cursor() as cur:
             cur.executescript(_SQLITE_SCHEMA)
@@ -190,6 +194,7 @@ def init_db() -> None:
                 "ALTER TABLE events ADD COLUMN utm_source TEXT",
                 "ALTER TABLE events ADD COLUMN utm_medium TEXT",
                 "ALTER TABLE events ADD COLUMN utm_campaign TEXT",
+                "ALTER TABLE sites ADD COLUMN public_dash INTEGER NOT NULL DEFAULT 0",
             ):
                 try:
                     cur.execute(ddl)
@@ -836,6 +841,27 @@ def resolve_site(public_id: str) -> dict | None:
         )
         row = cur.fetchone()
         return dict(row) if row else None
+
+
+def get_public_site(public_id: str) -> dict | None:
+    """Som resolve_site, men med public_dash-flagget. Egen funksjon så
+    resolve_site (hot path i ingest) er uavhengig av kolonne-migreringen."""
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, tenant_id, domain, public_dash FROM sites WHERE public_id = {P}",
+            (public_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def set_public_dash(public_id: str, tenant_id: int, on: bool) -> None:
+    """Slå opt-in offentlig dashboard av/på — kun for egen tenant."""
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE sites SET public_dash = {P} WHERE public_id = {P} AND tenant_id = {P}",
+            (1 if on else 0, public_id, tenant_id),
+        )
 
 
 def insert_event(site_id: int, ev: dict) -> None:

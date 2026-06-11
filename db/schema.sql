@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS sites (
     tenant_id   BIGINT NOT NULL REFERENCES tenants(id),
     domain      TEXT NOT NULL,
     public_id   TEXT NOT NULL UNIQUE,      -- brukes i tracker-snippet
+    public_dash INTEGER NOT NULL DEFAULT 0, -- opt-in: åpent dashboard på /p/<public_id>
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (tenant_id, domain)
 );
