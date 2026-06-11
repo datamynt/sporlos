@@ -802,6 +802,32 @@ def api_breakdown(site_id: int, days: int, prop: str, limit: int = 100) -> list[
         ]
 
 
+def retention_sweep(days: int = 90) -> tuple[int, int]:
+    """Slett rå-events eldre enn `days` dager — løftet i vilkårene (§10).
+
+    Dags-aggregatene (daily_rollups) beholdes, så historikken i dashbordet
+    lever videre. Dager som mangler rollup forsegles FØRST, slik at ingen
+    tall går tapt ved sletting. Returnerer (slettede events, forseglede dager)."""
+    cutoff_day = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    cutoff = f"{cutoff_day} 00:00:00"
+    day_expr = "to_char(ts, 'YYYY-MM-DD')" if _USE_PG else "substr(ts, 1, 10)"
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT DISTINCT site_id, {day_expr} AS day FROM events WHERE ts < {P}",
+            (cutoff,),
+        )
+        candidates = [(r["site_id"], r["day"]) for r in cur.fetchall()]
+        cur.execute("SELECT site_id, day FROM daily_rollups")
+        have = {(r["site_id"], str(r["day"])) for r in cur.fetchall()}
+    missing = [c for c in candidates if c not in have]
+    for site_id, day in missing:
+        compute_rollup(site_id, day)
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM events WHERE ts < {P}", (cutoff,))
+        deleted = cur.rowcount
+    return deleted, len(missing)
+
+
 def resolve_site(public_id: str) -> dict | None:
     with _cursor() as cur:
         cur.execute(
