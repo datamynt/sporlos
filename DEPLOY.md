@@ -25,6 +25,11 @@ mkdir -p geoip
 curl -fsSL "https://download.db-ip.com/free/dbip-city-lite-$(date +%Y-%m).mmdb.gz" \
   | gunzip > geoip/geoip.mmdb
 
+# 3a2. ASN-database (datasenter-filter — crawlere med «vanlig» UA telles ikke).
+#      Samme kilde/lisens. Uten denne degraderer filteret pent (alt telles, som før).
+curl -fsSL "https://download.db-ip.com/free/dbip-asn-lite-$(date +%Y-%m).mmdb.gz" \
+  | gunzip > geoip/asn.mmdb
+
 # 3b. Bygg + start (Caddy henter TLS-sert automatisk for SPORLOS_DOMAIN)
 docker compose -f docker-compose.prod.yml up -d --build
 

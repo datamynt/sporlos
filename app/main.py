@@ -31,6 +31,7 @@ from starlette.routing import Route
 
 from app import api, mailer, notify, store
 from app.auth import check_token, hash_password, verify_password
+from app.datacenter import is_datacenter
 from app.geo import country_no
 from app.geo import lookup as geo_lookup
 from app.privacy import client_ip, visitor_hash
@@ -142,6 +143,9 @@ async def ingest(request):
         return PlainTextResponse("", status_code=204)
 
     ip = client_ip(dict(request.headers), fallback=request.client.host or "")
+    # Datasenter-trafikk (crawlere m/ vanlig UA) telles heller ikke.
+    if is_datacenter(ip):
+        return PlainTextResponse("", status_code=204)
     vhash = visitor_hash(ip, ua, str(site["id"]), secret=SECRET)
     device, browser, os_ = parse_ua(ua)
     country, region = geo_lookup(ip)  # land + fylke, by-nivå brukes aldri
