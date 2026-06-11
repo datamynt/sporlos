@@ -914,6 +914,23 @@ async def funnel_delete(request):
     return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
 
 
+async def change_password(request):
+    """Bytt passord innlogget — krever gammelt passord (selvbetjent, ingen e-postrunde)."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    f = await request.form()
+    me = store.get_user(user["uid"])
+    u = store.get_user_by_email(me["email"]) if me else None
+    if not u or not verify_password(f.get("old") or "", u["password_hash"]):
+        return RedirectResponse("/app?pw=feil", status_code=302)
+    new = f.get("new") or ""
+    if len(new) < 8:
+        return RedirectResponse("/app?pw=kort", status_code=302)
+    store.set_password(me["email"], hash_password(new))
+    return RedirectResponse("/app?pw=ok", status_code=302)
+
+
 async def api_key_create(request):
     user = _user(request)
     if not user:
@@ -1285,23 +1302,12 @@ async def sitemap(request):
 
 _PERIODS = {"1": ("i dag", 1), "7": ("7 dager", 7), "30": ("30 dager", 30)}
 
-# Plan-grenser: (visninger/mnd, antall nettsteder). None = ubegrenset.
-# Filosofi: vi KASTER ALDRI kundens data — over grensen vises varsel og
-# oppgraderings-nudge, men målingen fortsetter. Hard grense kun på å legge
-# til flere nettsteder. Trial får Vekst-nivå (raus prøve).
-_PLAN_LIMITS = {
-    "trial": (100_000, 5),
-    "liten": (10_000, 1),
-    "vekst": (100_000, 10),
-    "pro": (1_000_000, 15),
-    "byra": (None, None),
-    "owner": (None, None),
-    "cancelled": (0, 0),
-}
+# Plan-grenser bor i store (delt med notify). Lokale alias beholdes.
+_PLAN_LIMITS = store.PLAN_LIMITS
 
 
 def _plan_limits(plan: str) -> tuple[int | None, int | None]:
-    return _PLAN_LIMITS.get(plan or "trial", _PLAN_LIMITS["trial"])
+    return store.plan_limits(plan)
 
 
 def _trial_expired(tenant: dict) -> bool:
@@ -1737,6 +1743,24 @@ async def dashboard(request):
             "<button class=btn>Lag API-nøkkel</button></form></div>"
         )
 
+        # Bytt passord (+ flash-melding fra ?pw=)
+        pw_flash = {
+            "ok": '<p style="background:#ecfdf5;color:#065f46;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Passordet er byttet.</p>',
+            "feil": '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Feil nåværende passord.</p>',
+            "kort": '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Nytt passord må ha minst 8 tegn.</p>',
+        }.get(request.query_params.get("pw") or "", "")
+        password_html = (
+            '<div class=card><details><summary style="cursor:pointer;font-weight:600">Bytt passord</summary>'
+            '<form method=post action="/app/password" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem">'
+            '<input name=old type=password placeholder="Nåværende passord" required '
+            'style="flex:1;min-width:10rem;padding:.5rem;border:1px solid var(--line);border-radius:8px">'
+            '<input name=new type=password placeholder="Nytt passord (min. 8)" required minlength=8 '
+            'style="flex:1;min-width:10rem;padding:.5rem;border:1px solid var(--line);border-radius:8px">'
+            "<button class=btn>Bytt</button></form>"
+            '<p class=fine style="margin:.5rem 0 0">Logget inn med Google? Da styres innloggingen der.</p>'
+            "</details></div>"
+        )
+
         planinfo = ""
         if tenant.get("plan") in ("liten", "vekst", "pro"):
             label = {"liten": "Liten", "vekst": "Vekst", "pro": "Pro"}[tenant["plan"]]
@@ -1788,6 +1812,8 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
   <button class=btn>Legg til nettsted</button>
 </form>
 {api_html}
+{pw_flash}
+{password_html}
 <p class=fine style="margin-top:1.5rem">Cookieløs · ingen IP lagret · samtykkefri</p>
 </div>"""
         )
@@ -2022,6 +2048,7 @@ routes = [
     Route("/app/export", export_csv),
     Route("/app/api-keys", api_key_create, methods=["POST"]),
     Route("/app/api-keys/revoke", api_key_revoke, methods=["POST"]),
+    Route("/app/password", change_password, methods=["POST"]),
     Route("/utviklere", utviklere),
     Route("/api/v1/sites", api.sites),
     Route("/api/v1/stats", api.stats),

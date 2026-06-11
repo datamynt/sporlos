@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     trial_ends_at TIMESTAMPTZ,
     trial_reminded_at TIMESTAMPTZ,
     email_optout INTEGER NOT NULL DEFAULT 0,
+    overage_notified_month TEXT,          -- 'YYYY-MM' sist varslet om grense-passering
     stripe_customer_id     TEXT,
     stripe_subscription_id TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
