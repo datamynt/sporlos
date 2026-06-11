@@ -46,6 +46,13 @@ def main(argv: list[str]) -> int:
         print(f"rollup kjørt for {n} sites, dag {d}")
         return 0
 
+    if cmd == "retention":
+        days = int(argv[1]) if len(argv) > 1 else 90
+        deleted, sealed = store.retention_sweep(days)
+        print(f"retention: {deleted} events slettet (eldre enn {days} d), "
+              f"{sealed} dager forseglet først")
+        return 0
+
     if cmd == "anchor":
         from app.anchor import anchor_pending
         print(anchor_pending())
