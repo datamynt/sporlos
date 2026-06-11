@@ -97,6 +97,20 @@ CREATE TABLE IF NOT EXISTS goals (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- API-nøkler: read-only programmatisk tilgang (AI-verktøy, integrasjoner, rapporter).
+-- Selve nøkkelen lagres ALDRI — kun sha256. prefix vises i UI for gjenkjenning.
+CREATE TABLE IF NOT EXISTS api_keys (
+    id           BIGSERIAL PRIMARY KEY,
+    tenant_id    BIGINT NOT NULL REFERENCES tenants(id),
+    label        TEXT NOT NULL,
+    prefix       TEXT NOT NULL,
+    key_hash     TEXT NOT NULL UNIQUE,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at TIMESTAMPTZ,
+    revoked_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS api_keys_tenant ON api_keys (tenant_id);
+
 -- BSV-anchre av rollups. Beviser at tallene ikke er etterjustert.
 CREATE TABLE IF NOT EXISTS anchors (
     id          BIGSERIAL PRIMARY KEY,

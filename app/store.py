@@ -115,6 +115,16 @@ CREATE TABLE IF NOT EXISTS daily_rollups (
     anchored_at TEXT,
     PRIMARY KEY (site_id, day)
 );
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+    label TEXT NOT NULL,
+    prefix TEXT NOT NULL,
+    key_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT,
+    revoked_at TEXT
+);
 """
 
 
@@ -712,6 +722,84 @@ def record_anchor(items: list[dict]) -> None:
                 f"txid = {P}, anchored_at = {P} WHERE site_id = {P} AND day = {P}",
                 (it["root"], it["proof"], it["txid"], it["anchored_at"], it["site_id"], it["day"]),
             )
+
+
+def create_api_key(tenant_id: int, label: str) -> dict:
+    """Lag read-only API-nøkkel. Returnerer hele nøkkelen ÉN gang — kun sha256 lagres."""
+    raw = "sl_" + secrets.token_urlsafe(32)
+    key_hash = hashlib.sha256(raw.encode()).hexdigest()
+    prefix = raw[:11]
+    with _cursor() as cur:
+        cur.execute(
+            f"INSERT INTO api_keys (tenant_id, label, prefix, key_hash) "
+            f"VALUES ({P}, {P}, {P}, {P})",
+            (tenant_id, label, prefix, key_hash),
+        )
+    return {"key": raw, "prefix": prefix, "label": label}
+
+
+def list_api_keys(tenant_id: int) -> list[dict]:
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, label, prefix, created_at, last_used_at FROM api_keys "
+            f"WHERE tenant_id = {P} AND revoked_at IS NULL ORDER BY id",
+            (tenant_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def revoke_api_key(key_id: int, tenant_id: int) -> None:
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE api_keys SET revoked_at = {P} WHERE id = {P} AND tenant_id = {P}",
+            (now_str, key_id, tenant_id),
+        )
+
+
+def resolve_api_key(raw: str) -> dict | None:
+    """Slå opp nøkkel via sha256, oppdater last_used_at. None hvis ukjent/revokert."""
+    key_hash = hashlib.sha256(raw.encode()).hexdigest()
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, tenant_id FROM api_keys WHERE key_hash = {P} AND revoked_at IS NULL",
+            (key_hash,),
+        )
+        r = cur.fetchone()
+        if not r:
+            return None
+        key = dict(r)
+        cur.execute(f"UPDATE api_keys SET last_used_at = {P} WHERE id = {P}", (now_str, key["id"]))
+        return key
+
+
+# Breakdowns API-et kan be om — hvitlistet dimensjon → SQL-uttrykk.
+_API_DIMS = {
+    "pages": "path",
+    "sources": "COALESCE(referrer_src, 'direkte')",
+    "countries": "COALESCE(country, 'ukjent')",
+    "regions": "COALESCE(region, 'ukjent')",
+    "devices": "COALESCE(device, 'ukjent')",
+    "browsers": "COALESCE(browser, 'ukjent')",
+    "os": "COALESCE(os, 'ukjent')",
+}
+
+
+def api_breakdown(site_id: int, days: int, prop: str, limit: int = 100) -> list[dict]:
+    """Full breakdown for Stats-API-et. `prop` må finnes i _API_DIMS (hvitlistet)."""
+    dim = _API_DIMS[prop]
+    start, end = _period_window(days)
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT {dim} AS k, COUNT(*) AS n, COUNT(DISTINCT visitor_hash) AS u "
+            f"FROM events WHERE site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview' "
+            f"GROUP BY k ORDER BY n DESC LIMIT {int(limit)}",
+            (site_id, start, end),
+        )
+        return [
+            {"value": r["k"], "pageviews": r["n"], "visitors": r["u"]} for r in cur.fetchall()
+        ]
 
 
 def resolve_site(public_id: str) -> dict | None:
