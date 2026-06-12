@@ -1620,7 +1620,36 @@ def _public_stats_page(request, site, base_path, *, suffix, intro, title, descri
     prev = store.kpis(site["id"], days, offset=1)
     chart = _area_chart(store.timeseries(site["id"], days))
     flow = store.flow_stats(site["id"], days)
+    transitions = store.path_transitions(site["id"], days)
     verify_html = _verify_table(store.recent_rollups(site["id"]))
+
+    # Navigasjonsstier + kampanjer vises kun når det finnes data — demoen skal
+    # vise bredden i produktet, men tomme kort selger ingenting.
+    nav_html = ""
+    if transitions:
+        nav_rows = "".join(
+            f'<tr><td title="{escape(tr["from"])} → {escape(tr["to"])}">'
+            f'{escape(tr["from"])} → {escape(tr["to"])}</td><td>{tr["n"]}</td></tr>'
+            for tr in transitions[:8]
+        )
+        nav_html = (
+            '<div class="card block"><h3>Navigasjonsstier</h3>'
+            '<p class=muted style="font-size:.85rem;margin:.1rem 0 .4rem">Vanligste '
+            "side→side-overganger innen en økt — som aggregat, aldri enkeltpersoner.</p>"
+            f"<table><tr><th>Fra → Til</th><th>Antall</th></tr>{nav_rows}</table></div>"
+        )
+    camp_html = ""
+    if s.get("campaigns"):
+        camp_rows = "".join(
+            f'<tr><td title="{escape(c["source"])}">{escape(c["source"])}'
+            f'{(" / " + escape(c["campaign"])) if c["campaign"] else ""}</td>'
+            f'<td>{c["visitors"]}</td><td>{c["n"]}</td></tr>'
+            for c in s["campaigns"][:8]
+        )
+        camp_html = (
+            '<div class="card block"><h3>Kampanjer (UTM)</h3>'
+            f"<table><tr><th>Kilde / kampanje</th><th>Unike</th><th>Visn.</th></tr>{camp_rows}</table></div>"
+        )
 
     tabs = " ".join(
         f'<a href="{base_path}?period={k}" class="{"on" if k == period else ""}">{escape(v[0])}</a>'
@@ -1661,7 +1690,11 @@ padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
   <div class=card><h3>Land</h3>{_stat_table(s['countries'], 'k')}</div>
   <div class=card><h3>Fylke / region</h3>{_stat_table(s['regions'], 'k')}</div>
   <div class=card><h3>Enheter</h3>{_stat_table(s['devices'], 'k', icons.device)}</div>
+  <div class=card><h3>Nettlesere</h3>{_stat_table(s['browsers'], 'k', icons.browser)}</div>
+  <div class=card><h3>Operativsystem</h3>{_stat_table(s['os'], 'k', icons.os)}</div>
 </div>
+{nav_html}
+{camp_html}
 <div class="card block">{verify_html}</div>
 <div class="card block" style="text-align:center;padding:2rem">
   <p style="margin:0 0 1rem;font-size:1.05rem"><b>Vil du ha dette for ditt nettsted — uten cookie-banner?</b></p>
