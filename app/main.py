@@ -303,8 +303,9 @@ _SELF_SNIPPET = (
     'src="https://sporlos.no/sporlos.js"></script>'
 )
 # Assistenten rir på samme injeksjonspunkt — vises kun når LLM-nøkkel er satt.
+# ?v= buster 1t-cachen ved widget-endringer — bump ved endring i assist/widget.js.
 if assist.configured():
-    _SELF_SNIPPET += '<script defer src="/assist.js"></script>'
+    _SELF_SNIPPET += '<script defer src="/assist.js?v=2"></script>'
 
 # Felles header/footer for alle offentlige sider — samme ramme overalt,
 # så ingen side føles som å «dette ut» av nettstedet.

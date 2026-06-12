@@ -12,7 +12,7 @@
 
   var css = [
     ".spl-btn{position:fixed;right:18px;bottom:18px;width:54px;height:54px;border-radius:50%;",
-    "background:#fff;border:1px solid " + LINE + ";box-shadow:0 6px 20px rgba(23,38,62,.14);",
+    "background:" + INK + ";border:0;box-shadow:0 8px 24px rgba(23,38,62,.30);",
     "cursor:pointer;z-index:99990;display:flex;align-items:center;justify-content:center;",
     "transition:transform .15s}.spl-btn:hover{transform:translateY(-2px)}",
     ".spl-panel{position:fixed;right:18px;bottom:84px;width:min(350px,calc(100vw - 36px));",
@@ -40,10 +40,10 @@
   style.textContent = css;
   document.head.appendChild(style);
 
-  var MARK = '<svg width="26" height="26" viewBox="0 0 64 64" aria-hidden="true">' +
-    '<circle cx="32" cy="32" r="16" fill="none" stroke="' + ACCENT + '" stroke-width="6.5"/>' +
-    '<line x1="17" y1="51" x2="47" y2="13" stroke="#fff" stroke-width="12.5" stroke-linecap="round"/>' +
-    '<line x1="17" y1="51" x2="47" y2="13" stroke="' + ACCENT + '" stroke-width="6.5" stroke-linecap="round"/></svg>';
+  /* «Blekk»-merket fra app-ikonet: aksent-disk med blekk-strek på blekkmørk knapp */
+  var MARK = '<svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true">' +
+    '<circle cx="32" cy="32" r="26" fill="' + ACCENT + '"/>' +
+    '<line x1="16" y1="52" x2="48" y2="12" stroke="' + INK + '" stroke-width="8" stroke-linecap="round"/></svg>';
 
   var btn = document.createElement("button");
   btn.className = "spl-btn";
