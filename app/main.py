@@ -515,7 +515,7 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
   </div>
 </section>
 
-<section>
+<section id=priser>
   <h2>Priser</h2>
   <p class=muted style="margin:0">Etter sidevisninger per måned (totale visninger, ikke unike besøkende) ·
   eks. mva · årlig = 2 måneder gratis. Over grensen? Vi slutter aldri å måle og sender aldri
@@ -2167,6 +2167,7 @@ routes = [
     Route("/registrer", _alias("/signup")),
     Route("/logg-inn", _alias("/login")),
     Route("/sammenligning", _alias("/google-analytics-alternativ")),
+    Route("/priser", _alias("/#priser")),
     Route("/forgot", forgot, methods=["GET", "POST"]),
     Route("/reset", reset, methods=["GET", "POST"]),
     Route("/unsubscribe", unsubscribe),
