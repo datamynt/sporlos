@@ -130,6 +130,18 @@ CREATE TABLE IF NOT EXISTS api_keys (
     last_used_at TEXT,
     revoked_at TEXT
 );
+CREATE TABLE IF NOT EXISTS assist_pages (
+    path TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS assist_usage (
+    day TEXT NOT NULL,
+    visitor TEXT NOT NULL,
+    n INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, visitor)
+);
 """
 
 
@@ -1206,3 +1218,55 @@ def timeseries(site_id: int, days: int = 7) -> list[dict]:
             }
         )
     return out
+
+
+# ---------------------------------------------------------------- assistent
+def assist_upsert_page(path: str, title: str, content: str) -> None:
+    with _cursor() as cur:
+        if _USE_PG:
+            cur.execute(
+                f"INSERT INTO assist_pages (path, title, content, fetched_at) "
+                f"VALUES ({P}, {P}, {P}, now()) ON CONFLICT (path) DO UPDATE SET "
+                f"title = EXCLUDED.title, content = EXCLUDED.content, fetched_at = now()",
+                (path, title, content),
+            )
+        else:
+            cur.execute(
+                f"INSERT INTO assist_pages (path, title, content) VALUES ({P}, {P}, {P}) "
+                f"ON CONFLICT (path) DO UPDATE SET title = excluded.title, "
+                f"content = excluded.content, fetched_at = datetime('now')",
+                (path, title, content),
+            )
+
+
+def assist_pages() -> list[dict]:
+    with _cursor() as cur:
+        cur.execute("SELECT path, title, content FROM assist_pages")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def _assist_day() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def assist_count(visitor: str) -> tuple[int, int]:
+    """(meldinger fra denne besøkende i dag, totalt i dag). Gamle dager ryddes."""
+    day = _assist_day()
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM assist_usage WHERE day < {P}", (day,))
+        cur.execute(f"SELECT n FROM assist_usage WHERE day = {P} AND visitor = {P}", (day, visitor))
+        r = cur.fetchone()
+        used = r["n"] if r else 0
+        cur.execute(f"SELECT COALESCE(SUM(n), 0) AS t FROM assist_usage WHERE day = {P}", (day,))
+        total = int(cur.fetchone()["t"])
+    return used, total
+
+
+def assist_bump(visitor: str) -> None:
+    day = _assist_day()
+    with _cursor() as cur:
+        cur.execute(
+            f"INSERT INTO assist_usage (day, visitor, n) VALUES ({P}, {P}, 1) "
+            f"ON CONFLICT (day, visitor) DO UPDATE SET n = assist_usage.n + 1",
+            (day, visitor),
+        )

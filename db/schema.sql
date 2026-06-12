@@ -116,6 +116,21 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 CREATE INDEX IF NOT EXISTS api_keys_tenant ON api_keys (tenant_id);
 
+-- Nettside-assistent: kunnskap (ingestet fra sitemap) + rate-limit-teller.
+-- MERK: selve samtalene lagres ALDRI — kun en anonym dagsteller per visitor-hash.
+CREATE TABLE IF NOT EXISTS assist_pages (
+    path        TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS assist_usage (
+    day     TEXT NOT NULL,
+    visitor TEXT NOT NULL,
+    n       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, visitor)
+);
+
 -- BSV-anchre av rollups. Beviser at tallene ikke er etterjustert.
 CREATE TABLE IF NOT EXISTS anchors (
     id          BIGSERIAL PRIMARY KEY,
