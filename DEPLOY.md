@@ -1,7 +1,7 @@
 # Deploy — Sporløs på norsk-eid VPS
 
 Mål: «go live» = noen få kommandoer. Stack: Postgres + app + Caddy (auto-HTTPS) i Docker.
-Anbefalt vert: norsk-eid VPS (f.eks. PRO ISP fra ~99 kr/mnd) for suverenitet. Se GTM_RESEARCH_LEADS.
+Anbefalt vert: norsk-eid VPS (f.eks. PRO ISP fra ~99 kr/mnd) for suverenitet.
 
 ## Forutsetninger på VPS-en
 - Docker + Docker Compose installert

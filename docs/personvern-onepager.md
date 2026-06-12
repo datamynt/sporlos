@@ -69,8 +69,8 @@ er ekte. Fingerprinting eller vedvarende identifikatorer ville endret bildet.)
 
 ## Hvor lagres dataene?
 
-> _UTKAST — avhenger av hosting-beslutning (se IN_FLIGHT). Formuleringen under forutsetter
-> norsk/EØS-eid hosting; ikke publiser før det er bekreftet._
+> _Bekreftet: den hostede tjenesten driftes på europeisk-eid infrastruktur
+> med servere i Stavanger, Norge._
 
 Sporløs lagrer aggregert statistikk på **norsk/EØS-eid infrastruktur** — ikke på amerikansk-eid sky.
 Dette er bevisst: norsk lov og praksis (Datatilsynet, EDPB, KS' standardavtale for kommuner) slår fast
