@@ -159,6 +159,149 @@ async def hero_stats(request):
     )
 
 
+# Strukturert data (JSON-LD) for Google: hva Sporløs ER + prisspenn.
+_LD_LANDING = (
+    '<script type="application/ld+json">'
+    + json.dumps(
+        {
+            "@context": "https://schema.org",
+            "@graph": [
+                {
+                    "@type": "Organization",
+                    "name": "Datamynt AS",
+                    "url": "https://datamynt.no",
+                    "logo": "https://sporlos.no/static/brand/app-ikon.png",
+                },
+                {
+                    "@type": "SoftwareApplication",
+                    "name": "Sporløs",
+                    "url": "https://sporlos.no",
+                    "applicationCategory": "BusinessApplication",
+                    "operatingSystem": "Web",
+                    "description": "Cookieløs, samtykkefri webanalyse bygget i Norge — "
+                    "uten cookie-banner, uten IP-lagring, med data i Norge.",
+                    "offers": {
+                        "@type": "AggregateOffer",
+                        "priceCurrency": "NOK",
+                        "lowPrice": "99",
+                        "highPrice": "599",
+                        "offerCount": "3",
+                    },
+                },
+            ],
+        },
+        ensure_ascii=False,
+    )
+    + "</script>"
+)
+
+# Spørsmålssiden: HTML og FAQPage-JSON-LD genereres fra SAMME liste — alltid i sync.
+# Svarene er ærlige (GA-lovlighet er nyansert, ikke «forbudt») — det er SEO-vinkelen vår.
+_FAQ = [
+    (
+        "Trenger nettstedet mitt cookie-banner?",
+        "Bare hvis nettstedet lagrer eller leser noe på besøkerens enhet (ekomloven § 3-15) "
+        "eller behandler personopplysninger som krever samtykke. Bruker du verktøy uten cookies "
+        "og uten persondata — som Sporløs — utløses ikke kravet, og banneret kan fjernes for "
+        "analysens del. Husk at andre verktøy på siden (annonser, embeds) kan kreve banner uansett.",
+    ),
+    (
+        "Er Google Analytics lovlig i Norge?",
+        "Det er omdiskutert, og vi skal være ærlige: GA er ikke «forbudt» i Norge. Men GA krever "
+        "cookies, og cookies krever samtykke — altså banner. I tillegg har overføringen av data til "
+        "USA vært tema hos europeiske datatilsyn i flere år. Med Sporløs slipper du hele diskusjonen: "
+        "ingen cookies, ingen persondata, data i Norge.",
+    ),
+    (
+        "Hva er cookieløs webanalyse?",
+        "Måling som aldri lagrer noe i besøkerens nettleser. Sporløs teller besøk med en "
+        "daglig-roterende engangs-hash som forkastes — ingen kan gjenkjennes på tvers av dager "
+        "eller nettsteder. Du får trafikk, kilder, geografi, enheter og konverteringer; du får "
+        "ikke sporing av enkeltpersoner. Det er poenget.",
+    ),
+    (
+        "Blir tallene mindre nøyaktige uten cookies?",
+        "Mer nøyaktige, faktisk. Verktøy med samtykkebanner mister alle som trykker «avvis» eller "
+        "ignorerer banneret — ofte 30–50 % av trafikken. Sporløs måler alle besøk. Forskjellen: "
+        "«unike besøkende» betyr unike per dag, ikke per måned, siden vi ikke følger folk over tid.",
+    ),
+    (
+        "Hva koster Sporløs?",
+        "Fra 99 kr/mnd (10 000 sidevisninger) til 599 kr/mnd (1 million). 30 dager gratis prøve "
+        "uten kort. Vi slutter aldri å måle om du passerer grensen, og sender aldri "
+        "overraskelsesregninger — du får et varsel og velger selv om du vil oppgradere.",
+    ),
+    (
+        "Hvordan installerer jeg Sporløs?",
+        "Ett script på siden din — eller WordPress-pluginen vår: søk «Sporløs Analytics» i "
+        "plugin-katalogen, aktiver, lim inn site-ID. Ferdig. Ingen cookies betyr også: ingen "
+        "samtykke-oppsett å konfigurere.",
+    ),
+    (
+        "Hva betyr «verifiserbare tall»?",
+        "Hvert dagstall forsegles med en kryptografisk hash som forankres i en uavhengig, offentlig "
+        "logg. Endres tallet i ettertid, stemmer ikke seglet. Rapporterer du besøkstall til styre, "
+        "annonsører eller tilskuddsgivere, er det dokumentasjon som holder.",
+    ),
+    (
+        "Lagrer dere noe om mine besøkende?",
+        "Ingen IP-adresser, ingen cookies, ingen identifikatorer. Kun aggregater: antall besøk, "
+        "hvilke sider, hvilket land/fylke, hvilken nettlesertype. Geografisk stopper vi bevisst "
+        "på fylkesnivå. Hele tilnærmingen er beskrevet åpent i personvernerklæringen — og "
+        "sporingsscriptet er åpen kildekode, så du kan etterprøve selv.",
+    ),
+]
+
+
+async def sporsmal(request):
+    """SEO-side: spørsmålene folk faktisk googler, med ærlige svar + FAQPage-schema."""
+    ld = json.dumps(
+        {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": q,
+                    "acceptedAnswer": {"@type": "Answer", "text": a},
+                }
+                for q, a in _FAQ
+            ],
+        },
+        ensure_ascii=False,
+    )
+    items = "".join(
+        f"<details><summary>{escape(q)}</summary><p>{escape(a)}</p></details>" for q, a in _FAQ
+    )
+    return HTMLResponse(
+        f"""<!doctype html><html lang="no"><head><meta charset="utf-8">
+<title>Spørsmål og svar om cookieløs webanalyse | Sporløs</title>
+<meta name=viewport content="width=device-width, initial-scale=1">
+<meta name="description" content="Trenger du cookie-banner? Er Google Analytics lovlig i Norge? Ærlige svar om cookieløs, samtykkefri webanalyse.">
+<link rel="canonical" href="https://sporlos.no/sporsmal">
+{_BRAND_HEAD}{_OG_META}
+<script type="application/ld+json">{ld}</script>
+<style>{_BRAND_CSS}{_CHROME_CSS}
+h1{{font-size:2rem;letter-spacing:-.025em;margin:2.2rem 0 .4rem}}
+.lede{{color:var(--muted);max-width:46em;margin:0 0 1.8rem}}
+details{{background:var(--card);border:1px solid var(--line);border-radius:12px;
+padding:1rem 1.25rem;margin:.6rem 0}}
+summary{{cursor:pointer;font-weight:600;font-size:1.02rem}}
+details p{{color:var(--muted);margin:.7rem 0 .2rem;max-width:60em}}
+.cta{{text-align:center;padding:2.4rem 0 1rem}}</style>
+{_SELF_SNIPPET}</head><body>
+<div class=wrap>
+{_SITE_NAV}
+<h1>Spørsmål og svar</h1>
+<p class=lede>Det folk lurer på om cookieløs webanalyse, samtykkekrav og Sporløs — uten skjønnmaling.</p>
+{items}
+<div class=cta><a class="btn btn-accent" href="/signup">Prøv Sporløs gratis i 30 dager</a>
+<p style="color:var(--muted);font-size:.85rem">uten kort · <a href="/demo">se live-demoen først</a></p></div>
+</div>
+{_SITE_FOOTER}</body></html>"""
+    )
+
+
 # «Måler allerede»-chips på forsiden: dagens unike per dogfood-site.
 # In-memory-cache 5 min — 7 lette KPI-spørringer per oppfriskning, ikke per visning.
 _STRIP_DOMAINS = ["peck.to", "merdata.no", "datamynt.no", "peck.world",
@@ -359,6 +502,7 @@ _SITE_FOOTER = (
     "Personvennlig webanalyse, bygget i Norge.<br><br>"
     '<a href="/demo">Live demo</a> · '
     '<a href="/google-analytics-alternativ">Sporløs mot Google Analytics</a> · '
+    '<a href="/sporsmal">Spørsmål og svar</a> · '
     '<a href="https://status.sporlos.no">Status</a> · '
     '<a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>'
     'Et produkt fra <a href="https://datamynt.no">Datamynt AS</a> · org.nr 936 017 207 · '
@@ -424,6 +568,7 @@ async def landing(request):
 """
         + _BRAND_HEAD
         + _OG_META
+        + _LD_LANDING
         + "<style>"
         + _BRAND_CSS
         + _CHROME_CSS
@@ -1519,7 +1664,7 @@ async def robots(request):
 
 
 async def sitemap(request):
-    pages = ["/", "/demo", "/google-analytics-alternativ", "/signup", "/vilkar", "/personvern", "/utviklere"]
+    pages = ["/", "/demo", "/google-analytics-alternativ", "/sporsmal", "/signup", "/vilkar", "/personvern", "/utviklere"]
     urls = "".join(f"<url><loc>https://sporlos.no{p}</loc></url>" for p in pages)
     return Response(
         f'<?xml version="1.0" encoding="UTF-8"?>'
@@ -2385,6 +2530,7 @@ routes = [
     Route("/billing/portal", billing_portal),
     Route("/api/hero", hero_stats),
     Route("/api/maaler", strip_stats),
+    Route("/sporsmal", sporsmal),
     Route("/assist.js", assist_js),
     Route("/api/assist", assist_api, methods=["POST"]),
     Route("/billing/vipps/start", vipps_start),
