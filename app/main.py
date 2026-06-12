@@ -128,6 +128,36 @@ async def tracker(request):
     )
 
 
+_MND = ["", "januar", "februar", "mars", "april", "mai", "juni", "juli",
+        "august", "september", "oktober", "november", "desember"]
+
+
+async def hero_stats(request):
+    """Ekte tall til forsidens hero — sporlos.no målt med Sporløs. Ingen pynt:
+    viser dagens faktiske tall, samme kilde som /demo."""
+    site = store.resolve_site(os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7"))
+    if not site:
+        return JSONResponse({}, status_code=404)
+    today = store.stats(site["id"], 1)
+    series = store.timeseries(site["id"], 7)
+    frist = ""
+    if series:
+        d = str(series[0]["bucket"])[:10]
+        try:
+            frist = f"{int(d[8:10])}. {_MND[int(d[5:7])]}"
+        except (ValueError, IndexError):
+            frist = d
+    return JSONResponse(
+        {
+            "visitors": today["visitors"],
+            "bounce": today["bounce_rate"],
+            "spark": [p["visitors"] for p in series],
+            "from": frist,
+        },
+        headers={"cache-control": "public, max-age=60"},
+    )
+
+
 async def assist_js(request):
     if not assist.configured():
         return PlainTextResponse("", status_code=404)
@@ -371,10 +401,9 @@ async def landing(request):
         + _CHROME_CSS
         + """
 body{background:radial-gradient(1100px 480px at 78% -120px,rgba(47,111,237,.08),transparent 70%),var(--bg)}
-header{padding:3.5rem 0 1rem;max-width:680px;position:relative}
-.wm{position:absolute;right:-270px;top:-30px;width:330px;height:330px;opacity:.055;
-color:var(--ink);pointer-events:none}
-@media(max-width:1080px){.wm{display:none}}
+header.hero{display:grid;grid-template-columns:1.15fr .85fr;gap:2.6rem;align-items:center;
+padding:3.5rem 0 1.4rem}
+@media(max-width:880px){header.hero{grid-template-columns:1fr}}
 .tag{display:inline-block;color:var(--accent-deep);font-size:.78rem;font-weight:600;
 letter-spacing:.09em;text-transform:uppercase;margin-bottom:1.2rem}
 h1{font-size:clamp(2.2rem,5.5vw,3.2rem);line-height:1.06;margin:0 0 1.1rem;
@@ -382,30 +411,25 @@ letter-spacing:-.03em;font-weight:800}
 .lede{font-size:1.2rem;color:var(--muted);max-width:36em}
 .hero-ctas{margin:1.8rem 0 .6rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
 .fine{font-size:.85rem;color:var(--muted)}
-.demo{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:2.6rem 0 0;
-padding:1.1rem 1.3rem 1rem;box-shadow:0 18px 50px -28px rgba(23,38,62,.28)}
-.demo-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem}
-.demo-top b{font-size:.95rem;letter-spacing:-.01em}
-.demo-id{display:flex;align-items:center;gap:.75rem}
-.dots{display:inline-flex;gap:5px}
-.dots i{width:9px;height:9px;border-radius:50%;background:#e6e2da;display:block}
-.demo-top .pills span{padding:.18rem .6rem;border:1px solid var(--line);border-radius:99px;
-font-size:.72rem;color:var(--muted);margin-left:.25rem}
-.demo-top .pills span.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-.demo-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:.9rem}
-.demo-kpi{border:1px solid var(--line);border-radius:9px;padding:.5rem .7rem}
-.demo-kpi b{font-size:1.25rem;display:block;letter-spacing:-.02em}
-.demo-kpi span{font-size:.68rem;color:var(--muted)}
-.demo svg{width:100%;height:110px;display:block}
-.demo-axis{display:flex;justify-content:space-between;color:var(--muted);font-size:.68rem;margin:-.1rem 0 .8rem}
-.demo-cols{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
-.demo-cols h4{margin:0 0 .25rem;font-size:.72rem;color:var(--muted);font-weight:600;
-letter-spacing:.05em;text-transform:uppercase}
-.demo-row{display:flex;justify-content:space-between;font-size:.8rem;padding:.22rem 0;
-border-bottom:1px solid var(--line)}
-.demo-row:last-child{border-bottom:0}
-.demo-row span:last-child{color:var(--muted)}
-@media(max-width:560px){.demo-cols{grid-template-columns:1fr}.demo-kpis{grid-template-columns:repeat(3,1fr)}}
+.live{background:var(--card);border:1px solid var(--line);border-radius:14px;
+padding:1.2rem 1.3rem;box-shadow:0 18px 50px -28px rgba(23,38,62,.28)}
+.live-top{display:flex;justify-content:space-between;align-items:center;font-size:.78rem;
+color:var(--muted);margin-bottom:.9rem}
+.live-top b{color:var(--ink);font-size:.92rem;letter-spacing:-.01em}
+.live-top .na{display:inline-flex;align-items:center;gap:.4rem;white-space:nowrap}
+.livedot{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block}
+.live-kpis{display:flex;gap:2rem;margin-bottom:.5rem}
+.live-kpis b{font-size:2.1rem;font-weight:800;letter-spacing:-.02em;display:block;
+font-variant-numeric:tabular-nums;line-height:1.15}
+.live-kpis span{font-size:.72rem;color:var(--muted);white-space:nowrap}
+.live svg{width:100%;height:70px;display:block}
+.demo-axis{display:flex;justify-content:space-between;color:var(--muted);font-size:.68rem;margin:.3rem 0 .6rem}
+@media (prefers-reduced-motion:no-preference){
+@keyframes pulsdot{0%,100%{opacity:1}50%{opacity:.35}}
+.livedot{animation:pulsdot 2.4s ease-in-out infinite}
+@keyframes inn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.inn1{animation:inn .6s .1s both}.inn2{animation:inn .6s .25s both}.inn3{animation:inn .6s .4s both}
+}
 .strip{padding:1.2rem 0 2.2rem;border-bottom:1px solid var(--line);font-size:.88rem;color:var(--muted)}
 .strip b{color:var(--ink);font-weight:600}
 .strip span{white-space:nowrap}
@@ -430,54 +454,29 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 """
         + _SITE_NAV
         + """
-<header>
-  <svg class=wm viewBox="0 0 64 64" aria-hidden=true>
-    <circle cx="32" cy="32" r="16" fill="none" stroke="currentColor" stroke-width="6"/>
-    <line x1="17" y1="51" x2="47" y2="13" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
-  </svg>
-  <span class=tag>Norsk · cookieløs · samtykkefri</span>
-  <h1>Webanalyse uten cookie&#8209;banner.</h1>
-  <p class=lede>Sporløs måler nettstedet ditt uten cookies, uten å lagre IP, og uten å samle
-  personopplysninger — så du slipper banneret, og besøkerne dine slipper å bli sporet.</p>
-  <div class=hero-ctas>
+<header class=hero>
+<div>
+  <span class="tag inn1">Norsk · cookieløs · samtykkefri</span>
+  <h1 class=inn2>Webanalyse uten cookie&#8209;banner.</h1>
+  <p class="lede inn3">Sporløs måler nettstedet ditt uten cookies, uten å lagre IP, og uten å samle
+  personopplysninger. Tallene til høyre er ekte — denne siden, målt med Sporløs, akkurat nå.</p>
+  <div class="hero-ctas inn3">
     <a class=btn href="/signup">Start gratis prøve</a>
     <a href="/google-analytics-alternativ" style="font-size:.95rem">Ærlig sammenligning med GA →</a>
   </div>
-  <p class=fine>30 dager gratis · uten kort · åpen kildekode</p>
-</header>
-
-<div class=demo aria-hidden=true>
-  <div class=demo-top>
-    <span class=demo-id><span class=dots><i></i><i></i><i></i></span><b>dittdomene.no</b></span>
-    <span class=pills><span>i dag</span><span class=on>7 dager</span><span>30 dager</span></span></div>
-  <div class=demo-kpis>
-    <div class=demo-kpi><b>4 312</b><span>unike besøkende</span></div>
-    <div class=demo-kpi><b>6 980</b><span>sidevisninger</span></div>
-    <div class=demo-kpi><b>38 %</b><span>fluktfrekvens</span></div>
-  </div>
-  <svg viewBox="0 0 880 110" preserveAspectRatio="none">
-    <defs><linearGradient id=g x1=0 y1=0 x2=0 y2=1>
-      <stop offset=0 stop-color=#2f6fed stop-opacity=.16 />
-      <stop offset=1 stop-color=#2f6fed stop-opacity=0 />
-    </linearGradient></defs>
-    <path d="M8,88 L132,76 L256,80 L380,54 L504,60 L628,34 L752,40 L872,20 L872,104 L8,104 Z" fill=url(#g) />
-    <path d="M8,88 L132,76 L256,80 L380,54 L504,60 L628,34 L752,40 L872,20" fill=none stroke=#2f6fed stroke-width=2.5 stroke-linejoin=round stroke-linecap=round />
-  </svg>
-  <div class=demo-axis><span>3. juni</span><span>10. juni</span></div>
-  <div class=demo-cols>
-    <div><h4>Topp sider</h4>
-      <div class=demo-row><span>/</span><span>2 841</span></div>
-      <div class=demo-row><span>/priser</span><span>1 322</span></div>
-      <div class=demo-row><span>/blogg/uten-banner</span><span>904</span></div>
-    </div>
-    <div><h4>Topp kilder</h4>
-      <div class=demo-row><span>direkte</span><span>1 988</span></div>
-      <div class=demo-row><span>google</span><span>1 471</span></div>
-      <div class=demo-row><span>dn.no</span><span>512</span></div>
-    </div>
-  </div>
+  <p class="fine inn3">30 dager gratis · uten kort · åpen kildekode</p>
 </div>
-<p class=fine style="text-align:right;margin:.5rem 0 0"><a href="/demo">Se ekte live-tall for denne siden →</a></p>
+<div class="live inn3" aria-label="Live-tall for sporlos.no">
+  <div class=live-top><b>sporlos.no</b><span class=na><i class=livedot></i>akkurat nå</span></div>
+  <div class=live-kpis>
+    <div><b id=lv>&nbsp;</b><span>unike besøkende i dag</span></div>
+    <div><b id=lb>&nbsp;</b><span>fluktfrekvens</span></div>
+  </div>
+  <svg id=lspark viewBox="0 0 340 70" preserveAspectRatio="none" aria-hidden=true></svg>
+  <div class=demo-axis><span id=lfrom></span><span>i dag</span></div>
+  <p class=fine style="margin:.2rem 0 0;text-align:right"><a href="/demo">Hele dashbordet →</a></p>
+</div>
+</header>
 
 <div class=strip>
   <b>Måler allerede våre egne nettsteder:</b>
@@ -541,6 +540,40 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 </section>
 
 </div>
+<script>
+(function () {
+  var lv = document.getElementById('lv');
+  if (!lv) return;
+  function fmt(x) { return String(x).replace(/\\B(?=(\\d{3})+(?!\\d))/g, '\\u00a0'); }
+  function last(d) {
+    lv.textContent = fmt(d.visitors || 0);
+    document.getElementById('lb').textContent = (d.bounce || 0) + ' %';
+    document.getElementById('lfrom').textContent = d.from || '';
+    var s = d.spark || [];
+    if (s.length < 2) return;
+    var mx = Math.max.apply(null, s.concat([1]));
+    var pts = s.map(function (v, i) {
+      return (i * (340 / (s.length - 1))).toFixed(1) + ',' + (64 - (v / mx) * 54 + 3).toFixed(1);
+    }).join(' ');
+    var svg = document.getElementById('lspark');
+    svg.innerHTML = '<polyline fill="none" stroke="#2f6fed" stroke-width="2.5" ' +
+      'stroke-linecap="round" stroke-linejoin="round" points="' + pts + '"/>';
+    var p = svg.querySelector('polyline');
+    if (p.getTotalLength && window.matchMedia('(prefers-reduced-motion: no-preference)').matches) {
+      var L = p.getTotalLength();
+      p.style.strokeDasharray = L; p.style.strokeDashoffset = L;
+      p.getBoundingClientRect();
+      p.style.transition = 'stroke-dashoffset 1.4s ease-out';
+      p.style.strokeDashoffset = '0';
+    }
+  }
+  function hent() {
+    fetch('/api/hero').then(function (r) { return r.json(); }).then(last).catch(function () {});
+  }
+  hent();
+  setInterval(hent, 60000);
+})();
+</script>
 """
         + _SITE_FOOTER
     )
@@ -2186,6 +2219,7 @@ routes = [
     Route("/auth/google/callback", google_callback, name="google_callback"),
     Route("/billing/checkout", billing_checkout),
     Route("/billing/portal", billing_portal),
+    Route("/api/hero", hero_stats),
     Route("/assist.js", assist_js),
     Route("/api/assist", assist_api, methods=["POST"]),
     Route("/billing/vipps/start", vipps_start),
