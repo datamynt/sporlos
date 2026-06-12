@@ -650,6 +650,11 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 .plan b{font-size:1.05rem}.plan .pris{font-size:1.5rem;font-weight:700;margin:.5rem 0 .2rem;letter-spacing:-.02em}
 .plan small{color:var(--muted);line-height:1.5}
 .plan .hva{margin-top:.4rem;flex:1}
+.plan .velg{display:block;text-align:center;margin-top:1rem;padding:.5rem;border-radius:8px;
+border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9rem;font-weight:600}
+.plan .velg:hover{border-color:var(--accent);color:var(--accent-deep)}
+.plan .velg-hl{background:var(--accent);border-color:var(--accent);color:#fff}
+.plan .velg-hl:hover{background:var(--accent-deep);color:#fff}
 </style>
 """
         + _SELF_SNIPPET
@@ -747,13 +752,17 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
   besøkende) · eks. mva · årlig = 2 måneder gratis.</p>
   <div class=plans>
     <div class=plan><b>Liten</b><span class=pris>99 kr<small>/mnd</small></span>
-      <small class=hva>10 000 visninger<br>1 nettsted</small></div>
+      <small class=hva>10 000 visninger<br>1 nettsted</small>
+      <a class=velg href="/signup?plan=liten">Kom i gang</a></div>
     <div class="plan hl"><b>Vekst</b><span class=pris>249 kr<small>/mnd</small></span>
-      <small class=hva>100 000 visninger<br>10 nettsteder</small></div>
+      <small class=hva>100 000 visninger<br>10 nettsteder</small>
+      <a class="velg velg-hl" href="/signup?plan=vekst">Kom i gang</a></div>
     <div class=plan><b>Pro</b><span class=pris>599 kr<small>/mnd</small></span>
-      <small class=hva>1 mill. visninger<br>15 nettsteder<br>verifiserbare tall</small></div>
+      <small class=hva>1 mill. visninger<br>15 nettsteder<br>verifiserbare tall</small>
+      <a class=velg href="/signup?plan=pro">Kom i gang</a></div>
     <div class=plan><b>Byrå</b><span class=pris>fra 1 490 kr</span>
-      <small class=hva>fra 25 kundenettsteder<br>white-label · forsegling inkl.</small></div>
+      <small class=hva>fra 25 kundenettsteder<br>white-label · forsegling inkl.</small>
+      <a class=velg href="mailto:post@sporlos.no?subject=Byr%C3%A5-avtale">Ta kontakt</a></div>
   </div>
   <div class=loft>
     <svg width=44 height=44 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--bg)" stroke-width=8 stroke-linecap=round/></svg>
@@ -843,14 +852,20 @@ border-radius:8px;font-size:1rem;cursor:pointer;font:inherit;font-weight:600}}
 
 
 async def signup(request):
+    # ?plan=liten|vekst|pro: bruker valgte plan på forsiden og vil betale med
+    # en gang — sendes til /betal etter kontoopprettelse i stedet for trial-/app.
+    plan = request.query_params.get("plan", "")
+    if plan not in _PLAN_LABELS:
+        plan = ""
     if _user(request):
-        return RedirectResponse("/app", status_code=302)
+        return RedirectResponse(f"/betal?plan={plan}" if plan else "/app", status_code=302)
     err = ""
     if request.method == "POST":
         f = await request.form()
         company = (f.get("company") or "").strip()
         email = (f.get("email") or "").strip().lower()
         pw = f.get("password") or ""
+        plan = f.get("plan") if f.get("plan") in _PLAN_LABELS else ""
         if not company or "@" not in email or len(pw) < 8:
             err = "Fyll inn firma, gyldig e-post og passord (min. 8 tegn)."
         elif store.get_user_by_email(email):
@@ -863,18 +878,27 @@ async def signup(request):
                     notify.send_verification(uid, email)
                 except Exception:
                     pass
-                return RedirectResponse("/app", status_code=302)
+                return RedirectResponse(
+                    f"/betal?plan={plan}" if plan else "/app", status_code=302
+                )
             except Exception:
                 err = "Kunne ikke opprette konto. Prøv igjen."
+    chosen = (
+        f'<p class=muted>Du har valgt <b>{escape(_PLAN_LABELS[plan])}</b> — betaling rett '
+        "etter registrering. Du kan også ombestemme deg og prøve gratis først.</p>"
+        if plan
+        else "<p class=muted>30 dager gratis · uten kort.</p>"
+    )
     eb = f'<div class=err>{escape(err)}</div>' if err else ""
     return _shell(
         "Opprett konto",
-        f"""<h1>Opprett konto</h1><p class=muted>30 dager gratis · uten kort.</p>{eb}
+        f"""<h1>Opprett konto</h1>{chosen}{eb}
 <form method=post>
+  <input type=hidden name=plan value="{escape(plan)}">
   <label>Firma</label><input name=company required>
   <label>E-post</label><input name=email type=email required>
   <label>Passord</label><input name=password type=password required minlength=8>
-  <button>Start gratis prøve</button>
+  <button>{"Fortsett til betaling" if plan else "Start gratis prøve"}</button>
 </form>
 {_google_button()}
 <p class=muted>Har du konto? <a href="/login">Logg inn</a></p>""",
@@ -1196,6 +1220,40 @@ async def vipps_cancel(request):
     except Exception:
         return RedirectResponse("/app?vipps=feil", status_code=302)
     return RedirectResponse("/app?vipps=stoppet", status_code=302)
+
+
+async def betal(request):
+    """Velg betalingsmåte for valgt plan — landingspunkt for «betal med en gang»-
+    flyten fra forsiden. Trial er fortsatt default for de som ikke velger plan."""
+    user = _user(request)
+    plan = request.query_params.get("plan", "")
+    if not user:
+        return RedirectResponse(f"/signup?plan={plan}", status_code=302)
+    if plan not in _PLAN_LABELS:
+        return RedirectResponse("/app", status_code=302)
+    knapper = ""
+    if stripe and STRIPE_PRICES.get(plan):
+        knapper += (
+            f'<a href="/billing/checkout?plan={plan}" style="display:block;text-align:center;'
+            "background:var(--accent);color:#fff;padding:.75rem;border-radius:9px;"
+            'text-decoration:none;font-weight:600;margin:.5rem 0">Betal med kort</a>'
+        )
+    if vipps.configured():
+        knapper += (
+            f'<a href="/billing/vipps/start?plan={plan}" style="display:block;text-align:center;'
+            "background:#ff5b24;color:#fff;padding:.75rem;border-radius:9px;"
+            'text-decoration:none;font-weight:600;margin:.5rem 0">Betal med Vipps</a>'
+        )
+    if not knapper:
+        return RedirectResponse("/app", status_code=302)
+    return _shell(
+        "Betaling",
+        f"""<h1>Nesten i mål</h1>
+<p class=muted>Du har valgt <b>{escape(_PLAN_LABELS[plan])}</b>. Velg betalingsmåte —
+abonnementet starter med en gang, og du kan si opp når som helst.</p>
+{knapper}
+<p class=muted style="margin-top:1rem"><a href="/app">Eller start 30 dagers gratis prøve først →</a></p>""",
+    )
 
 
 async def create_site_post(request):
@@ -2526,6 +2584,7 @@ routes = [
     Route("/logout", logout),
     Route("/auth/google", google_login),
     Route("/auth/google/callback", google_callback, name="google_callback"),
+    Route("/betal", betal),
     Route("/billing/checkout", billing_checkout),
     Route("/billing/portal", billing_portal),
     Route("/api/hero", hero_stats),
