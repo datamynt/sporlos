@@ -30,7 +30,7 @@ from starlette.responses import (
 )
 from starlette.routing import Route
 
-from app import api, icons, mailer, notify, store, vipps
+from app import api, assist, icons, mailer, notify, store, vipps
 from app.auth import check_token, hash_password, verify_password
 from app.datacenter import is_datacenter
 from app.geo import country_no
@@ -104,6 +104,8 @@ if STRIPE_SECRET:
 
 # Tracker-scriptet leses én gang ved oppstart og serveres på /sporlos.js.
 _TRACKER = (Path(__file__).resolve().parent.parent / "tracker" / "sporlos.js").read_text()
+# Assistent-widgeten — samme mønster (egen fil, ikke inline-JS).
+_ASSIST_JS = (Path(__file__).resolve().parent.parent / "assist" / "widget.js").read_text()
 
 
 async def healthz(request):
@@ -124,6 +126,31 @@ async def tracker(request):
         media_type="application/javascript",
         headers={"cache-control": "public, max-age=86400"},
     )
+
+
+async def assist_js(request):
+    if not assist.configured():
+        return PlainTextResponse("", status_code=404)
+    return Response(
+        _ASSIST_JS,
+        media_type="application/javascript",
+        headers={"cache-control": "public, max-age=3600"},
+    )
+
+
+async def assist_api(request):
+    """POST /api/assist {q, history} → {a}. Samtalen lagres aldri — kun teller."""
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"a": "Ugyldig forespørsel."}, status_code=400)
+    history = data.get("history") if isinstance(data.get("history"), list) else []
+    ip = client_ip(request.headers, request.client.host if request.client else "")
+    ua = request.headers.get("user-agent", "")
+    visitor = visitor_hash(ip, ua, "assist", secret=SECRET)
+    # LLM-kallet tar sekunder — av tråden så event-loopen ikke blokkerer ingest.
+    ans, status = await asyncio.to_thread(assist.answer, str(data.get("q", "")), history, visitor)
+    return JSONResponse({"a": ans}, status_code=status)
 
 
 async def ingest(request):
@@ -241,6 +268,9 @@ _SELF_SNIPPET = (
     '<script defer data-site="6LIACtOSP-S7" data-api="https://sporlos.no/api/event" '
     'src="https://sporlos.no/sporlos.js"></script>'
 )
+# Assistenten rir på samme injeksjonspunkt — vises kun når LLM-nøkkel er satt.
+if assist.configured():
+    _SELF_SNIPPET += '<script defer src="/assist.js"></script>'
 
 # Felles header/footer for alle offentlige sider — samme ramme overalt,
 # så ingen side føles som å «dette ut» av nettstedet.
@@ -2147,6 +2177,8 @@ routes = [
     Route("/auth/google/callback", google_callback, name="google_callback"),
     Route("/billing/checkout", billing_checkout),
     Route("/billing/portal", billing_portal),
+    Route("/assist.js", assist_js),
+    Route("/api/assist", assist_api, methods=["POST"]),
     Route("/billing/vipps/start", vipps_start),
     Route("/billing/vipps/retur", vipps_return),
     Route("/billing/vipps/avslutt", vipps_cancel, methods=["POST"]),

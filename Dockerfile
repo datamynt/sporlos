@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Appkode + tracker + schema + brand-assets (self-hostet font)
 COPY app/ ./app/
 COPY tracker/ ./tracker/
+COPY assist/ ./assist/
 COPY db/ ./db/
 COPY static/ ./static/
 

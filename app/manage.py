@@ -79,6 +79,14 @@ def main(argv: list[str]) -> int:
         print(vipps.sweep())
         return 0
 
+    if cmd == "assist-ingest":
+        from app import assist
+        domain = os.environ.get("SPORLOS_DOMAIN")
+        default = f"https://{domain}" if domain and "FYLL" not in domain else "http://localhost:8000"
+        base = argv[1] if len(argv) > 1 else default
+        print(f"assistent-kunnskap: {assist.ingest(base)} sider ingestet fra {base}")
+        return 0
+
     if cmd == "stripe-products":
         import stripe  # noqa
         stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
