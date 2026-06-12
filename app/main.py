@@ -389,7 +389,7 @@ _OG_META = (
 async def landing(request):
     """Offentlig landingsside (§3-15-budskapet)."""
     return HTMLResponse(
-        """<!doctype html><html lang=no><meta charset=utf-8>
+        """<!doctype html><html lang="no"><head><meta charset="utf-8">
 <title>Sporløs — webanalyse uten cookie-banner</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name="description" content="Cookieløs, samtykke-fri webanalyse bygget i Norge. Ingen cookie-banner. Data på norsk-eid infrastruktur.">
@@ -456,6 +456,7 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 </style>
 """
         + _SELF_SNIPPET
+        + "</head><body>"  # eksplisitt head/body — LinkedIn-parseren er pirkete
         + """<div class=wrap>
 """
         + _SITE_NAV
@@ -582,6 +583,7 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 </script>
 """
         + _SITE_FOOTER
+        + "</body></html>"
     )
 
 
@@ -1294,7 +1296,7 @@ databehandler. Da gjelder databehandleravtalen, ikke denne erklæringen.</p>""",
 async def ga_alternativ(request):
     """Ærlig sammenligning mot Google Analytics. Content/SEO-side, offentlig."""
     return HTMLResponse(
-        """<!doctype html><html lang=no><meta charset=utf-8>
+        """<!doctype html><html lang="no"><head><meta charset="utf-8">
 <title>Norsk alternativ til Google Analytics — ærlig sammenligning | Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name="description" content="Hva mister du og hva får du ved å bytte fra Google Analytics til Sporløs? Ærlig sammenligning: cookie-banner, datakvalitet, Google Ads, SEO og pris.">
@@ -1327,6 +1329,7 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
 </style>
 """
         + _SELF_SNIPPET
+        + "</head><body>"  # eksplisitt head/body — LinkedIn-parseren er pirkete
         + """<div class=wrap>
 """
         + _SITE_NAV
@@ -1414,6 +1417,7 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
 </div></div>
 """
         + _SITE_FOOTER
+        + "</body></html>"
     )
 
 
@@ -1663,15 +1667,16 @@ def _public_stats_page(request, site, base_path, *, suffix, intro, title, descri
     )
 
     return HTMLResponse(
-        f"""<!doctype html><html lang=no><meta charset=utf-8>
+        f"""<!doctype html><html lang="no"><head><meta charset="utf-8">
 <title>{escape(title)}</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name=description content="{escape(description)}">
-<link rel=canonical href="{escape(canonical)}">
+<link rel="canonical" href="{escape(canonical)}">
 {_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_CHROME_CSS}{_DASH_CSS}
 .demobar{{background:#eef3ff;border:1px solid #d6e2ff;color:var(--accent-deep);border-radius:10px;
 padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
+</head><body>
 <div class=wrap>
 {_SITE_NAV}
 {intro}
@@ -1713,7 +1718,7 @@ Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
 </div>
 {_SITE_FOOTER}
 {_BARS_JS}
-{_SELF_SNIPPET}""",
+{_SELF_SNIPPET}</body></html>""",
         headers={"cache-control": "public, max-age=60"},
     )
 
