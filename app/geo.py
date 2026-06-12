@@ -36,7 +36,8 @@ def _get_reader():
 COUNTRY_NO = {
     "Norway": "Norge", "Sweden": "Sverige", "Denmark": "Danmark", "Finland": "Finland",
     "Iceland": "Island", "Germany": "Tyskland", "United States": "USA",
-    "United Kingdom": "Storbritannia", "Netherlands": "Nederland", "Belgium": "Belgia",
+    "United Kingdom": "Storbritannia", "Netherlands": "Nederland",
+    "The Netherlands": "Nederland", "Belgium": "Belgia",
     "France": "Frankrike", "Spain": "Spania", "Portugal": "Portugal", "Italy": "Italia",
     "Ireland": "Irland", "Austria": "Østerrike", "Switzerland": "Sveits", "Poland": "Polen",
     "Czechia": "Tsjekkia", "Czech Republic": "Tsjekkia", "Estonia": "Estland",
