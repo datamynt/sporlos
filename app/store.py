@@ -1270,3 +1270,13 @@ def assist_bump(visitor: str) -> None:
             f"ON CONFLICT (day, visitor) DO UPDATE SET n = assist_usage.n + 1",
             (day, visitor),
         )
+
+
+def sites_by_domains(domains: list[str]) -> list[dict]:
+    """id+domene for et sett domener — brukes av forsidens «måler allerede»-chips."""
+    if not domains:
+        return []
+    ph = ",".join([P] * len(domains))
+    with _cursor() as cur:
+        cur.execute(f"SELECT id, domain FROM sites WHERE domain IN ({ph})", tuple(domains))
+        return [dict(r) for r in cur.fetchall()]
