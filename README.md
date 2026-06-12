@@ -1,70 +1,82 @@
-# Sporløs — personvernvennlig webanalyse (EØS)
+# Sporløs
 
-> Cookieløs, samtykke-fri webanalyse bygget i Norge. Åpen kjerne (AGPL),
-> hosted SaaS, og self-host for byråer. BSV-anchring gir **kryptografisk
-> verifiserbare tall** — noe ingen Matomo-instans kan matche.
+> Webanalyse uten cookies, uten IP-lagring og uten samtykkebanner — bygget i Norge.
+> Hosted på [sporlos.no](https://sporlos.no), eller kjør den selv (AGPL).
 
-**Arbeidsnavn:** Sporløs. Alternativer å vurdere: _Synlig_, _Innsikt_, _Måling_, _Telle_, _Anonym_.
-
----
+**[Live-demo med ekte tall →](https://sporlos.no/demo)**
 
 ## Hvorfor
 
-- Datatilsynet (+ flere EU-DPA-er) har i praksis kjent Google Analytics ulovlig (Schrems II).
-- Norske bedrifter vil ha analyse, men GA er juridisk grums og Plausible/Matomo er EØS-generisk uten norsk faktura/support.
-- Det finnes **ingen norsk-bygget privacy-analytics SaaS** i dag — bare webbyråer som hoster Matomo/Plausible manuelt per kunde. Det er luken.
+Samtykkekravet i ekomloven § 3-15 utløses av det som lagres eller leses på
+besøkerens enhet. Sporløs rører aldri enheten: ingen cookies, ingen
+localStorage, ingen fingerprinting. IP-adressen brukes flyktig til en
+daglig-roterende enveis-hash og forkastes — ingen kan gjenkjennes på tvers
+av dager eller nettsteder. Dermed trengs verken banner eller samtykke, og du
+måler **alle** besøk, ikke bare de som trykker «godta».
 
-## Posisjonering: open-core, to målgrupper
+Begrensningen er produktet: du får trafikk, kilder, geografi (bevisst capped
+på fylkesnivå), enheter, mål, funnels og kampanjer — du får ikke sporing av
+enkeltpersoner.
 
-| Spor | Hvem | Modell |
-|---|---|---|
-| **Hosted** | SMB direkte (som Plausible Cloud) | abonnement, norsk faktura/MVA, selvbetjent |
-| **Self-host** | webbyråer | AGPL gratis, de drifter selv, white-label per kunde |
-| **Premium** | begge | BSV-anchring = "beviselig uforfalskede tall" (resellbart for byrå) |
+## Hva er i repoet
 
-Byrå-vinkelen er hovedmålet: få webhusene til å bytte fra Plausible til vår variant.
-AGPL-åpenhet er **tillits-vektoren** som gjør at byråene tør adoptere.
+| Del | Beskrivelse |
+|---|---|
+| `app/` | Starlette-app: ingestion, dashbord, multi-tenant konto, betaling, API |
+| `tracker/sporlos.js` | Sporingsscriptet (~1,5 kB) — også publisert som [datamynt/sporlos-tracker](https://github.com/datamynt/sporlos-tracker) (MIT) |
+| `app/privacy.py` | Kjernen i samtykke-friheten: daglig-saltet enveis-hash, IP forkastes |
+| `app/merkle.py` + `app/anchor.py` | «Verifiserbare tall»: dagstall forsegles med hash og forankres i en offentlig logg (BSV) — valgfritt, alt virker uten |
+| `integrations/wordpress/` | [WordPress-pluginen](https://wordpress.org/plugins/sporlos-analytics/) |
+| `integrations/mcp/` | MCP-server oppå Stats-API-et (for AI-verktøy) |
+| `db/schema.sql` | Datamodellen (PostgreSQL; SQLite-speil for lokal kjøring) |
 
-## Datasuverenitet — ærlig
+## Kjør lokalt
 
-Juridisk krav = **EØS** (ikke "Norge spesifikt"). Schrems-trygghet handler om _eierskap_,
-ikke geografi: GCP `europe-north1` er fortsatt Google = US CLOUD Act. Med self-host løses
-dette elegant — byrået velger hosting, vi leverer koden. For hosted: bruk EØS-eid hosting
-hvis "Schrems-trygt" skal stå i marketing.
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python3 -m app.manage init                # SQLite, null oppsett
+.venv/bin/python3 -m app.manage create-site "Test" eksempel.no
+.venv/bin/uvicorn app.main:app                      # http://localhost:8000
+```
 
-> **BSV/anchring legger ALDRI rådata på kjeden** — kun en hash av dags-/måneds-aggregater.
-> Kjeden er global og offentlig; rådata blir i EØS-DB. Anchren beviser bare at tallene ikke er etterjustert.
+## Self-host (produksjon)
 
----
+Full stack (PostgreSQL + app + Caddy med auto-HTTPS) i `docker-compose.prod.yml`
+— se [DEPLOY.md](DEPLOY.md). Kort versjon:
 
-## MVP-scope
+```bash
+cp .env.example .env   # fyll inn hemmeligheter
+docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml exec app python -m app.manage init
+```
 
-1. **Tracker-snippet** (`tracker/sporlos.js`) — <1 KB, ingen cookies, sender pageview-beacon.
-2. **Ingestion** (`POST /api/event`) — parser event, beregner cookieløs visitor-hash, lagrer.
-3. **Cookieløs unik-teller** (`app/privacy.py`) — daglig-roterende salt → ikke re-identifiserbar → ingen samtykke-banner. **Den ene biten som MÅ være riktig.**
-4. **Dashboard** — sanntid (SSE via Redis) + dags-aggregater. Gjenbruker peck-ui `stat`/`card`.
-5. **Multi-tenancy fra dag én** — tenant (byrå) → sites → events. Isolasjon per site.
-6. **Anchor-jobb** (senere i MVP) — nattlig rollup → hash → 1Sat-anchor (kopier merdata-mønster).
+Betaling (Stripe/Vipps), e-post, KI-assistent og forsegling er alle gated på
+miljøvariabler — tomt felt betyr at funksjonen er av, og alt annet virker.
 
-### Gjenbruk fra peck-flåten
-- Stack: FastHTML + Starlette + Cloud SQL (psycopg2) + Redis SSE — hus-standard.
-- UI: peck-ui `stat` (KPI-boks m/ delta), `card`, `breadcrumbs`.
-- Anchor: merdata `buildSpendableBeef` 1Sat-mønster (bevist on-chain 2026-06-02), nytt OP_RETURN-prefix `PECKSTAT`.
-- E-post-rapporter: peck-mail (utgående relay).
-- `anchor-client` / `web-base` fra standardiserings-katalogen.
+## Personvern-prinsippene (ufravikelige)
 
-Det _eneste_ nye vi skriver: ingestion-endpoint, salt-rotasjons-telleren, rollup-jobben. Resten er montering.
-
----
-
-## Regulatorisk sjekkliste
-- [ ] Ingen rå-IP lagres noensinne (kun daglig-saltet hash).
-- [ ] Salt roteres daglig + forkastes (gårsdagens hash ikke reversibel/lenkbar).
-- [ ] Visitor-hash inkluderer `site_id` → samme besøkende på to byrå-kunder gir ulik hash (cross-site non-linkability).
-- [ ] **Databehandleravtale (DPA)** på norsk — byråene vil kreve den. Leveranse på lik linje med kode.
-- [ ] DPIA-vennlig dokumentasjon (hvorfor data ikke er personopplysning).
-- [ ] Ikke oversell "Schrems-trygt" med mindre hosting er EØS-eid.
+1. **Aldri rå-IP eller cookie lagret.** Kun daglig-saltet enveis-hash.
+   Dette er hele samtykke-fritaket — brytes det, er produktet ulovlig som GA.
+2. **Geografi stopper på fylkesnivå.** By-nivå + lav trafikk = re-identifiserbart.
+3. **Aggregater ut, aldri rådata.** API-et og dashbordet serverer kun tellinger.
 
 ## Lisens
-AGPL-3.0 for kjernen (open-core). Premium-anchring/hosted kan være separat.
-Følger flåte-policy: lisensier etter kjede-binding — anchring-modulen mot BSV = vurder Open BSV License v5.
+
+[AGPL-3.0](LICENSE). Sporingsscriptet er separat publisert under MIT.
+«Sporløs» som navn og merke tilhører Datamynt AS — bygg gjerne på koden,
+men ikke under vårt navn.
+
+---
+
+## English summary
+
+Sporløs is consent-free, cookieless web analytics built in Norway. No cookies,
+no stored IPs, no fingerprinting — visitors are counted via a daily-rotating
+one-way hash that is then discarded, so no consent banner is required under
+Norwegian/EU ePrivacy rules, and every visit is measured (not just the ones
+that click "accept"). Daily aggregates can optionally be sealed with a
+cryptographic hash anchored to a public ledger, making the numbers tamper-
+evident. The codebase is intentionally in Norwegian — it is built for the
+Norwegian market, comments and all. Licensed AGPL-3.0; the tracker script is
+MIT at [datamynt/sporlos-tracker](https://github.com/datamynt/sporlos-tracker).
+Hosted version at [sporlos.no](https://sporlos.no).
