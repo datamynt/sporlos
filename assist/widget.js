@@ -66,10 +66,33 @@
   var input = panel.querySelector("input");
   var send = panel.querySelector("form button");
 
+  /* Kjente stier i assistent-svar gjøres klikkbare. Bygger DOM-noder (aldri
+     innerHTML fra modelltekst) — ny fane så samtalen overlever klikket. */
+  var PATHS = /(\/(?:priser|demo|signup|vilkar|personvern|google-analytics-alternativ|utviklere|registrer|logg-inn|login|app))(?![\w-])/g;
+
+  function render(el, text) {
+    el.textContent = "";
+    var last = 0, m;
+    PATHS.lastIndex = 0;
+    while ((m = PATHS.exec(text))) {
+      if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
+      var a = document.createElement("a");
+      a.href = m[1];
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = m[1];
+      a.style.cssText = "color:" + ACCENT + ";font-weight:600";
+      el.appendChild(a);
+      last = m.index + m[1].length;
+    }
+    el.appendChild(document.createTextNode(text.slice(last)));
+  }
+
   function add(role, text) {
     var d = document.createElement("div");
     d.className = "spl-m " + (role === "user" ? "u" : "a");
-    d.textContent = text;
+    if (role === "user") d.textContent = text;
+    else render(d, text);
     msgs.appendChild(d);
     msgs.scrollTop = msgs.scrollHeight;
     return d;
@@ -101,8 +124,9 @@
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        wait.textContent = d.a || "Beklager, noe gikk galt.";
-        history.push({ role: "assistant", content: wait.textContent });
+        var svar = d.a || "Beklager, noe gikk galt.";
+        render(wait, svar);
+        history.push({ role: "assistant", content: svar });
       })
       .catch(function () {
         wait.textContent = "Beklager, fikk ikke kontakt. Prøv igjen — eller skriv til post@sporlos.no.";
