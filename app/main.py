@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from datetime import date, datetime, timezone
 from html import escape
 from pathlib import Path
@@ -155,6 +156,25 @@ async def hero_stats(request):
             "from": frist,
         },
         headers={"cache-control": "public, max-age=60"},
+    )
+
+
+# «Måler allerede»-chips på forsiden: dagens unike per dogfood-site.
+# In-memory-cache 5 min — 7 lette KPI-spørringer per oppfriskning, ikke per visning.
+_STRIP_DOMAINS = ["peck.to", "merdata.no", "datamynt.no", "peck.world",
+                  "docs.peck.to", "peck.cat", "overlay.social"]
+_strip_cache: dict = {"t": 0.0, "data": None}
+
+
+async def strip_stats(request):
+    if _strip_cache["data"] is None or time.time() - _strip_cache["t"] > 300:
+        out = []
+        for s in store.sites_by_domains(_STRIP_DOMAINS):
+            out.append({"domain": s["domain"], "i_dag": store.kpis(s["id"], 1)["visitors"]})
+        out.sort(key=lambda x: _STRIP_DOMAINS.index(x["domain"]))
+        _strip_cache.update(t=time.time(), data=out)
+    return JSONResponse(
+        {"sites": _strip_cache["data"]}, headers={"cache-control": "public, max-age=300"}
     )
 
 
@@ -438,9 +458,39 @@ font-variant-numeric:tabular-nums;line-height:1.15}
 @keyframes inn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .inn1{animation:inn .6s .1s both}.inn2{animation:inn .6s .25s both}.inn3{animation:inn .6s .4s both}
 }
-.strip{padding:1.2rem 0 2.2rem;border-bottom:1px solid var(--line);font-size:.88rem;color:var(--muted)}
-.strip b{color:var(--ink);font-weight:600}
-.strip span{white-space:nowrap}
+.strip{padding:1.2rem 0 2.2rem;border-bottom:1px solid var(--line)}
+.strip .kick{font-size:.78rem;color:var(--muted);font-weight:600;letter-spacing:.06em;
+text-transform:uppercase;margin-bottom:.7rem}
+.chips{display:flex;flex-wrap:wrap;gap:.6rem}
+.chip{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;
+padding:.42rem 1rem;font-size:.88rem;font-weight:600;background:var(--card);cursor:default;
+transition:border-color .25s;white-space:nowrap}
+.chip em{font-style:normal;font-weight:400;color:var(--accent-deep);font-variant-numeric:tabular-nums;
+max-width:0;overflow:hidden;opacity:0;transition:max-width .35s ease,opacity .25s ease}
+.chip:hover{border-color:var(--accent)}
+.chip:hover em{max-width:9em;opacity:1}
+.chip.selv{border-style:dashed;color:var(--muted);font-weight:400}
+.lov{display:grid;grid-template-columns:1fr 1.05fr;gap:2.6rem;align-items:center}
+@media(max-width:820px){.lov{grid-template-columns:1fr}}
+ul.aldri{list-style:none;margin:0;padding:0;display:grid;gap:.55rem}
+ul.aldri li{display:flex;gap:.65rem;align-items:flex-start;font-size:.92rem}
+ul.aldri svg{flex:none;margin-top:.22rem}
+.ark{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:1.8rem 2rem 1.6rem;
+box-shadow:0 1px 0 var(--line),0 14px 30px -18px rgba(23,38,62,.25);position:relative}
+.ark::before{content:"";position:absolute;inset:10px;border:1px solid var(--line);border-radius:2px;pointer-events:none}
+.arkhode{display:flex;justify-content:space-between;font-size:.66rem;font-weight:700;letter-spacing:.12em;
+text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:.7rem;margin-bottom:1rem}
+.sitat{font-size:1.06rem;line-height:1.75;margin:0}
+.sitat mark{background:none;color:inherit;font-weight:700;
+text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:3px;text-underline-offset:4px}
+.fri{font-size:.66rem;color:var(--muted);margin-top:.8rem}
+.dom{display:flex;align-items:center;gap:.6rem;border-top:1px solid var(--line);margin-top:1.1rem;padding-top:1rem;font-size:.85rem;font-weight:600}
+.dom small{display:block;font-weight:400;font-size:.74rem;color:var(--muted)}
+.loft{display:flex;align-items:center;gap:1.2rem;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+padding:1.4rem .2rem;margin:1.8rem 0 .4rem}
+.loft svg{flex:none}
+.loft b{font-size:1.25rem;font-weight:800;letter-spacing:-.025em;line-height:1.25;display:block}
+.loft small{color:var(--muted);font-size:.88rem;display:block;margin-top:.2rem}
 section{padding:3rem 0;border-bottom:1px solid var(--line)}
 h2{font-size:1.5rem;letter-spacing:-.015em;margin:0 0 1.2rem}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
@@ -488,23 +538,42 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 </header>
 
 <div class=strip>
-  <b>Måler allerede våre egne nettsteder:</b>
-  <span>peck.to</span> · <span>merdata.no</span> · <span>datamynt.no</span> ·
-  <span>peck.world</span> · <span>docs.peck.to</span> · <span>peck.cat</span> ·
-  <span>overlay.social</span> — og denne siden.
+  <div class=kick>Måler allerede våre egne nettsteder</div>
+  <div class=chips id=chips>
+    <span class=chip data-d="peck.to">peck.to<em></em></span>
+    <span class=chip data-d="merdata.no">merdata.no<em></em></span>
+    <span class=chip data-d="datamynt.no">datamynt.no<em></em></span>
+    <span class=chip data-d="peck.world">peck.world<em></em></span>
+    <span class=chip data-d="docs.peck.to">docs.peck.to<em></em></span>
+    <span class=chip data-d="peck.cat">peck.cat<em></em></span>
+    <span class=chip data-d="overlay.social">overlay.social<em></em></span>
+    <span class="chip selv">+ denne siden — <a href="/demo" style="margin-left:.3em">se live-tallene →</a></span>
+  </div>
 </div>
 
 <section>
   <h2>Hvorfor slipper du banner?</h2>
-  <div class=law>
-  <p>Ekomloven § 3-15 (i kraft 2025) krever samtykke for å <em>lagre eller lese</em> noe på
-  besøkerens enhet. Sporløs rører aldri enheten — ingen cookies, ingen identifikatorer — så kravet
-  utløses ikke. Og uten personopplysninger utløses heller ikke GDPR-samtykke.</p>
-  <ul>
-    <li>Setter aldri cookies eller lagrer noe i nettleseren</li>
-    <li>Lagrer aldri IP-adresser (brukes flyktig til en daglig-roterende hash, så forkastes)</li>
-    <li>Fingerprinter aldri, følger aldri besøkende på tvers av dager og nettsteder</li>
+  <div class=lov>
+  <div>
+  <p style="color:var(--muted);max-width:40ch;margin:.2rem 0 1.1rem">Samtykkekravet utløses av det
+  som skjer på besøkerens enhet. Sporløs rører den aldri.</p>
+  <ul class=aldri>
+    <li><svg width=17 height=17 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>Setter aldri cookies eller lagrer noe i nettleseren</li>
+    <li><svg width=17 height=17 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>Lagrer aldri IP-adresser — flyktig hash, så forkastet</li>
+    <li><svg width=17 height=17 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>Fingerprinter aldri, følger aldri på tvers av dager og nettsteder</li>
   </ul>
+  </div>
+  <div class=ark>
+    <div class=arkhode><span>Ekomloven · § 3-15</span><span>i kraft 2025</span></div>
+    <p class=sitat>Samtykke kreves for å <mark>lagre eller lese</mark> opplysninger i brukerens
+    kommunikasjonsutstyr.</p>
+    <p class=fri>Fri gjengivelse — les hele bestemmelsen på lovdata.no</p>
+    <div class=dom>
+      <svg width=26 height=26 viewBox="0 0 64 64" style="flex:none"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>
+      <div>Sporløs gjør ingen av delene.<small>Kravet utløses ikke — og uten personopplysninger
+      utløses heller ikke GDPR-samtykke.</small></div>
+    </div>
+  </div>
   </div>
 </section>
 
@@ -529,9 +598,8 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 
 <section id=priser>
   <h2>Priser</h2>
-  <p class=muted style="margin:0">Etter sidevisninger per måned (totale visninger, ikke unike besøkende) ·
-  eks. mva · årlig = 2 måneder gratis. Over grensen? Vi slutter aldri å måle og sender aldri
-  overraskelsesregninger — du får et varsel og velger selv om du vil oppgradere.</p>
+  <p class=muted style="margin:0">Etter sidevisninger per måned (totale visninger, ikke unike
+  besøkende) · eks. mva · årlig = 2 måneder gratis.</p>
   <div class=plans>
     <div class=plan><b>Liten</b><span class=pris>99 kr<small>/mnd</small></span>
       <small class=hva>10 000 visninger<br>1 nettsted</small></div>
@@ -541,6 +609,13 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
       <small class=hva>1 mill. visninger<br>15 nettsteder<br>verifiserbare tall</small></div>
     <div class=plan><b>Byrå</b><span class=pris>fra 1 490 kr</span>
       <small class=hva>fra 25 kundenettsteder<br>white-label · forsegling inkl.</small></div>
+  </div>
+  <div class=loft>
+    <svg width=44 height=44 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--bg)" stroke-width=8 stroke-linecap=round/></svg>
+    <div>
+      <b>Vi slutter aldri å måle — og sender aldri overraskelsesregninger.</b>
+      <small>Over grensen? Du får et varsel og velger selv om du vil oppgradere.</small>
+    </div>
   </div>
   <p class=fine>Prøv hostet gratis i 30 dager — uten kort. Vil du ha det helt gratis?
   Sporløs er åpen kildekode — kjør det på egen server. Enterprise/kommune: ta kontakt.</p>
@@ -581,6 +656,13 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
   }
   hent();
   setInterval(hent, 60000);
+  // «måler allerede»-chips: dagens unike per site, avsløres på hover
+  fetch('/api/maaler').then(function (r) { return r.json(); }).then(function (d) {
+    (d.sites || []).forEach(function (s) {
+      var c = document.querySelector('.chip[data-d="' + s.domain + '"] em');
+      if (c) c.textContent = '\\u00a0\\u00b7 ' + s.i_dag + ' i dag';
+    });
+  }).catch(function () {});
 })();
 </script>
 """
@@ -1576,6 +1658,19 @@ def _delta(now, before, invert=False):
     )
 
 
+# «Forseglet»-badgen (Segl × Presisjon fra design-runde 2): dobbel ring m/ luft
+# der streken krysser — et FUNKSJONELT symbol som kun settes ved forseglede tall,
+# aldri dekor. card-param = flatens farge bak (utstansings-effekten).
+def _segl_badge(size=26, card="var(--card)"):
+    return (
+        f'<svg width={size} height={size} viewBox="0 0 64 64" style="color:var(--accent);flex:none" aria-hidden=true>'
+        '<circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" stroke-width="2.5"/>'
+        '<circle cx="32" cy="32" r="13" fill="none" stroke="currentColor" stroke-width="6.5"/>'
+        f'<line x1="18" y1="50" x2="46" y2="14" stroke="{card}" stroke-width="11.5" stroke-linecap="round"/>'
+        '<line x1="18" y1="50" x2="46" y2="14" stroke="currentColor" stroke-width="6.5" stroke-linecap="round"/></svg>'
+    )
+
+
 def _verify_table(rollups):
     rr = "".join(
         f'<tr><td>{escape(str(r["day"])[:10])}</td><td>{r["visitors"]}</td><td>{r["pageviews"]}</td>'
@@ -1583,9 +1678,19 @@ def _verify_table(rollups):
         f'<td>{"✓ forankret" if r.get("txid") else "venter"}</td></tr>'
         for r in rollups
     )
+    anchored = sum(1 for r in rollups if r.get("txid"))
+    badge = ""
+    if rollups:
+        badge = (
+            '<span style="display:inline-flex;align-items:center;gap:.4rem;border:1px solid var(--line);'
+            'border-radius:999px;padding:.22rem .7rem .22rem .45rem;font-size:.72rem;color:var(--muted);'
+            f'background:var(--bg);float:right">{_segl_badge(16, "var(--bg)")}'
+            f"{anchored}/{len(rollups)} forseglet</span>"
+        )
     return (
-        "<h3>Verifiserbare tall</h3>"
-        '<p style="color:#666;font-size:.85rem">Daglige tall forsegles med en kryptografisk hash og '
+        f"<h3>{badge}<span style='display:inline-flex;align-items:center;gap:.5rem'>"
+        f"{_segl_badge(22)}Verifiserbare tall</span></h3>"
+        '<p style="color:var(--muted);font-size:.85rem">Daglige tall forsegles med en kryptografisk hash og '
         "forankres i en uavhengig, offentlig logg — så de ikke kan endres i ettertid.</p>"
         "<table><tr><th>Dag</th><th>Unike</th><th>Visn.</th><th>Segl</th><th>Status</th></tr>"
         f"{rr or '<tr><td>ingen forseglede dager enda</td><td></td><td></td><td></td><td></td></tr>'}</table>"
@@ -2157,8 +2262,8 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
     # Kampanjer (UTM) — vises kun når det finnes kampanjetrafikk i perioden.
     camp_rows = "".join(
         f"<tr><td>{escape(' · '.join(x for x in (c['source'], c['medium'], c['campaign']) if x) or 'ukjent')}</td>"
-        f"<td style='text-align:right;color:#666;width:5rem'>{c['visitors']}</td>"
-        f"<td style='text-align:right;color:#666;width:5rem'>{c['n']}</td></tr>"
+        f"<td style='text-align:right;color:var(--muted);width:5rem'>{c['visitors']}</td>"
+        f"<td style='text-align:right;color:var(--muted);width:5rem'>{c['n']}</td></tr>"
         for c in s["campaigns"]
     )
     campaigns_html = ""
@@ -2279,6 +2384,7 @@ routes = [
     Route("/billing/checkout", billing_checkout),
     Route("/billing/portal", billing_portal),
     Route("/api/hero", hero_stats),
+    Route("/api/maaler", strip_stats),
     Route("/assist.js", assist_js),
     Route("/api/assist", assist_api, methods=["POST"]),
     Route("/billing/vipps/start", vipps_start),
