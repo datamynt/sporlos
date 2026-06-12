@@ -280,6 +280,8 @@ _BRAND_CSS = """
 font-display:swap;src:url(/static/schibsted-grotesk.woff2) format('woff2')}
 :root{--bg:#faf9f6;--ink:#17263e;--muted:#5f6b7d;--accent:#2f6fed;--accent-deep:#1d4ed8;
 --line:#e8e6e0;--card:#ffffff;--ok:#15803d;
+--bar:#e9effd;--ok-bg:#ecfdf5;--ok-ink:#065f46;--err:#b91c1c;--err-bg:#fef2f2;
+--info:#3730a3;--info-bg:#eef2ff;--warn:#a16207;
 font:17px/1.65 'Schibsted Grotesk',system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
 html{overflow-y:scroll}
 body{margin:0;background:var(--bg);-webkit-font-smoothing:antialiased}
@@ -563,7 +565,7 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
       return (i * (340 / (s.length - 1))).toFixed(1) + ',' + (64 - (v / mx) * 54 + 3).toFixed(1);
     }).join(' ');
     var svg = document.getElementById('lspark');
-    svg.innerHTML = '<polyline fill="none" stroke="#2f6fed" stroke-width="2.5" ' +
+    svg.innerHTML = '<polyline fill="none" style="stroke:var(--accent)" stroke-width="2.5" ' +
       'stroke-linecap="round" stroke-linejoin="round" points="' + pts + '"/>';
     var p = svg.querySelector('polyline');
     if (p.getTotalLength && window.matchMedia('(prefers-reduced-motion: no-preference)').matches) {
@@ -1478,13 +1480,13 @@ nav .links a.btn{color:#fff;padding:.45rem .9rem}
 h1{font-size:1.7rem;letter-spacing:-.02em;margin:0}
 .tabs a{padding:.32rem .8rem;margin-left:.3rem;border:1px solid var(--line);border-radius:99px;
 text-decoration:none;color:var(--muted);font-size:.85rem;background:var(--card)}
-.tabs a.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tabs a.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;margin:1rem 0}
 .kpi b{font-size:1.9rem;display:block;line-height:1.15;letter-spacing:-.02em}
 .kpi span{color:var(--muted);font-size:.8rem}
 .kpi .d{display:block;font-size:.78rem;font-weight:600;margin-top:.2rem}
-.dg{color:var(--ok)}.dr{color:#b91c1c}.d0{color:var(--muted)}
+.dg{color:var(--ok)}.dr{color:var(--err)}.d0{color:var(--muted)}
 .chartcard{margin:0 0 .9rem;padding-bottom:.6rem}
 .chart{width:100%;height:170px;display:block}
 .chart circle{fill:transparent}.chart circle:hover{fill:var(--accent)}
@@ -1500,7 +1502,7 @@ td:last-child,th:last-child{text-align:right;color:var(--muted);width:5rem}
 tr:last-child td{border-bottom:0}
 h3{margin:0 0 .5rem;font-size:1rem;letter-spacing:-.01em}
 details summary{cursor:pointer;color:var(--accent-deep);font-size:.9rem}
-pre{background:#f3f1ec;padding:.8rem;border-radius:8px;overflow:auto;font-size:.78rem}
+pre{background:var(--bg);padding:.8rem;border-radius:8px;overflow:auto;font-size:.78rem}
 .footnote{color:var(--muted);font-size:.8rem;margin-top:2rem}
 .footnote a{color:var(--muted)}
 .ic{width:14px;height:14px;vertical-align:-2px;margin-right:.45rem;color:var(--muted);opacity:.8;flex:none}
@@ -1509,6 +1511,19 @@ pre{background:#f3f1ec;padding:.8rem;border-radius:8px;overflow:auto;font-size:.
 
 
 # Av/på for andelssøylene i tabellene — huskes i nettleseren (localStorage).
+# Mørk modus «Midnattsblekk» (design-runde 2, palett B): blekkets egen kulør
+# mørknet — papir om dagen, blekk om natten. Inkluderes KUN i dashbord/demo-
+# templatene; forsiden og juss-sidene er alltid papir. Auto via systeminnstilling.
+_DARK_CSS = """
+@media (prefers-color-scheme:dark){
+:root{--bg:#121a2b;--card:#19233a;--line:#283450;--ink:#e9edf6;--muted:#9aa6bf;
+--accent:#7da2ff;--accent-deep:#8fb0ff;--ok:#4ade80;
+--bar:#22335a;--ok-bg:#10302a;--ok-ink:#6ee7a8;--err:#f58a8a;--err-bg:#371b21;
+--info:#aebcff;--info-bg:#1b2843;--warn:#e3b341}
+}
+"""
+
+
 _BARS_JS = """<script>
 (function () {
   var k = 'sporlosBars';
@@ -1537,7 +1552,7 @@ def _stat_table(items, key, icon=None):
         ic = i.get("ikon") or (icon(str(i[key])) if icon else "")
         rows += (
             f'<tr><td title="{escape(str(i[key]))}" style="background:linear-gradient(90deg,'
-            f'#e9effd {pct:.0f}%,transparent {pct:.0f}%);border-radius:4px;padding-left:.45rem">'
+            f'var(--bar) {pct:.0f}%,transparent {pct:.0f}%);border-radius:4px;padding-left:.45rem">'
             f'{ic}{escape(str(i[key]))}</td><td>{i["n"]}</td></tr>'
         )
     return f"<table>{rows or '<tr><td>ingen data enda</td></tr>'}</table>"
@@ -1564,7 +1579,7 @@ def _delta(now, before, invert=False):
 def _verify_table(rollups):
     rr = "".join(
         f'<tr><td>{escape(str(r["day"])[:10])}</td><td>{r["visitors"]}</td><td>{r["pageviews"]}</td>'
-        f'<td style="font-family:monospace;font-size:.72rem;color:#999">{escape((r["rollup_hash"] or "")[:12])}…</td>'
+        f'<td style="font-family:monospace;font-size:.72rem;color:var(--muted)">{escape((r["rollup_hash"] or "")[:12])}…</td>'
         f'<td>{"✓ forankret" if r.get("txid") else "venter"}</td></tr>'
         for r in rollups
     )
@@ -1605,10 +1620,10 @@ def _area_chart(series, width=880, height=170):
     return (
         f'<svg viewBox="0 0 {width} {height}" preserveAspectRatio="none" class=chart role=img>'
         '<defs><linearGradient id=cg x1=0 y1=0 x2=0 y2=1>'
-        '<stop offset=0 stop-color="#2f6fed" stop-opacity=".16"/>'
-        '<stop offset=1 stop-color="#2f6fed" stop-opacity="0"/></linearGradient></defs>'
+        '<stop offset=0 style="stop-color:var(--accent)" stop-opacity=".16"/>'
+        '<stop offset=1 style="stop-color:var(--accent)" stop-opacity="0"/></linearGradient></defs>'
         f'<path d="{area}" fill="url(#cg)"/>'
-        f'<path d="{line}" fill=none stroke="#2f6fed" stroke-width="2.5" '
+        f'<path d="{line}" fill=none style="stroke:var(--accent)" stroke-width="2.5" '
         'stroke-linejoin=round stroke-linecap=round/>'
         f"{dots}</svg>"
         f'<div class=axis><span>{first}</span><span>topp: {peak} unike</span><span>{last}</span></div>'
@@ -1673,8 +1688,8 @@ def _public_stats_page(request, site, base_path, *, suffix, intro, title, descri
 <meta name=description content="{escape(description)}">
 <link rel="canonical" href="{escape(canonical)}">
 {_BRAND_HEAD}{_OG_META}
-<style>{_BRAND_CSS}{_CHROME_CSS}{_DASH_CSS}
-.demobar{{background:#eef3ff;border:1px solid #d6e2ff;color:var(--accent-deep);border-radius:10px;
+<style>{_BRAND_CSS}{_DARK_CSS}{_CHROME_CSS}{_DASH_CSS}
+.demobar{{background:var(--info-bg);border:1px solid var(--line);color:var(--info);border-radius:10px;
 padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
 </head><body>
 <div class=wrap>
@@ -1841,13 +1856,13 @@ async def dashboard(request):
         trial = ""
         if expired:
             trial = (
-                '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;'
+                '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;border-radius:7px;'
                 'font-size:.9rem"><b>Prøveperioden er utløpt.</b> Tallene dine samles fortsatt '
                 "(vi kaster aldri data) — velg en plan under for å fortsette.</p>"
             )
         elif plan == "trial" and tenant.get("trial_ends_at"):
             trial = (
-                '<p style="background:#eef2ff;color:#3730a3;padding:.5rem .8rem;border-radius:7px;'
+                '<p style="background:var(--info-bg);color:var(--info);padding:.5rem .8rem;border-radius:7px;'
                 f'font-size:.9rem">Prøveperiode — utløper {escape(str(tenant["trial_ends_at"])[:10])}.</p>'
             )
 
@@ -1856,11 +1871,11 @@ async def dashboard(request):
         if pv_lim:
             pct = min(100, round(usage["pageviews"] / pv_lim * 100))
             over = usage["pageviews"] > pv_lim
-            color = "#b91c1c" if over else ("#a16207" if pct >= 80 else "#15803d")
+            color = "var(--err)" if over else ("var(--warn)" if pct >= 80 else "var(--ok)")
             warn = ""
             if over:
                 warn = (
-                    '<p style="color:#b91c1c;margin:.4rem 0 0">Over planens visninger denne '
+                    '<p style="color:var(--err);margin:.4rem 0 0">Over planens visninger denne '
                     "måneden — alt måles fortsatt, men vurder å oppgradere.</p>"
                 )
             usage_html = (
@@ -1868,7 +1883,7 @@ async def dashboard(request):
                 'padding:.9rem 1.1rem;font-size:.85rem;color:#5f6b7d;margin:.9rem 0">'
                 f'Visninger denne måneden: <b style="color:#17263e">{_fmt_n(usage["pageviews"])}</b> '
                 f"av {_fmt_n(pv_lim)}"
-                f'<div style="background:#eee;border-radius:99px;height:6px;margin:.35rem 0">'
+                f'<div style="background:var(--line);border-radius:99px;height:6px;margin:.35rem 0">'
                 f'<div style="width:{pct}%;background:{color};height:6px;border-radius:99px"></div></div>'
                 f'Nettsteder: {usage["sites"]} av {site_lim}{warn}</div>'
             )
@@ -1876,7 +1891,7 @@ async def dashboard(request):
         limit_msg = ""
         if request.query_params.get("limit") == "sites":
             limit_msg = (
-                '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;'
+                '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;border-radius:7px;'
                 f'font-size:.9rem">Planen din har plass til {site_lim} nettsted'
                 f'{"er" if (site_lim or 0) != 1 else ""} — oppgrader for å legge til flere.</p>'
             )
@@ -1886,8 +1901,8 @@ async def dashboard(request):
             if stripe:
                 btns = "".join(
                     f'<a href="/billing/checkout?plan={k}" style="display:inline-block;'
-                    "margin:.2rem .4rem .2rem 0;padding:.4rem .7rem;border:1px solid #3730a3;"
-                    'border-radius:7px;text-decoration:none;color:#3730a3;font-size:.9rem">'
+                    "margin:.2rem .4rem .2rem 0;padding:.4rem .7rem;border:1px solid var(--info);"
+                    'border-radius:7px;text-decoration:none;color:var(--info);font-size:.9rem">'
                     f"{escape(_PLAN_LABELS[k])}</a>"
                     for k in ("liten", "vekst", "pro")
                     if STRIPE_PRICES.get(k)
@@ -1905,7 +1920,7 @@ async def dashboard(request):
                 sep = "<br>" if (btns and vbtns) else ""
                 upgrade = (
                     f'<div style="margin:1rem 0"><b>Oppgrader:</b><br>{btns}{sep}{vbtns}<br>'
-                    '<span style="color:#888;font-size:.8rem">Faktura/EHF for byrå/kommune? '
+                    '<span style="color:var(--muted);font-size:.8rem">Faktura/EHF for byrå/kommune? '
                     '<a href="/vilkar">Kontakt oss</a></span></div>'
                 )
         # API-tilgang: read-only nøkler for AI-verktøy/integrasjoner
@@ -1914,17 +1929,17 @@ async def dashboard(request):
         new_key_html = ""
         if new_key:
             new_key_html = (
-                '<p style="background:#ecfdf5;color:#065f46;padding:.6rem .8rem;border-radius:7px;'
+                '<p style="background:var(--ok-bg);color:var(--ok-ink);padding:.6rem .8rem;border-radius:7px;'
                 'font-size:.85rem;word-break:break-all"><b>Ny nøkkel — kopier den nå, den vises '
                 f"ikke igjen:</b><br><code>{escape(new_key)}</code></p>"
             )
         key_rows = "".join(
-            f'<tr><td>{escape(k["label"])} <small style="color:#999">{escape(k["prefix"])}…</small></td>'
+            f'<tr><td>{escape(k["label"])} <small style="color:var(--muted)">{escape(k["prefix"])}…</small></td>'
             f'<td>{escape(str(k["created_at"])[:10])}</td>'
             f'<td>{escape(str(k["last_used_at"])[:10]) if k["last_used_at"] else "aldri"}</td>'
             f'<td><form method=post action="/app/api-keys/revoke" style="display:inline">'
             f'<input type=hidden name=key_id value="{k["id"]}">'
-            '<button title="Trekk tilbake" style="background:none;border:0;color:#c00;cursor:pointer">✕</button>'
+            '<button title="Trekk tilbake" style="background:none;border:0;color:var(--err);cursor:pointer">✕</button>'
             "</form></td></tr>"
             for k in keys
         )
@@ -1945,9 +1960,9 @@ async def dashboard(request):
 
         # Bytt passord (+ flash-melding fra ?pw=)
         pw_flash = {
-            "ok": '<p style="background:#ecfdf5;color:#065f46;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Passordet er byttet.</p>',
-            "feil": '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Feil nåværende passord.</p>',
-            "kort": '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Nytt passord må ha minst 8 tegn.</p>',
+            "ok": '<p style="background:var(--ok-bg);color:var(--ok-ink);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Passordet er byttet.</p>',
+            "feil": '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Feil nåværende passord.</p>',
+            "kort": '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Nytt passord må ha minst 8 tegn.</p>',
         }.get(request.query_params.get("pw") or "", "")
         password_html = (
             '<div class=card><details><summary style="cursor:pointer;font-weight:600">Bytt passord</summary>'
@@ -1965,7 +1980,7 @@ async def dashboard(request):
         if tenant.get("plan") in ("liten", "vekst", "pro"):
             label = {"liten": "Liten", "vekst": "Vekst", "pro": "Pro"}[tenant["plan"]]
             if stripe and tenant.get("stripe_customer_id"):
-                portal = ' · <a href="/billing/portal" style="color:#3730a3">Administrer abonnement</a>'
+                portal = ' · <a href="/billing/portal" style="color:var(--info)">Administrer abonnement</a>'
             elif tenant.get("vipps_agreement_id") and not tenant.get("vipps_pending_plan"):
                 portal = (
                     " · betales med Vipps · "
@@ -1978,22 +1993,22 @@ async def dashboard(request):
                 portal = ""
             # <div>, ikke <p>: nettlesere lukker <p> ved <form> (Vipps-avslutt-knappen)
             planinfo = (
-                '<div style="background:#ecfdf5;color:#065f46;padding:.5rem .8rem;border-radius:7px;'
+                '<div style="background:var(--ok-bg);color:var(--ok-ink);padding:.5rem .8rem;border-radius:7px;'
                 f'font-size:.9rem;margin:1rem 0"><b>Plan:</b> {label}{portal}</div>'
             )
         vipps_flash = {
-            "ok": '<p style="background:#ecfdf5;color:#065f46;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-avtalen er aktiv — velkommen! 🎉</p>',
-            "venter": '<p style="background:#eef2ff;color:#3730a3;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Venter på bekreftelse fra Vipps — oppdater siden om et øyeblikk.</p>',
-            "avbrutt": '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-betalingen ble avbrutt — ingenting er trukket.</p>',
-            "feil": '<p style="background:#fef2f2;color:#b91c1c;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Noe gikk galt mot Vipps — prøv igjen, eller bruk kort.</p>',
-            "stoppet": '<p style="background:#eef2ff;color:#3730a3;padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-avtalen er stoppet. Planen gjelder ut betalt periode.</p>',
+            "ok": '<p style="background:var(--ok-bg);color:var(--ok-ink);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-avtalen er aktiv — velkommen! 🎉</p>',
+            "venter": '<p style="background:var(--info-bg);color:var(--info);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Venter på bekreftelse fra Vipps — oppdater siden om et øyeblikk.</p>',
+            "avbrutt": '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-betalingen ble avbrutt — ingenting er trukket.</p>',
+            "feil": '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Noe gikk galt mot Vipps — prøv igjen, eller bruk kort.</p>',
+            "stoppet": '<p style="background:var(--info-bg);color:var(--info);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-avtalen er stoppet. Planen gjelder ut betalt periode.</p>',
         }.get(request.query_params.get("vipps") or "", "")
         return HTMLResponse(
             f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>Sporløs — mine sites</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}
+<style>{_BRAND_CSS}{_DARK_CSS}
 .wrap{{max-width:640px;margin:0 auto;padding:0 1.2rem 4rem}}
 nav{{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}}
 nav a.ut{{color:var(--muted);text-decoration:none;font-size:.9rem}}
@@ -2065,13 +2080,13 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 
     # Mål / konverteringer
     goal_rows = "".join(
-        f'<tr><td>{escape(g["name"])} <small style="color:#999">'
+        f'<tr><td>{escape(g["name"])} <small style="color:var(--muted)">'
         f'({escape(g["match_type"])}: {escape(g["match_value"])})</small></td>'
         f'<td>{g["completions"]}</td><td>{g["rate"]}%</td>'
         f'<td><form method=post action="/app/goals/delete" style="display:inline">'
         f'<input type=hidden name=site value="{escape(public_id)}">'
         f'<input type=hidden name=goal_id value="{g["id"]}">'
-        '<button title="Slett" style="background:none;border:0;color:#c00;cursor:pointer">✕</button>'
+        '<button title="Slett" style="background:none;border:0;color:var(--err);cursor:pointer">✕</button>'
         "</form></td></tr>"
         for g in goals
     )
@@ -2092,7 +2107,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
     for fu in funnels:
         steprows = "".join(
             f'<tr><td>{i + 1}. {escape(st["value"])} '
-            f'<small style="color:#999">({escape(st["type"])})</small></td>'
+            f'<small style="color:var(--muted)">({escape(st["type"])})</small></td>'
             f'<td>{st["count"]}</td><td>{st["rate"]}%</td></tr>'
             for i, st in enumerate(fu["steps"])
         )
@@ -2101,11 +2116,11 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
             '<form method=post action="/app/funnels/delete" style="display:inline">'
             f'<input type=hidden name=site value="{escape(public_id)}">'
             f'<input type=hidden name=funnel_id value="{fu["id"]}">'
-            '<button title="Slett" style="background:none;border:0;color:#c00;cursor:pointer">✕</button></form>'
+            '<button title="Slett" style="background:none;border:0;color:var(--err);cursor:pointer">✕</button></form>'
             f"<table>{steprows}</table></div>"
         )
     if not frows:
-        frows = '<p style="color:#888;font-size:.9rem">Ingen funnels enda.</p>'
+        frows = '<p style="color:var(--muted);font-size:.9rem">Ingen funnels enda.</p>'
     funnels_html = (
         f"<h3>Funnels</h3>{frows}"
         '<form method=post action="/app/funnels" style="margin:.5rem 0;font-size:.9rem">'
@@ -2115,7 +2130,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
         '<textarea name=steps required rows=4 placeholder="Ett steg per linje, i rekkefolge:&#10;/&#10;/priser&#10;signup" '
         'style="width:100%;box-sizing:border-box;padding:.4rem;border:1px solid #ccc;border-radius:6px;font:inherit"></textarea>'
         '<button style="background:#1a1a1a;color:#fff;border:0;padding:.4rem .8rem;border-radius:6px;cursor:pointer;margin-top:.4rem">Lag funnel</button>'
-        '<div style="color:#888;font-size:.8rem">Linjer som starter med / = sti, ellers = hendelse. Min. 2 steg.</div>'
+        '<div style="color:var(--muted);font-size:.8rem">Linjer som starter med / = sti, ellers = hendelse. Min. 2 steg.</div>'
         "</form>"
     )
     nav_rows = "".join(
@@ -2125,7 +2140,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
     )
     nav_html = (
         "<h3>Navigasjonsstier</h3>"
-        '<p style="color:#888;font-size:.85rem">Vanligste side→side-overganger innen en økt.</p>'
+        '<p style="color:var(--muted);font-size:.85rem">Vanligste side→side-overganger innen en økt.</p>'
         "<table><tr><th>Fra → Til</th><th>Antall</th></tr>"
         f"{nav_rows or '<tr><td>ingen overganger enda</td><td></td></tr>'}</table>"
     )
@@ -2150,9 +2165,9 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
     if camp_rows:
         campaigns_html = (
             "<h3>Kampanjer (UTM)</h3>"
-            "<table><tr><th style='text-align:left;color:#888;font-size:.85rem'>Kilde · medium · kampanje</th>"
-            "<th style='text-align:right;color:#888;font-size:.85rem'>Unike</th>"
-            f"<th style='text-align:right;color:#888;font-size:.85rem'>Visn.</th></tr>{camp_rows}</table>"
+            "<table><tr><th style='text-align:left;color:var(--muted);font-size:.85rem'>Kilde · medium · kampanje</th>"
+            "<th style='text-align:right;color:var(--muted);font-size:.85rem'>Unike</th>"
+            f"<th style='text-align:right;color:var(--muted);font-size:.85rem'>Visn.</th></tr>{camp_rows}</table>"
         )
 
     blocks = "".join(
@@ -2186,7 +2201,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 <title>Sporløs — {escape(site['domain'])}</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}{_DASH_CSS}</style>
+<style>{_BRAND_CSS}{_DARK_CSS}{_DASH_CSS}</style>
 <div class=wrap>
 <nav>{_WORDMARK}<div class=links><a href="/app">Mine sites</a><a href="/logout">Logg ut</a></div></nav>
 {verify_banner}
