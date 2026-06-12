@@ -1,4 +1,7 @@
-"""Kvadratisk app-ikon (ø-merket) for Vipps/avatarer — 512x512 på papir-bakgrunn.
+"""Kvadratisk app-ikon — «Blekk»-varianten fra design-runde 2 (Negativ i squircle).
+
+Blekkmørk bunn + aksentblå disk + blekk-strek med Presisjon-proporsjoner.
+Plattformene maskerer selv (squircle/sirkel) — vi leverer fullt kvadrat.
 
 Kjør:  .venv/bin/python3 scripts/make_appikon.py  < /dev/null
 """
@@ -7,22 +10,23 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-S = 3
+S = 3  # supersampling
 W = 512 * S
-ACCENT = (47, 111, 237)
-BG = (250, 249, 246)
+INK = (23, 38, 62)  # #17263e
+ACCENT = (47, 111, 237)  # #2f6fed
 
-img = Image.new("RGB", (W, W), BG)
+img = Image.new("RGB", (W, W), INK)
 d = ImageDraw.Draw(img)
-cx = cy = W // 2
-r, stroke = 130 * S, 56 * S
-d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=ACCENT, width=stroke)
-dx, dy = 0.94 * r, 1.19 * r
-x1, y1, x2, y2 = cx - dx, cy + dy, cx + dx, cy - dy
-d.line([x1, y1, x2, y2], fill=ACCENT, width=stroke)
+
+# 64-rutenettet fra designkortet skalert opp: disk r26, strek 16,52→48,12 sw8
+k = W / 64
+d.ellipse([32 * k - 26 * k, 32 * k - 26 * k, 32 * k + 26 * k, 32 * k + 26 * k], fill=ACCENT)
+stroke = round(8 * k)
+x1, y1, x2, y2 = 16 * k, 52 * k, 48 * k, 12 * k
+d.line([x1, y1, x2, y2], fill=INK, width=stroke)
 cap = stroke // 2
 for x, y in ((x1, y1), (x2, y2)):
-    d.ellipse([x - cap, y - cap, x + cap, y + cap], fill=ACCENT)
+    d.ellipse([x - cap, y - cap, x + cap, y + cap], fill=INK)
 
 img = img.resize((512, 512), Image.LANCZOS)
 out = Path(__file__).resolve().parent.parent / "static" / "brand" / "app-ikon.png"

@@ -228,10 +228,14 @@ _FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 <line x1="17" y1="55" x2="47" y2="13" stroke="#2f6fed" stroke-width="7" stroke-linecap="round"/>
 </svg>"""
 
+# Presisjon-merket (design-runde 2): medium luft der streken krysser ringen —
+# casing-strek i bakgrunnsfargen under hovedstreken. Favicon beholder tett
+# variant (luften kollapser på 16px uansett).
 _WORDMARK = (
     '<a class=brand href="/"><svg viewBox="0 0 64 64" aria-hidden=true>'
-    '<circle cx="32" cy="32" r="16" fill="none" stroke="currentColor" stroke-width="7"/>'
-    '<line x1="17" y1="51" x2="47" y2="13" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>'
+    '<circle cx="32" cy="32" r="16" fill="none" stroke="currentColor" stroke-width="6.5"/>'
+    '<line x1="17" y1="51" x2="47" y2="13" stroke="var(--mark-gap,var(--bg))" stroke-width="12.5" stroke-linecap="round"/>'
+    '<line x1="17" y1="51" x2="47" y2="13" stroke="currentColor" stroke-width="6.5" stroke-linecap="round"/>'
     "</svg>sporløs</a>"
 )
 
@@ -285,7 +289,7 @@ footer.site{background:var(--ink);color:#aeb9cb;font-size:.85rem;line-height:1.9
 footer.site .wrap{padding-top:2.6rem;padding-bottom:3rem}
 footer.site a{color:#cdd6e4}
 footer.site .brand{color:#fff;margin-bottom:.6rem}
-footer.site .brand svg{color:var(--accent)}
+footer.site .brand svg{color:var(--accent);--mark-gap:var(--ink)}
 """
 
 _SITE_NAV = (

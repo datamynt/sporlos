@@ -41,8 +41,9 @@
   document.head.appendChild(style);
 
   var MARK = '<svg width="26" height="26" viewBox="0 0 64 64" aria-hidden="true">' +
-    '<circle cx="32" cy="32" r="16" fill="none" stroke="' + ACCENT + '" stroke-width="7"/>' +
-    '<line x1="17" y1="51" x2="47" y2="13" stroke="' + ACCENT + '" stroke-width="7" stroke-linecap="round"/></svg>';
+    '<circle cx="32" cy="32" r="16" fill="none" stroke="' + ACCENT + '" stroke-width="6.5"/>' +
+    '<line x1="17" y1="51" x2="47" y2="13" stroke="#fff" stroke-width="12.5" stroke-linecap="round"/>' +
+    '<line x1="17" y1="51" x2="47" y2="13" stroke="' + ACCENT + '" stroke-width="6.5" stroke-linecap="round"/></svg>';
 
   var btn = document.createElement("button");
   btn.className = "spl-btn";
