@@ -30,7 +30,7 @@ from starlette.responses import (
 )
 from starlette.routing import Route
 
-from app import api, mailer, notify, store, vipps
+from app import api, icons, mailer, notify, store, vipps
 from app.auth import check_token, hash_password, verify_password
 from app.datacenter import is_datacenter
 from app.geo import country_no
@@ -1422,6 +1422,8 @@ details summary{cursor:pointer;color:var(--accent-deep);font-size:.9rem}
 pre{background:#f3f1ec;padding:.8rem;border-radius:8px;overflow:auto;font-size:.78rem}
 .footnote{color:var(--muted);font-size:.8rem;margin-top:2rem}
 .footnote a{color:var(--muted)}
+.ic{width:14px;height:14px;vertical-align:-2px;margin-right:.45rem;color:var(--muted);opacity:.8;flex:none}
+.fl{margin-right:.4rem}
 """
 
 
@@ -1440,17 +1442,22 @@ _BARS_JS = """<script>
 </script>"""
 
 
-def _stat_table(items, key):
+def _stat_table(items, key, icon=None):
     """Nøkkel/antall-tabell: andelssøyle bak hver rad (relativt til toppraden),
-    ellipsis-trunkering og full verdi som tooltip."""
+    ellipsis-trunkering og full verdi som tooltip.
+
+    Ikon per rad: enten `icon` (callable verdi→html, f.eks. icons.browser)
+    eller forhåndsutfylt `i["ikon"]` (brukes for land, der flagget må slås
+    opp FØR navnet oversettes til norsk)."""
     mx = max((i["n"] for i in items), default=0) or 1
     rows = ""
     for i in items:
         pct = i["n"] / mx * 100
+        ic = i.get("ikon") or (icon(str(i[key])) if icon else "")
         rows += (
             f'<tr><td title="{escape(str(i[key]))}" style="background:linear-gradient(90deg,'
             f'#e9effd {pct:.0f}%,transparent {pct:.0f}%);border-radius:4px;padding-left:.45rem">'
-            f'{escape(str(i[key]))}</td><td>{i["n"]}</td></tr>'
+            f'{ic}{escape(str(i[key]))}</td><td>{i["n"]}</td></tr>'
         )
     return f"<table>{rows or '<tr><td>ingen data enda</td></tr>'}</table>"
 
@@ -1535,7 +1542,10 @@ def _public_stats_page(request, site, base_path, *, suffix, intro, title, descri
     label, days = _PERIODS[period]
 
     s = store.stats(site["id"], days)
-    s["countries"] = [{**c, "k": country_no(c["k"])} for c in s["countries"]]
+    # Flagg slås opp på engelsk navn FØR oversettelse til norsk visningsnavn
+    s["countries"] = [
+        {**c, "ikon": icons.flag(c["k"]), "k": country_no(c["k"])} for c in s["countries"]
+    ]
     prev = store.kpis(site["id"], days, offset=1)
     chart = _area_chart(store.timeseries(site["id"], days))
     flow = store.flow_stats(site["id"], days)
@@ -1579,7 +1589,7 @@ padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
   <div class=card><h3>Utgangssider</h3>{_stat_table(flow['exits'], 'path')}</div>
   <div class=card><h3>Land</h3>{_stat_table(s['countries'], 'k')}</div>
   <div class=card><h3>Fylke / region</h3>{_stat_table(s['regions'], 'k')}</div>
-  <div class=card><h3>Enheter</h3>{_stat_table(s['devices'], 'k')}</div>
+  <div class=card><h3>Enheter</h3>{_stat_table(s['devices'], 'k', icons.device)}</div>
 </div>
 <div class="card block">{verify_html}</div>
 <div class="card block" style="text-align:center;padding:2rem">
@@ -1915,7 +1925,10 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
     label, days = _PERIODS[period]
 
     s = store.stats(site["id"], days)
-    s["countries"] = [{**c, "k": country_no(c["k"])} for c in s["countries"]]
+    # Flagg slås opp på engelsk navn FØR oversettelse til norsk visningsnavn
+    s["countries"] = [
+        {**c, "ikon": icons.flag(c["k"]), "k": country_no(c["k"])} for c in s["countries"]
+    ]
     prev = store.kpis(site["id"], days, offset=1)
     series = store.timeseries(site["id"], days)
     events = store.top_events(site["id"], days)
@@ -2087,9 +2100,9 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
   <div class=card><h3>Utgangssider</h3>{table(flow['exits'], 'path')}</div>
   <div class=card><h3>Land</h3>{table(s['countries'], 'k')}</div>
   <div class=card><h3>Fylke / region</h3>{table(s['regions'], 'k')}</div>
-  <div class=card><h3>Enheter</h3>{table(s['devices'], 'k')}</div>
-  <div class=card><h3>Nettlesere</h3>{table(s['browsers'], 'k')}</div>
-  <div class=card><h3>Operativsystem</h3>{table(s['os'], 'k')}</div>
+  <div class=card><h3>Enheter</h3>{table(s['devices'], 'k', icons.device)}</div>
+  <div class=card><h3>Nettlesere</h3>{table(s['browsers'], 'k', icons.browser)}</div>
+  <div class=card><h3>Operativsystem</h3>{table(s['os'], 'k', icons.os)}</div>
 </div>
 {blocks}
 <div class="card block"><details><summary>Vis sporings-kode</summary>
