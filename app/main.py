@@ -435,7 +435,7 @@ font-variant-numeric:tabular-nums;line-height:1.15}
 .strip span{white-space:nowrap}
 section{padding:3rem 0;border-bottom:1px solid var(--line)}
 h2{font-size:1.5rem;letter-spacing:-.015em;margin:0 0 1.2rem}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.2rem 1.3rem}
 .card h3{margin:0 0 .4rem;font-size:1.02rem}
 .card p{margin:0;font-size:.92rem;color:var(--muted)}
