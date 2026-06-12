@@ -63,10 +63,20 @@ o_mark(ImageDraw.Draw(wm), int(W * 0.86), int(H * 0.78), 230 * S, 52 * S, INK + 
 img = Image.alpha_composite(img.convert("RGBA"), wm).convert("RGB")
 d = ImageDraw.Draw(img)
 
-# Lockup: ø-merke + «sporløs»
+# Lockup: «Blekk»-disken + «sporløs» (vannmerket beholder strek-varianten — luftigere)
 mark_r = 54 * S
 mx, my = 96 * S + mark_r, 250 * S
-o_mark(d, mx, my, mark_r, 24 * S, ACCENT)
+disk = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+dd = ImageDraw.Draw(disk)
+dd.ellipse([mx - mark_r, my - mark_r, mx + mark_r, my + mark_r], fill=ACCENT)
+_sw = round(mark_r * 8 / 26)
+_dx, _dy = mark_r * 16 / 26, mark_r * 20 / 26
+_x1, _y1, _x2, _y2 = mx - _dx, my + _dy, mx + _dx, my - _dy
+dd.line([_x1, _y1, _x2, _y2], fill=(0, 0, 0, 0), width=_sw)  # stanser ut streken
+for _x, _y in ((_x1, _y1), (_x2, _y2)):
+    dd.ellipse([_x - _sw // 2, _y - _sw // 2, _x + _sw // 2, _y + _sw // 2], fill=(0, 0, 0, 0))
+img = Image.alpha_composite(img.convert("RGBA"), disk).convert("RGB")
+d = ImageDraw.Draw(img)
 wordmark = font(124, 800)
 d.text((mx + mark_r + 36 * S, my), "sporløs", font=wordmark, fill=INK, anchor="lm")
 

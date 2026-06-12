@@ -253,19 +253,20 @@ def _normalize_referrer(ref: str | None) -> str | None:
 # Palett: varm papir-bakgrunn, marine blekk, én klar blå aksent. System-fonter
 # (ingen Google Fonts — et personvernprodukt lekker ikke besøk til tredjepart).
 
+# «Blekk»-merket (design-runde 2) overalt: solid disk m/ utstanset strek —
+# solide flater vinner over strek i små størrelser. Favicon = mini-app-ikon.
 _FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<circle cx="32" cy="36" r="16" fill="none" stroke="#2f6fed" stroke-width="7"/>
-<line x1="17" y1="55" x2="47" y2="13" stroke="#2f6fed" stroke-width="7" stroke-linecap="round"/>
+<rect width="64" height="64" rx="14" fill="#17263e"/>
+<circle cx="32" cy="32" r="22" fill="#2f6fed"/>
+<line x1="18.5" y1="49" x2="45.5" y2="15" stroke="#17263e" stroke-width="7" stroke-linecap="round"/>
 </svg>"""
 
-# Presisjon-merket (design-runde 2): medium luft der streken krysser ringen —
-# casing-strek i bakgrunnsfargen under hovedstreken. Favicon beholder tett
-# variant (luften kollapser på 16px uansett).
+# Ordmerket: aksent-disk m/ strek i flatens farge — --mark-gap følger
+# konteksten (papir i nav, blekk i mørk footer = utstanset-effekt).
 _WORDMARK = (
     '<a class=brand href="/"><svg viewBox="0 0 64 64" aria-hidden=true>'
-    '<circle cx="32" cy="32" r="16" fill="none" stroke="currentColor" stroke-width="6.5"/>'
-    '<line x1="17" y1="51" x2="47" y2="13" stroke="var(--mark-gap,var(--bg))" stroke-width="12.5" stroke-linecap="round"/>'
-    '<line x1="17" y1="51" x2="47" y2="13" stroke="currentColor" stroke-width="6.5" stroke-linecap="round"/>'
+    '<circle cx="32" cy="32" r="26" fill="currentColor"/>'
+    '<line x1="16" y1="52" x2="48" y2="12" stroke="var(--mark-gap,var(--bg))" stroke-width="8" stroke-linecap="round"/>'
     "</svg>sporløs</a>"
 )
 
