@@ -16,3 +16,4 @@ __pycache__/
 geoip/
 integrations/wordpress/*.zip
 design-system/
+LINKEDIN_KO.md
