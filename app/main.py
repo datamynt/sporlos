@@ -372,11 +372,15 @@ async def og_image(request):
                     headers={"cache-control": "public, max-age=86400"})
 
 
+# NB: attributt-verdier MÅ stå i anførselstegn — gyldig HTML5 uten, men LinkedIns
+# parser hopper over uquotede property=og:* og viser ingen thumbnail (verifisert
+# via Post Inspector 2026-06-12).
 _OG_META = (
-    '<meta property=og:image content="https://sporlos.no/static/og.png">'
-    '<meta property=og:image:width content="1200">'
-    '<meta property=og:image:height content="630">'
-    '<meta name=twitter:card content="summary_large_image">'
+    '<meta property="og:image" content="https://sporlos.no/static/og.png">'
+    '<meta property="og:image:width" content="1200">'
+    '<meta property="og:image:height" content="630">'
+    '<meta property="og:image:type" content="image/png">'
+    '<meta name="twitter:card" content="summary_large_image">'
 )
 
 
@@ -386,13 +390,13 @@ async def landing(request):
         """<!doctype html><html lang=no><meta charset=utf-8>
 <title>Sporløs — webanalyse uten cookie-banner</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<meta name=description content="Cookieløs, samtykke-fri webanalyse bygget i Norge. Ingen cookie-banner. Data på norsk-eid infrastruktur.">
-<link rel=canonical href="https://sporlos.no/">
-<meta property=og:title content="Sporløs — webanalyse uten cookie-banner">
-<meta property=og:description content="Cookieløs, samtykke-fri webanalyse bygget i Norge. Ingen cookie-banner. Data på norsk-eid infrastruktur.">
-<meta property=og:type content="website">
-<meta property=og:url content="https://sporlos.no/">
-<meta property=og:locale content="nb_NO">
+<meta name="description" content="Cookieløs, samtykke-fri webanalyse bygget i Norge. Ingen cookie-banner. Data på norsk-eid infrastruktur.">
+<link rel="canonical" href="https://sporlos.no/">
+<meta property="og:title" content="Sporløs — webanalyse uten cookie-banner">
+<meta property="og:description" content="Cookieløs, samtykke-fri webanalyse bygget i Norge. Ingen cookie-banner. Data på norsk-eid infrastruktur.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://sporlos.no/">
+<meta property="og:locale" content="nb_NO">
 """
         + _BRAND_HEAD
         + _OG_META
@@ -1291,13 +1295,13 @@ async def ga_alternativ(request):
         """<!doctype html><html lang=no><meta charset=utf-8>
 <title>Norsk alternativ til Google Analytics — ærlig sammenligning | Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<meta name=description content="Hva mister du og hva får du ved å bytte fra Google Analytics til Sporløs? Ærlig sammenligning: cookie-banner, datakvalitet, Google Ads, SEO og pris.">
-<link rel=canonical href="https://sporlos.no/google-analytics-alternativ">
-<meta property=og:title content="Norsk alternativ til Google Analytics — ærlig sammenligning">
-<meta property=og:description content="Hva mister du og hva får du ved å bytte fra Google Analytics? Ærlig sammenligning uten skjønnmaling.">
-<meta property=og:type content="article">
-<meta property=og:url content="https://sporlos.no/google-analytics-alternativ">
-<meta property=og:locale content="nb_NO">
+<meta name="description" content="Hva mister du og hva får du ved å bytte fra Google Analytics til Sporløs? Ærlig sammenligning: cookie-banner, datakvalitet, Google Ads, SEO og pris.">
+<link rel="canonical" href="https://sporlos.no/google-analytics-alternativ">
+<meta property="og:title" content="Norsk alternativ til Google Analytics — ærlig sammenligning">
+<meta property="og:description" content="Hva mister du og hva får du ved å bytte fra Google Analytics? Ærlig sammenligning uten skjønnmaling.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://sporlos.no/google-analytics-alternativ">
+<meta property="og:locale" content="nb_NO">
 """
         + _BRAND_HEAD
         + _OG_META
