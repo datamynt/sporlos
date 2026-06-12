@@ -20,22 +20,29 @@ WHITE = (250, 250, 250)
 ACCENT = (47, 111, 237)
 
 
-def o_mark(draw, cx, cy, r, stroke, color):
-    draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=color, width=stroke)
-    dx, dy = 0.94 * r, 1.19 * r
+def disk_mark(img, cx, cy, r, color):
+    """«Blekk»-disken: solid sirkel m/ utstanset (transparent) skråstrek.
+    Geometri fra app-ikonet: strek 16,52→48,12 / sw8 i 64-grid, skalert til r."""
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=color)
+    stroke = round(r * 8 / 26)
+    dx, dy = r * 16 / 26, r * 20 / 26
     x1, y1, x2, y2 = cx - dx, cy + dy, cx + dx, cy - dy
-    draw.line([x1, y1, x2, y2], fill=color, width=stroke)
+    # ImageDraw ERSTATTER piksler (ingen blending) → (0,0,0,0) stanser ut streken
+    d.line([x1, y1, x2, y2], fill=(0, 0, 0, 0), width=stroke)
     cap = stroke // 2
     for x, y in ((x1, y1), (x2, y2)):
-        draw.ellipse([x - cap, y - cap, x + cap, y + cap], fill=color)
+        d.ellipse([x - cap, y - cap, x + cap, y + cap], fill=(0, 0, 0, 0))
+    img.alpha_composite(layer)
 
 
 def lockup(text_color, name):
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
     r = 38 * S
     cx, cy = 10 * S + r, H // 2
-    o_mark(d, cx, cy, r, 17 * S, ACCENT)
+    disk_mark(img, cx, cy, r, ACCENT)
+    d = ImageDraw.Draw(img)
     f = ImageFont.truetype(FONT, 86 * S)
     f.set_variation_by_axes([800])
     d.text((cx + r + 24 * S, cy), "sporløs", font=f, fill=text_color, anchor="lm")
