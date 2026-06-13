@@ -29,7 +29,8 @@ from starlette.responses import (
     RedirectResponse,
     Response,
 )
-from starlette.routing import Route
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from app import api, assist, icons, mailer, notify, store, vipps
 from app.auth import check_token, hash_password, verify_password
@@ -111,6 +112,24 @@ _ASSIST_JS = (Path(__file__).resolve().parent.parent / "assist" / "widget.js").r
 _SHOPIFY_PIXEL = (
     Path(__file__).resolve().parent.parent / "integrations" / "shopify" / "sporlos-pixel.js"
 ).read_text()
+# Favicon-pakke (generert av scripts/make_favicons.py). Google leter spesifikt etter
+# /favicon.ico; nettlesere etter /apple-touch-icon.png. Leses én gang ved oppstart.
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+_FAVICON_ICO = (_STATIC_DIR / "brand" / "favicon.ico").read_bytes()
+_APPLE_ICON = (_STATIC_DIR / "brand" / "apple-touch-icon.png").read_bytes()
+_WEBMANIFEST = json.dumps({
+    "name": "Sporløs",
+    "short_name": "Sporløs",
+    "description": "Cookieløs, samtykke-fri webanalyse bygget i Norge.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#faf9f6",
+    "theme_color": "#faf9f6",
+    "icons": [
+        {"src": "/static/brand/icon-192.png", "sizes": "192x192", "type": "image/png"},
+        {"src": "/static/brand/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    ],
+}, ensure_ascii=False)
 
 
 async def healthz(request):
@@ -438,7 +457,13 @@ _WORDMARK = (
 )
 
 _BRAND_HEAD = (
-    '<link rel=icon href="/favicon.svg" type="image/svg+xml">'
+    # Modern: skarp SVG. Fallback: ICO (Google) + PNG (crawlere uten SVG). Apple + PWA.
+    '<link rel="icon" type="image/svg+xml" href="/favicon.svg">'
+    '<link rel="icon" href="/favicon.ico" sizes="48x48">'
+    '<link rel="icon" type="image/png" sizes="48x48" href="/static/brand/favicon-48.png">'
+    '<link rel="icon" type="image/png" sizes="96x96" href="/static/brand/favicon-96.png">'
+    '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
+    '<link rel="manifest" href="/site.webmanifest">'
     '<meta name=theme-color content="#faf9f6">'
 )
 
@@ -516,6 +541,22 @@ _SITE_FOOTER = (
 
 async def favicon(request):
     return Response(_FAVICON_SVG, media_type="image/svg+xml",
+                    headers={"cache-control": "public, max-age=604800"})
+
+
+async def favicon_ico(request):
+    # Google og eldre nettlesere ber om /favicon.ico ved roten, uavhengig av <link>.
+    return Response(_FAVICON_ICO, media_type="image/x-icon",
+                    headers={"cache-control": "public, max-age=604800"})
+
+
+async def apple_icon(request):
+    return Response(_APPLE_ICON, media_type="image/png",
+                    headers={"cache-control": "public, max-age=604800"})
+
+
+async def webmanifest(request):
+    return Response(_WEBMANIFEST, media_type="application/manifest+json",
                     headers={"cache-control": "public, max-age=604800"})
 
 
@@ -1390,6 +1431,7 @@ async def utviklere(request):
 <title>API — Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name=description content="Read-only Stats-API for AI-verktøy og integrasjoner. Kun aggregater — aldri rådata.">
+<link rel="canonical" href="https://sporlos.no/utviklere">
 {_BRAND_HEAD}
 <style>{_BRAND_CSS}{_CHROME_CSS}
 .content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
@@ -1444,7 +1486,12 @@ async def shopify_guide(request):
 <title>Shopify — Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name=description content="Cookieløs, samtykke-fri webanalyse for Shopify — uten cookie-banner. Måler også checkout. Lim inn én egendefinert pixel.">
-{_BRAND_HEAD}
+<link rel="canonical" href="https://sporlos.no/shopify">
+<meta property="og:title" content="Sporløs på Shopify — cookieløs analyse uten cookie-banner">
+<meta property="og:description" content="Lim inn én egendefinert pixel. Måler også checkout-stegene. Ingen cookies, ingen cookie-banner.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://sporlos.no/shopify">
+{_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_CHROME_CSS}
 .content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
 h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
@@ -1497,11 +1544,14 @@ Annen plattform? Lim inn <a href="/utviklere">sporings-snippeten</a> rett i tema
     )
 
 
-def _legal(title, inner):
+def _legal(title, inner, path="", desc=""):
+    canon = f'<link rel="canonical" href="https://sporlos.no{path}">' if path else ""
+    meta_desc = f'<meta name="description" content="{escape(desc)}">' if desc else ""
     return HTMLResponse(
         f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>{escape(title)} — Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
+{meta_desc}{canon}
 {_BRAND_HEAD}
 <style>{_BRAND_CSS}{_CHROME_CSS}
 .content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
@@ -1523,7 +1573,9 @@ Sist oppdatert 2026-06-10 · utkast, kvalitetssikres av jurist.</p>
 async def vilkar(request):
     return _legal(
         "Salgsbetingelser",
-        """<h1>Salgsbetingelser</h1>
+        path="/vilkar",
+        desc="Salgsbetingelser for webanalysetjenesten Sporløs — utformet etter Forbrukertilsynets anbefalinger.",
+        inner="""<h1>Salgsbetingelser</h1>
 <p>Disse salgsbetingelsene gjelder kjøp av abonnement på webanalysetjenesten Sporløs, og er utformet
 etter Forbrukertilsynets anbefalinger for forbrukerkjøp over internett. Tjenesten selges også til
 næringsdrivende; enkelte forbrukerrettigheter (f.eks. angrerett) gjelder kun forbrukere.</p>
@@ -1597,7 +1649,9 @@ Avtalen reguleres av norsk rett.</p>""",
 async def personvern(request):
     return _legal(
         "Personvernerklæring",
-        """<h1>Personvernerklæring</h1>
+        path="/personvern",
+        desc="Slik behandler Sporløs personopplysninger: ingen IP-lagring, ingen cookies, kun daglig-roterende hash.",
+        inner="""<h1>Personvernerklæring</h1>
 <p>Denne erklæringen beskriver hvordan Datamynt AS behandler personopplysninger som
 behandlingsansvarlig for kunder og besøkende på sporlos.no.</p>
 
@@ -1786,7 +1840,7 @@ async def robots(request):
 
 
 async def sitemap(request):
-    pages = ["/", "/demo", "/google-analytics-alternativ", "/sporsmal", "/signup", "/vilkar", "/personvern", "/utviklere"]
+    pages = ["/", "/demo", "/google-analytics-alternativ", "/sporsmal", "/shopify", "/signup", "/vilkar", "/personvern", "/utviklere"]
     urls = "".join(f"<url><loc>https://sporlos.no{p}</loc></url>" for p in pages)
     return Response(
         f'<?xml version="1.0" encoding="UTF-8"?>'
@@ -2635,8 +2689,13 @@ routes = [
     Route("/robots.txt", robots),
     Route("/sitemap.xml", sitemap),
     Route("/favicon.svg", favicon),
+    Route("/favicon.ico", favicon_ico),
+    Route("/apple-touch-icon.png", apple_icon),
+    Route("/site.webmanifest", webmanifest),
     Route("/static/schibsted-grotesk.woff2", brand_font),
     Route("/static/og.png", og_image),
+    # Resten av static/ (favicon-PNG-er, brand-logoer) — eksplisitte ruter over vinner.
+    Mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static"),
     Route("/signup", signup, methods=["GET", "POST"]),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/registrer", _alias("/signup")),
