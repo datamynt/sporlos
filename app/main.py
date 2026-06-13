@@ -107,6 +107,10 @@ if STRIPE_SECRET:
 _TRACKER = (Path(__file__).resolve().parent.parent / "tracker" / "sporlos.js").read_text()
 # Assistent-widgeten — samme mønster (egen fil, ikke inline-JS).
 _ASSIST_JS = (Path(__file__).resolve().parent.parent / "assist" / "widget.js").read_text()
+# Shopify Custom Pixel (Fase 1) — leses én gang, vises på /shopify til kopiering.
+_SHOPIFY_PIXEL = (
+    Path(__file__).resolve().parent.parent / "integrations" / "shopify" / "sporlos-pixel.js"
+).read_text()
 
 
 async def healthz(request):
@@ -1433,6 +1437,66 @@ Verktøy som kan gjøre HTTP-kall trenger ikke mer enn dette.</p>
     )
 
 
+async def shopify_guide(request):
+    """Installasjonsguide for Shopify Custom Pixel (Fase 1) — kopier-og-lim."""
+    return HTMLResponse(
+        f"""<!doctype html><html lang=no><meta charset=utf-8>
+<title>Shopify — Sporløs</title>
+<meta name=viewport content="width=device-width, initial-scale=1">
+<meta name=description content="Cookieløs, samtykke-fri webanalyse for Shopify — uten cookie-banner. Måler også checkout. Lim inn én egendefinert pixel.">
+{_BRAND_HEAD}
+<style>{_BRAND_CSS}{_CHROME_CSS}
+.content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
+h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
+ol{{padding-left:1.2rem}}ol li{{margin:.4rem 0}}
+pre{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.8rem;overflow-x:auto;font-size:.78rem;max-height:340px}}
+code{{font-size:.88em}}
+table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-bottom:1px solid var(--line);vertical-align:top;font-size:.9rem}}
+.muted{{font-size:.85rem;color:var(--muted)}}
+.note{{background:var(--info-bg);color:var(--info);border-radius:8px;padding:.7rem .9rem;font-size:.88rem}}</style>
+{_SELF_SNIPPET}
+<div class=wrap>
+{_SITE_NAV}
+<div class=content>
+<h1>Sporløs på Shopify</h1>
+<p>Cookieløs, samtykke-fri webanalyse for Shopify-butikker — <b>uten cookie-banner</b>,
+uten å lekke besøkende til tredjepart. Bonus: dette måler også checkout-stegene, som
+vanlige tema-snippets ikke får tilgang til (Shopify-checkout ligger på et låst domene).</p>
+
+<h2>Installer på to minutter</h2>
+<ol>
+<li>Shopify-admin → <b>Innstillinger → Kundehendelser</b>.</li>
+<li>Klikk <b>«Legg til egendefinert pixel»</b>, gi den navnet <code>Sporløs</code>.</li>
+<li>Kopier <b>hele</b> koden under og lim den inn.</li>
+<li>Bytt <code>DITT_SITE_ID_HER</code> med din egen site-ID — finn den i
+    <a href="/app">dashbordet</a> under «Vis sporings-kode».</li>
+<li>Klikk <b>Lagre</b> → <b>Koble til</b>. Ferdig.</li>
+</ol>
+<pre>{escape(_SHOPIFY_PIXEL)}</pre>
+
+<h2>Hva som måles</h2>
+<table>
+<tr><td><code>page_viewed</code></td><td>sidevisninger</td></tr>
+<tr><td><code>product_viewed</code></td><td>produktvisning</td></tr>
+<tr><td><code>product_added_to_cart</code></td><td>lagt i handlekurv</td></tr>
+<tr><td><code>checkout_started</code></td><td>påbegynt checkout</td></tr>
+<tr><td><code>checkout_completed</code></td><td>fullført kjøp — sett som konverteringsmål i Sporløs</td></tr>
+<tr><td><code>search_submitted</code></td><td>butikksøk</td></tr>
+</table>
+<p class=muted>Ingen ordreverdi eller kundedata sendes — kun hendelsesnavnet. Ingen cookies,
+ingen <code>localStorage</code>, ingen fingerprinting. Derfor: ingen cookie-banner for Sporløs.</p>
+
+<div class=note>Tipset gjelder kun <b>app-pixler</b> (ikke denne): Shopifys «Optimized»-modus
+struper aldri en egendefinert pixel som denne. Du er trygg.</div>
+
+<p class=muted style="margin-top:1.4rem">Bruker du WordPress i stedet?
+<a href="https://wordpress.org/plugins/sporlos-analytics/">Sporløs-pluginen ligger i katalogen</a>.
+Annen plattform? Lim inn <a href="/utviklere">sporings-snippeten</a> rett i temaet.</p>
+</div></div>
+{_SITE_FOOTER}"""
+    )
+
+
 def _legal(title, inner):
     return HTMLResponse(
         f"""<!doctype html><html lang=no><meta charset=utf-8>
@@ -2544,7 +2608,10 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 </div>
 {blocks}
 <div class="card block"><details><summary>Vis sporings-kode</summary>
-<pre>{escape(f'<script defer data-site="{public_id}" data-api="{PUBLIC_BASE}/api/event" src="{PUBLIC_BASE}/sporlos.js"></script>')}</pre></details></div>
+<pre>{escape(f'<script defer data-site="{public_id}" data-api="{PUBLIC_BASE}/api/event" src="{PUBLIC_BASE}/sporlos.js"></script>')}</pre>
+<p class=muted style="font-size:.82rem;margin:.5rem 0 0">Plattform-guider:
+<a href="https://wordpress.org/plugins/sporlos-analytics/">WordPress</a> ·
+<a href="/shopify">Shopify</a></p></details></div>
 {public_html}
 <p class=footnote>Cookieløs · ingen IP lagret · samtykkefri ·
 Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
@@ -2602,6 +2669,7 @@ routes = [
     Route("/app/api-keys/revoke", api_key_revoke, methods=["POST"]),
     Route("/app/password", change_password, methods=["POST"]),
     Route("/utviklere", utviklere),
+    Route("/shopify", shopify_guide),
     Route("/api/v1/sites", api.sites),
     Route("/api/v1/stats", api.stats),
     Route("/api/v1/timeseries", api.timeseries),
