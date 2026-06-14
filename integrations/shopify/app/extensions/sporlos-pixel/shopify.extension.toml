@@ -1,0 +1,26 @@
+# Web Pixel-app-extension for Sporløs (Fase 2).
+# Genereres normalt av `shopify app generate extension --template web_pixel`;
+# håndskrevet her så kjernen er klar før Partner-kontoen finnes.
+api_version = "2025-01"
+
+[[extensions]]
+name = "Sporløs"
+handle = "sporlos-pixel"
+type = "web_pixel_extension"
+# strict sandbox: ingen direkte document/window — alt leses fra event.context.
+runtime_context = "strict"
+
+# Personvern-erklæring til Shopify (vises for kjøpmann). Sporløs samler ingen av disse
+# på person-nivå, men feltene må deklareres. Vi setter alt til at vi IKKE selger data.
+[extensions.settings]
+type = "object"
+
+  [extensions.settings.fields.site_id]
+  name = "Sporløs site-ID"
+  description = "Finn den i sporlos.no/app under «Vis sporings-kode» (f.eks. 6LIACtOSP-S7)."
+  type = "single_line_text_field"
+
+  [extensions.settings.fields.endpoint]
+  name = "Sporløs-server"
+  description = "La stå tom for sporlos.no. Self-hostere: https://analytics.dittdomene.no/api/event"
+  type = "single_line_text_field"
