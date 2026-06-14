@@ -13,6 +13,8 @@ COPY tracker/ ./tracker/
 COPY assist/ ./assist/
 COPY db/ ./db/
 COPY static/ ./static/
+# integrasjoner: appen leser integrations/shopify/sporlos-pixel.js ved oppstart
+COPY integrations/ ./integrations/
 
 # Kjør som ikke-root
 RUN useradd -m appuser

@@ -10,3 +10,5 @@ IN_FLIGHT.md
 *_RESEARCH*.md
 GTM_RESEARCH*.md
 docs/
+# SVN-arbeidskopi (gitignored uansett) — skal ikke inn i build-konteksten
+wp-svn/
