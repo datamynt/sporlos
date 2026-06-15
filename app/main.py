@@ -474,6 +474,7 @@ font-display:swap;src:url(/static/schibsted-grotesk.woff2) format('woff2')}
 --line:#e8e6e0;--card:#ffffff;--ok:#15803d;
 --bar:#e9effd;--ok-bg:#ecfdf5;--ok-ink:#065f46;--err:#b91c1c;--err-bg:#fef2f2;
 --info:#3730a3;--info-bg:#eef2ff;--warn:#a16207;
+--btn-bg:#17263e;--btn-bg-h:#0e1a2e;--accent-fill:#2f6fed;--accent-fill-h:#1d4ed8;
 font:17px/1.65 'Schibsted Grotesk',system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
 html{overflow-y:scroll}
 body{margin:0;background:var(--bg);-webkit-font-smoothing:antialiased}
@@ -483,12 +484,12 @@ a{color:var(--accent-deep)}
 .brand{display:inline-flex;align-items:center;gap:.45rem;font-weight:700;font-size:1.15rem;
 letter-spacing:-.02em;color:var(--ink);text-decoration:none}
 .brand svg{width:1.12em;height:1.12em;color:var(--accent);transform:translateY(-.02em)}
-.btn{display:inline-block;background:var(--ink);color:#fff;text-decoration:none;
+.btn{display:inline-block;background:var(--btn-bg);color:#fff;text-decoration:none;
 padding:.7rem 1.4rem;border-radius:9px;font-weight:600;border:0;font-size:1rem;cursor:pointer;
 transition:background .15s,transform .15s,box-shadow .15s}
-.btn:hover{background:#0e1a2e;transform:translateY(-1px)}
-.btn-accent{background:var(--accent);box-shadow:0 8px 20px -10px rgba(47,111,237,.55)}
-.btn-accent:hover{background:var(--accent-deep)}
+.btn:hover{background:var(--btn-bg-h);transform:translateY(-1px)}
+.btn-accent{background:var(--accent-fill);box-shadow:0 8px 20px -10px rgba(47,111,237,.55)}
+.btn-accent:hover{background:var(--accent-fill-h)}
 .muted{color:var(--muted)}
 """
 
@@ -1879,6 +1880,9 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1.2rem
 nav .links{display:flex;gap:1.1rem;align-items:center;font-size:.9rem}
 nav .links a{color:var(--muted);text-decoration:none}nav .links a:hover{color:var(--ink)}
 nav .links a.btn{color:#fff;padding:.45rem .9rem}
+.tema{background:none;border:1px solid var(--line);border-radius:99px;width:30px;height:30px;
+cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;padding:0}
+.tema:hover{color:var(--ink);border-color:var(--muted)}
 .head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
 h1{font-size:1.7rem;letter-spacing:-.02em;margin:0}
 .tabs a{padding:.32rem .8rem;margin-left:.3rem;border:1px solid var(--line);border-radius:99px;
@@ -1943,14 +1947,35 @@ pre{background:var(--bg);padding:.8rem;border-radius:8px;overflow:auto;font-size
 # Mørk modus «Midnattsblekk» (design-runde 2, palett B): blekkets egen kulør
 # mørknet — papir om dagen, blekk om natten. Inkluderes KUN i dashbord/demo-
 # templatene; forsiden og juss-sidene er alltid papir. Auto via systeminnstilling.
-_DARK_CSS = """
-@media (prefers-color-scheme:dark){
-:root{--bg:#121a2b;--card:#19233a;--line:#283450;--ink:#e9edf6;--muted:#9aa6bf;
---accent:#7da2ff;--accent-deep:#8fb0ff;--ok:#4ade80;
---bar:#22335a;--ok-bg:#10302a;--ok-ink:#6ee7a8;--err:#f58a8a;--err-bg:#371b21;
---info:#aebcff;--info-bg:#1b2843;--warn:#e3b341}
-}
+# «Midnattsblekk». NB knapp-fyll: i mørk modus flipper --ink til nesten-hvitt, så
+# .btn med hvit tekst MÅ ha egne --btn-bg-var (ellers hvit-på-lyst = usynlig).
+# Sekundærknapp = dempet blå-grå flate; primær (.btn-accent) holder saturert blå.
+_DARK_VARS = (
+    "--bg:#121a2b;--card:#19233a;--line:#283450;--ink:#e9edf6;--muted:#9aa6bf;"
+    "--accent:#7da2ff;--accent-deep:#8fb0ff;--ok:#4ade80;"
+    "--bar:#22335a;--ok-bg:#10302a;--ok-ink:#6ee7a8;--err:#f58a8a;--err-bg:#371b21;"
+    "--info:#aebcff;--info-bg:#1b2843;--warn:#e3b341;"
+    "--btn-bg:#2f6fed;--btn-bg-h:#1d4ed8"
+)
+# Manuell overstyring (data-theme) + auto (systeminnstilling, med mindre manuelt lyst).
+_DARK_CSS = f"""
+:root[data-theme="dark"]{{{_DARK_VARS}}}
+@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{{_DARK_VARS}}}}}
 """
+
+# Tema-toggle: tidlig inline-script setter lagret tema FØR render (unngår blink),
+# og window.byttTema veksler lyst↔mørkt og husker valget. Knapp i dashbord-nav.
+_THEME_HEAD = (
+    "<script>(function(){var k='sporlosTema',r=document.documentElement,"
+    "s=localStorage.getItem(k);if(s)r.setAttribute('data-theme',s);"
+    "window.byttTema=function(){var d=window.matchMedia('(prefers-color-scheme:dark)').matches,"
+    "c=r.getAttribute('data-theme')||(d?'dark':'light'),n=c==='dark'?'light':'dark';"
+    "localStorage.setItem(k,n);r.setAttribute('data-theme',n);};})();</script>"
+)
+_THEME_BTN = (
+    '<button class=tema onclick="byttTema()" title="Bytt lyst/mørkt" '
+    'aria-label="Bytt lyst eller mørkt tema">◐</button>'
+)
 
 
 _BARS_JS = """<script>
@@ -2491,9 +2516,12 @@ tr:last-child td{{border-bottom:0}}
 td a{{color:var(--ink);text-decoration:none;font-weight:600}}td a:hover{{color:var(--accent-deep)}}
 form.add{{display:flex;gap:.5rem}}
 form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:.95rem;background:var(--card)}}
-.fine{{color:var(--muted);font-size:.8rem}}</style>
+.fine{{color:var(--muted);font-size:.8rem}}
+.tema{{background:none;border:1px solid var(--line);border-radius:99px;width:30px;height:30px;cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;padding:0;margin-right:.6rem}}
+.tema:hover{{color:var(--ink);border-color:var(--muted)}}</style>
+{_THEME_HEAD}
 <div class=wrap>
-<nav>{_WORDMARK}<a class=ut href="/logout">Logg ut</a></nav>
+<nav>{_WORDMARK}<span>{_THEME_BTN}<a class=ut href="/logout">Logg ut</a></span></nav>
 <h1>Mine sites</h1><p class="fine" style="margin:0 0 1rem">tall for i dag</p>
 {verify_banner}
 {trial}
@@ -2718,8 +2746,9 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
 <style>{_BRAND_CSS}{_DARK_CSS}{_DASH_CSS}</style>
+{_THEME_HEAD}
 <div class=wrap>
-<nav>{_WORDMARK}<div class=links><a href="/app">Mine sites</a><a href="/logout">Logg ut</a></div></nav>
+<nav>{_WORDMARK}<div class=links>{_THEME_BTN}<a href="/app">Mine sites</a><a href="/logout">Logg ut</a></div></nav>
 {verify_banner}
 <div class=head><h1>{escape(site['domain'])}</h1><div class=tabs>{tabs}</div></div>
 {kpiband}
