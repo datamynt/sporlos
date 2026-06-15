@@ -1,0 +1,18 @@
+{
+  "name": "sporlos-shopify-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sporløs web-pixel-app for Shopify — cookieløs analyse uten cookie-banner.",
+  "license": "AGPL-3.0",
+  "scripts": {
+    "dev": "shopify app dev",
+    "deploy": "shopify app deploy",
+    "config:link": "shopify app config link"
+  },
+  "dependencies": {
+    "@shopify/web-pixels-extension": "^2.0.0"
+  },
+  "devDependencies": {
+    "@shopify/cli": "^3.0.0"
+  }
+}
