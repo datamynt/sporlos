@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import re
 import time
 from datetime import date, datetime, timezone
 from html import escape
@@ -45,6 +47,36 @@ SESSION_SECRET = os.environ.get("SPORLOS_SESSION_SECRET") or SECRET
 HTTPS_ONLY = os.environ.get("SPORLOS_HTTPS", "").lower() in ("1", "true", "yes")
 _DOMAIN = os.environ.get("SPORLOS_DOMAIN", "")
 PUBLIC_BASE = f"https://{_DOMAIN}" if _DOMAIN and "FYLL" not in _DOMAIN else "http://localhost:8000"
+
+log = logging.getLogger("sporlos")
+
+# Prod-vakt: nekt oppstart i prod-modus (SPORLOS_HTTPS=true) hvis kritisk konfig mangler.
+# Disse feilet alle STILLE før (kunde-klarhets-revisjon 2026-06-15): default-secret =
+# re-derivbare visitor-hash + forfalskbare sesjoner; tomt domene = localhost-snippeter +
+# døde reset-lenker; manglende SMTP = passord-reset som «lykkes» uten å sende. En uoppmerksom
+# redeploy skal krasje høylytt her, ikke kjøre videre med en av disse aktive.
+if HTTPS_ONLY:
+    # HARD-FAIL kun på det som gjør produktet ØDELAGT/ulovlig: default-salt = re-derivbare
+    # visitor-hash (samtykke-fritaket faller), og tomt domene = hver kunde-snippet + reset-lenke
+    # peker på localhost. Disse skal krasje boot høylytt.
+    _fatal = []
+    if SECRET == "dev-secret-change-me":
+        _fatal.append("SPORLOS_SALT_SECRET (visitor-hash + samtykke-fritak)")
+    if not _DOMAIN or "FYLL" in _DOMAIN:
+        _fatal.append("SPORLOS_DOMAIN (ellers peker snippet + reset-lenker på localhost)")
+    if _fatal:
+        _msg = (
+            "Sporløs nekter å starte i prod-modus (SPORLOS_HTTPS=true) — mangler kritisk konfig:\n  - "
+            + "\n  - ".join(_fatal)
+        )
+        log.critical(_msg)
+        raise RuntimeError(_msg)
+    # Disse degraderer KUN delvis → høylytt logg, men IKKE boot-stopp (skal aldri ta ned ingest):
+    # sjekk rå-env (ikke den fallback'ede SESSION_SECRET, som ellers maskerer en manglende nøkkel).
+    if not os.environ.get("SPORLOS_SESSION_SECRET"):
+        log.critical("SPORLOS_SESSION_SECRET ikke satt — sesjoner bruker salt-nøkkelen som reserve. Sett egen.")
+    if not mailer.configured():
+        log.critical("SMTP (SMTP_HOST + MAIL_FROM) ikke satt — passord-reset/verifisering feiler STILLE.")
 
 
 def _user(request):
@@ -377,7 +409,12 @@ async def ingest(request):
         return JSONResponse({"error": "bad json"}, status_code=400)
 
     public_id = payload.get("s")
-    site = store.resolve_site(public_id) if public_id else None
+    try:
+        site = store.resolve_site(public_id) if public_id else None
+    except Exception:
+        # DB nede e.l. — ikke la beaconen få 500; vi kan uansett ikke lagre nå.
+        log.exception("ingest: resolve_site feilet")
+        return PlainTextResponse("", status_code=204)
     if not site:
         return JSONResponse({"error": "unknown site"}, status_code=404)
 
@@ -395,23 +432,27 @@ async def ingest(request):
     country, region = geo_lookup(ip)  # land + fylke, by-nivå brukes aldri
     # ip og ua brukes KUN her (hash + kategorisering + geo) — aldri lagret.
 
-    store.insert_event(
-        site["id"],
-        {
-            "name": payload.get("n", "pageview"),
-            "path": payload.get("p", "/"),
-            "referrer_src": _normalize_referrer(payload.get("r")),
-            "utm_source": _clean_utm(payload.get("us")),
-            "utm_medium": _clean_utm(payload.get("um")),
-            "utm_campaign": _clean_utm(payload.get("uc")),
-            "country": country,
-            "region": region,
-            "device": device,
-            "browser": browser,
-            "os": os_,
-            "visitor_hash": vhash,
-        },
-    )
+    try:
+        store.insert_event(
+            site["id"],
+            {
+                "name": payload.get("n", "pageview"),
+                "path": payload.get("p", "/"),
+                "referrer_src": _normalize_referrer(payload.get("r")),
+                "utm_source": _clean_utm(payload.get("us")),
+                "utm_medium": _clean_utm(payload.get("um")),
+                "utm_campaign": _clean_utm(payload.get("uc")),
+                "country": country,
+                "region": region,
+                "device": device,
+                "browser": browser,
+                "os": os_,
+                "visitor_hash": vhash,
+            },
+        )
+    except Exception:
+        # Aldri 500 til tracker (den re-sender ikke). Logg så VI ser det.
+        log.exception("ingest: insert_event feilet for site %s", site["id"])
     return PlainTextResponse("", status_code=204)
 
 
@@ -1130,6 +1171,7 @@ async def google_callback(request):
         # Ny Google-bruker → opprett konto. Sentinel-hash => kan ikke passord-logge.
         name = info.get("name") or email.split("@")[0]
         tid, uid = store.create_account(name, email, "!google-oauth")
+        store.set_email_verified(uid)  # Google har allerede bekreftet — ingen evig banner
         request.session["uid"], request.session["tid"] = uid, tid
     return RedirectResponse("/app", status_code=302)
 
@@ -1315,12 +1357,19 @@ async def create_site_post(request):
         return RedirectResponse("/app?limit=sites", status_code=302)
     f = await request.form()
     domain = (f.get("domain") or "").strip().lower()
-    if domain:
-        try:
-            store.create_site(user["tid"], domain)
-        except Exception:
-            pass  # f.eks. duplikat domene under samme konto
-    return RedirectResponse("/app", status_code=302)
+    # Normaliser: dropp scheme/www/sti — domenet er kun visningsetikett, men stygt
+    # input forvirrer (og duplikat skal ikke svelges stille).
+    domain = re.sub(r"^https?://", "", domain).split("/")[0].strip()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    if not domain:
+        return RedirectResponse("/app?err=domain", status_code=302)
+    try:
+        site = store.create_site(user["tid"], domain)
+    except Exception:
+        return RedirectResponse("/app?err=dup", status_code=302)  # f.eks. duplikat under samme konto
+    # Send til per-site-dashbordet (ikke lista) — der venter «Steg 2: lim inn koden»-kortet.
+    return RedirectResponse(f"/app?site={site['public_id']}", status_code=302)
 
 
 def _own_site(request, form):
@@ -2336,8 +2385,14 @@ async def dashboard(request):
     if not site:
         sites = store.list_sites(user["tid"])
         tenant = store.get_tenant(user["tid"]) or {}
+        def _dot(s):
+            # Tilkoblet hvis vi noen gang har sett et event; ellers venter på første besøk.
+            if s.get("last_ts"):
+                return ('<span title="tilkoblet — data mottatt" style="color:var(--ok)">●</span> ')
+            return ('<span title="venter på første besøk" style="color:var(--muted)">○</span> ')
+
         rows = "".join(
-            f'<tr><td><a href="/app?site={escape(s["public_id"])}">{escape(s["domain"])}</a></td>'
+            f'<tr><td>{_dot(s)}<a href="/app?site={escape(s["public_id"])}">{escape(s["domain"])}</a></td>'
             f'<td>{s["visitors"]}</td><td>{s["pv"]}</td></tr>'
             for s in sites
         )
@@ -2387,6 +2442,14 @@ async def dashboard(request):
                 '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;border-radius:7px;'
                 f'font-size:.9rem">Planen din har plass til {site_lim} nettsted'
                 f'{"er" if (site_lim or 0) != 1 else ""} — oppgrader for å legge til flere.</p>'
+            )
+        _err = request.query_params.get("err")
+        if _err in ("domain", "dup"):
+            msg = ("Skriv inn et domene (f.eks. dittdomene.no)." if _err == "domain"
+                   else "Du har allerede lagt til dette nettstedet.")
+            limit_msg += (
+                '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;'
+                f'border-radius:7px;font-size:.9rem">{msg}</p>'
             )
         upgrade = ""
         if tenant.get("plan") in ("trial", "cancelled", None):
@@ -2574,6 +2637,32 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 
     table = _stat_table
 
+    # «Steg 2: lim inn koden» — vises ÅPENT øverst så lenge siten ikke har data.
+    # Dette er aktiveringssteget; tidligere lå snippeten kun gjemt i en kollapset
+    # <details> nederst, og ferske kunder fant den aldri (kunde-klarhets-revisjon).
+    _snip = escape(
+        f'<script defer data-site="{public_id}" '
+        f'data-api="{PUBLIC_BASE}/api/event" src="{PUBLIC_BASE}/sporlos.js"></script>'
+    )
+    # Gate på ALL-TIME (aldri mottatt event), ikke periode-tomt — ellers får en
+    # etablert site «Steg 2: lim inn koden» igjen i en stille uke (review-funn).
+    onboard_card = ""
+    if store.last_event_at(site["id"]) is None:
+        onboard_card = (
+            '<div class="card block" style="border:1px solid var(--accent)">'
+            "<h3>Steg 2: lim inn sporingskoden</h3>"
+            '<p class=muted style="margin:.2rem 0 .6rem">Lim denne rett før '
+            "&lt;/head&gt; på sidene du vil måle — så er du i gang. Ingen cookies, "
+            "ingen samtykke å sette opp.</p>"
+            f'<pre id=snip style="white-space:pre-wrap;word-break:break-all">{_snip}</pre>'
+            '<button class=btn onclick="navigator.clipboard.writeText('
+            "document.getElementById('snip').textContent).then(()=>{this.textContent='Kopiert ✓'})\" "
+            'style="font-size:.9rem;padding:.45rem .9rem">Kopier koden</button>'
+            '<p class=muted style="font-size:.82rem;margin:.7rem 0 0">Bruker du WordPress eller '
+            'Shopify? <a href="https://wordpress.org/plugins/sporlos-analytics/">WordPress-plugin</a> · '
+            '<a href="/shopify">Shopify-guide</a></p></div>'
+        )
+
     # KPI-band v2: unike eier blikket (stort kort m/ sparkline + forseglet-badge),
     # fire sekundære KPI-er ved siden. Tom periode → «scriptet lytter»-tilstand
     # i stedet for nakne nuller, så brukeren vet at innsamlingen fungerer.
@@ -2752,6 +2841,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 {verify_banner}
 <div class=head><h1>{escape(site['domain'])}</h1><div class=tabs>{tabs}</div></div>
 {kpiband}
+{onboard_card}
 <p class=muted style="font-size:.8rem;margin:.3rem 0 .9rem">Last ned CSV (regneark):
   <a href="/app/export?site={escape(public_id)}&period={period}&what=tidsserie">tidsserie</a> ·
   <a href="/app/export?site={escape(public_id)}&period={period}&what=sider">sider</a> ·

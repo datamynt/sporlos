@@ -288,7 +288,8 @@ def list_sites(tenant_id: int) -> list[dict]:
         cur.execute(
             f"""SELECT s.public_id, s.domain, t.name AS tenant,
                        COUNT(e.id) AS pv,
-                       COUNT(DISTINCT e.visitor_hash) AS visitors
+                       COUNT(DISTINCT e.visitor_hash) AS visitors,
+                       (SELECT MAX(ts) FROM events WHERE site_id = s.id) AS last_ts
                 FROM sites s
                 JOIN tenants t ON t.id = s.tenant_id
                 LEFT JOIN events e
@@ -796,7 +797,8 @@ def compute_rollup(site_id: int, day: str) -> dict:
                 ON CONFLICT (site_id, day) DO UPDATE SET
                     pageviews = excluded.pageviews, visitors = excluded.visitors,
                     sessions = excluded.sessions, bounce_rate = excluded.bounce_rate,
-                    rollup_hash = excluded.rollup_hash""",
+                    rollup_hash = excluded.rollup_hash
+                WHERE daily_rollups.txid IS NULL""",
             (site_id, day, pv, vis, sessions, br, h),
         )
     return {**payload, "rollup_hash": h}
@@ -829,6 +831,27 @@ def last_event_at(site_id: int):
         except ValueError:
             return None
     return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def stalled_sites(quiet_hours: int = 30, active_days: int = 9) -> list[dict]:
+    """Sites som HADDE trafikk nylig, men er stille nå — «sporingen sluttet å virke».
+    Definisjon: minst ett event i [now-active_days, now-quiet_hours), men NULL i de
+    siste quiet_hours. Returnerer site_id, domain, tenant_id, last_ts."""
+    now = datetime.now(timezone.utc)
+    quiet_since = (now - timedelta(hours=quiet_hours)).strftime("%Y-%m-%d %H:%M:%S")
+    active_since = (now - timedelta(days=active_days)).strftime("%Y-%m-%d %H:%M:%S")
+    with _cursor() as cur:
+        cur.execute(
+            f"""SELECT s.id, s.domain, s.tenant_id,
+                       (SELECT MAX(ts) FROM events WHERE site_id = s.id) AS last_ts
+                FROM sites s
+                WHERE EXISTS (SELECT 1 FROM events e WHERE e.site_id = s.id
+                              AND e.ts >= {P} AND e.ts < {P})
+                  AND NOT EXISTS (SELECT 1 FROM events e WHERE e.site_id = s.id
+                              AND e.ts >= {P})""",
+            (active_since, quiet_since, quiet_since),
+        )
+        return [dict(r) for r in cur.fetchall()]
 
 
 def recent_rollups(site_id: int, limit: int = 14) -> list[dict]:

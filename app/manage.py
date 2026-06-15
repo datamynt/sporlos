@@ -74,6 +74,11 @@ def main(argv: list[str]) -> int:
         print(f"grense-varsler sendt: {send_overage_alerts()}")
         return 0
 
+    if cmd == "stalled-alerts":
+        from app.notify import send_stalled_alerts
+        print(f"stille-stopp-varsler sendt: {send_stalled_alerts()}")
+        return 0
+
     if cmd == "vipps-charges":
         from app import vipps
         print(vipps.sweep())

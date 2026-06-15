@@ -54,6 +54,28 @@ def send_trial_reminders(within_days: int = 3) -> int:
     return sent
 
 
+def send_stalled_alerts() -> int:
+    """Varsle drifts-admin når en site som HADDE trafikk plutselig er stille — det
+    eneste push-signalet på at sporing har sluttet å virke (CMS-bytte, CSP, DB-feil).
+    Sendes til SPORLOS_ADMIN_EMAIL (fallback MAIL_FROM). Returnerer 1 hvis sendt, ellers 0."""
+    stalled = store.stalled_sites()
+    if not stalled:
+        return 0
+    admin = os.environ.get("SPORLOS_ADMIN_EMAIL") or os.environ.get("MAIL_FROM")
+    if not admin:
+        return 0
+    lines = "\n".join(
+        f"  - {s['domain']} (siste hendelse: {str(s['last_ts'])[:16]})" for s in stalled
+    )
+    body = (
+        "Hei,\n\nFolgende nettsteder hadde trafikk nylig, men har ikke registrert "
+        "noe det siste dognet - sporingen kan ha sluttet a virke (CMS-bytte, CSP, e.l.):\n\n"
+        f"{lines}\n\nSjekk at sporings-koden fortsatt ligger pa sidene.\n\nSporlos"
+    )
+    ok = mailer.send(admin, f"Sporlos: {len(stalled)} nettsted uten trafikk siste dogn", body)
+    return 1 if ok else 0
+
+
 def send_overage_alerts() -> int:
     """Vennlig varsel når en tenant passerer planens månedlige visningsgrense.
     Maks én e-post per kalendermåned (overage_notified_month). Data kastes aldri
