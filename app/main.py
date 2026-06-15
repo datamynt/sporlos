@@ -577,6 +577,7 @@ _SITE_FOOTER = (
     "Personvennlig webanalyse, bygget i Norge.<br><br>"
     '<a href="/demo">Live demo</a> · '
     '<a href="/google-analytics-alternativ">Sporløs mot Google Analytics</a> · '
+    '<a href="/integrasjoner">Integrasjoner</a> · '
     '<a href="/sporsmal">Spørsmål og svar</a> · '
     '<a href="https://status.sporlos.no">Status</a> · '
     '<a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>'
@@ -1644,6 +1645,224 @@ Sist oppdatert 2026-06-10 · utkast, kvalitetssikres av jurist.</p>
     )
 
 
+# ── Integrasjonsguider ────────────────────────────────────────────────────
+# Verifiserte «lim inn snippet»-steg per plattform (research-workflow 2026-06-15).
+# WordPress (plugin) + Shopify (pixel) har egne flater; disse er kodefrie lim-inn.
+_SNIPPET_TPL = (
+    '<script defer data-site="DITT_SITE_ID" '
+    'data-api="https://sporlos.no/api/event" src="https://sporlos.no/sporlos.js"></script>'
+)
+_GUIDES = {
+    "wix": {
+        "navn": "Wix",
+        "krav": "Krever en betalt Premium-plan med eget domene — verktøyet Custom Code er låst på gratis wixsite.com-adresser.",
+        "intro": "Lim inn Sporløs i Wix sitt Custom Code-verktøy (ikke «Header Code» under SEO — det blokkerer script-tagger).",
+        "steg": [
+            "Åpne nettstedet i Wix-dashbordet (My Sites → velg siten).",
+            "Klikk <b>Settings</b> nederst i venstremenyen.",
+            "Under <b>Development &amp; integrations</b>, klikk <b>Custom Code</b>.",
+            "Klikk <b>+ Add Custom Code</b>, og lim inn koden under.",
+            "Velg <b>All pages</b> og plassering <b>Head</b>. Gi den et navn (f.eks. «Sporløs»).",
+            "Klikk <b>Apply</b>, så <b>Publish</b> øverst til høyre.",
+        ],
+        "sjekk": "Åpne det publiserte nettstedet (eget domene, ikke editor-preview) — besøkene dukker opp i dashbordet ditt innen kort tid.",
+        "feller": [
+            "Ikke bruk «Header Code» under SEO-innstillingene — det avviser script-tagger. Bruk Settings → Custom Code.",
+            "Scriptet kjører ikke i Wix-editorens preview — test alltid på den live siden.",
+        ],
+    },
+    "squarespace": {
+        "navn": "Squarespace",
+        "krav": "Krever Core-plan eller høyere (Code Injection finnes ikke på Basic).",
+        "intro": "Lim inn Sporløs i Header-feltet under Code Injection — det legges i &lt;head&gt; på alle sider.",
+        "steg": [
+            "Logg inn og åpne nettstedet.",
+            "Gå til <b>Website → Website Tools → Code Injection</b> (eldre grensesnitt: <b>Settings → Advanced → Code Injection</b>).",
+            "Lim inn koden under i <b>Header</b>-feltet (det øverste).",
+            "Klikk <b>Save</b>. Koden er live på hele siten umiddelbart.",
+        ],
+        "sjekk": "Åpne siten i et inkognitovindu, klikk gjennom et par sider, og se besøkene i dashbordet.",
+        "feller": [
+            "Lim i <b>Header</b>, ikke Footer (Footer laster for sent).",
+            "Code Injection lagres ikke automatisk — husk <b>Save</b>.",
+        ],
+    },
+    "webflow": {
+        "navn": "Webflow",
+        "krav": "Site-wide kode krever et betalt Site-plan (Basic/CMS/Business).",
+        "intro": "Lim inn Sporløs i site-wide Head Code — gjelder hele nettstedet.",
+        "steg": [
+            "Åpne prosjektet → <b>Site settings</b> (tannhjulet).",
+            "Klikk fanen <b>Custom code</b>.",
+            "Lim inn koden under nederst i <b>Head code</b>-feltet (ikke Footer code).",
+            "Klikk <b>Save changes</b>.",
+            "Klikk <b>Publish</b> og velg domenet ditt — koden går ikke live før du publiserer.",
+        ],
+        "sjekk": "Verifiser på ditt eget domene (ikke .webflow.io) — site-wide kode kjører ikke på staging-domenet.",
+        "feller": [
+            "Endringer vises i Preview, men går aldri live før du trykker <b>Publish</b>.",
+            "Gratis/Starter-plan: feltet er låst — du trenger et betalt Site-plan.",
+        ],
+    },
+    "framer": {
+        "navn": "Framer",
+        "krav": "Custom code finnes på alle planer, men eget domene krever Basic eller høyere.",
+        "intro": "Lim inn Sporløs på site-nivå i «End of &lt;head&gt;» — Framer-sider bytter side client-side, så velg å kjøre på hver visning.",
+        "steg": [
+            "Åpne prosjektet → <b>Site Settings</b> (tannhjulet — ikke Page Settings).",
+            "Velg fanen <b>General</b> og bla til <b>Custom Code</b>.",
+            "Lim inn koden under i feltet <b>End of &lt;head&gt; tag</b> (klikk «Show Advanced» om du bare ser to felter).",
+            "Finnes en kjørings-bryter, velg <b>On Every Page Visit</b>.",
+            "Klikk <b>Publish</b> — custom code legges kun på det live nettstedet.",
+        ],
+        "sjekk": "Test på den live, publiserte URL-en — custom code vises ikke i editor-preview.",
+        "feller": [
+            "Site Settings, ikke Page Settings (Page gjelder kun én side).",
+            "Velg «On Every Page Visit», ellers telles bare første sidelasting.",
+        ],
+    },
+    "ghost": {
+        "navn": "Ghost",
+        "krav": "Ingen ekstra plan — Code Injection finnes på alle Ghost(Pro)-planer og selvhostet Ghost.",
+        "intro": "Lim inn Sporløs i «Site Header» under Code Injection — tema-uavhengig, live umiddelbart.",
+        "steg": [
+            "Logg inn i Ghost-admin (ditt-domene<b>/ghost</b>) som Owner eller Administrator.",
+            "Gå til <b>Settings → Advanced → Code injection</b>.",
+            "Lim inn koden under i <b>Site Header</b>-feltet.",
+            "Klikk <b>Save</b>. Endringen er live på hele nettstedet.",
+        ],
+        "sjekk": "Åpne forsiden, «Vis sidekilde» og søk etter «sporlos.js» — den skal ligge i &lt;head&gt;.",
+        "feller": [
+            "Bruk <b>Site Header</b>, ikke code injection per innlegg (som bare sporer ett innlegg).",
+            "Har du CDN/cache foran Ghost, kan det ta noen minutter før snippeten vises.",
+        ],
+    },
+    "gtm": {
+        "navn": "Google Tag Manager",
+        "krav": "Gratis. Forutsetter at GTM-container-snippeten allerede ligger på nettstedet.",
+        "intro": "Legg Sporløs inn som en Custom HTML-tag i GTM, utløst på alle sider.",
+        "steg": [
+            "Åpne <b>tagmanager.google.com</b> og velg containeren for nettstedet.",
+            "Klikk <b>Tags → New</b>, gi taggen navnet «Sporløs».",
+            "<b>Tag Configuration → Custom HTML</b>, og lim inn koden under (ikke huk av «Support document.write»).",
+            "<b>Triggering → All Pages</b>.",
+            "Klikk <b>Save</b>, så <b>Submit → Publish</b> — taggen er ikke live før du publiserer.",
+        ],
+        "sjekk": "Bruk GTM <b>Preview</b> (Tag Assistant) og bekreft at «Sporløs» står under «Tags Fired» på første sidevisning.",
+        "feller": [
+            "Ikke live før <b>Submit → Publish</b> — vanligste feil.",
+            "Ikke lim Sporløs både i GTM <i>og</i> direkte i &lt;head&gt; — da telles besøk dobbelt.",
+        ],
+    },
+}
+
+
+def _render_guide(slug):
+    g = _GUIDES[slug]
+    steg = "".join(f"<li>{s}</li>" for s in g["steg"])
+    feller = "".join(f"<li>{f}</li>" for f in g["feller"])
+    return HTMLResponse(
+        f"""<!doctype html><html lang="no"><head><meta charset="utf-8">
+<title>Sporløs på {escape(g['navn'])} — installasjonsguide</title>
+<meta name=viewport content="width=device-width, initial-scale=1">
+<meta name="description" content="Slik installerer du Sporløs cookieløs webanalyse på {escape(g['navn'])} — uten cookie-banner. {escape(g['krav'])}">
+<link rel="canonical" href="https://sporlos.no/integrasjoner/{slug}">
+{_BRAND_HEAD}{_OG_META}
+<style>{_BRAND_CSS}{_CHROME_CSS}
+.content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
+h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
+ol{{padding-left:1.2rem}}ol li{{margin:.45rem 0}}ul{{padding-left:1.2rem}}ul li{{margin:.3rem 0;color:var(--muted);font-size:.92rem}}
+pre{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.8rem;overflow-x:auto;font-size:.78rem}}
+.muted{{font-size:.85rem;color:var(--muted)}}
+.note{{background:var(--info-bg);color:var(--info);border-radius:8px;padding:.7rem .9rem;font-size:.88rem;margin:1rem 0}}</style>
+{_SELF_SNIPPET}</head><body>
+<div class=wrap>
+{_SITE_NAV}
+<div class=content>
+<p class=muted style="margin:0"><a href="/integrasjoner">← Alle integrasjoner</a></p>
+<h1>Sporløs på {escape(g['navn'])}</h1>
+<p>{g['intro']}</p>
+<div class=note>{escape(g['krav'])}</div>
+<h2>Slik gjør du det</h2>
+<ol>{steg}</ol>
+<p class=muted>Lim inn denne — bytt <code>DITT_SITE_ID</code> med din egen ID fra
+<a href="/app">dashbordet</a> (under «Vis sporings-kode»):</p>
+<pre>{escape(_SNIPPET_TPL)}</pre>
+<h2>Sjekk at det virker</h2>
+<p>{g['sjekk']}</p>
+<h2>Verdt å vite</h2>
+<ul>{feller}</ul>
+<p class=muted style="margin-top:1.4rem">Står du fast? Send oss en e-post på
+<a href="mailto:post@sporlos.no">post@sporlos.no</a> — vi hjelper deg i gang.</p>
+</div></div>
+{_SITE_FOOTER}</body></html>"""
+    )
+
+
+async def platform_guide(request):
+    slug = request.path_params.get("slug", "")
+    if slug not in _GUIDES:
+        return RedirectResponse("/integrasjoner", status_code=302)
+    return _render_guide(slug)
+
+
+async def integrasjoner(request):
+    """Hub: alle plattformer Sporløs fungerer med — tier-et ærlig (plugin/app/guide)."""
+    guide_kort = "".join(
+        f'<a class=intk href="/integrasjoner/{slug}"><b>{escape(g["navn"])}</b>'
+        f'<span>Lim-inn-guide</span></a>'
+        for slug, g in _GUIDES.items()
+    )
+    return HTMLResponse(
+        f"""<!doctype html><html lang="no"><head><meta charset="utf-8">
+<title>Integrasjoner — Sporløs fungerer med plattformen din</title>
+<meta name=viewport content="width=device-width, initial-scale=1">
+<meta name="description" content="Sporløs cookieløs webanalyse fungerer med WordPress, Shopify, Wix, Squarespace, Webflow, Framer, Ghost og Google Tag Manager — eller hvilken som helst side der du kan lime inn en kodesnutt.">
+<link rel="canonical" href="https://sporlos.no/integrasjoner">
+{_BRAND_HEAD}{_OG_META}
+<style>{_BRAND_CSS}{_CHROME_CSS}
+.content{{max-width:760px;margin:0 auto;padding-bottom:1rem}}
+h1{{font-size:2.1rem;letter-spacing:-.025em}}h2{{font-size:1.05rem;margin:2rem 0 .8rem;color:var(--muted)}}
+.lede{{font-size:1.15rem;color:var(--muted);max-width:42em}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.7rem}}
+.intk{{display:flex;flex-direction:column;gap:.2rem;border:1px solid var(--line);border-radius:12px;
+padding:1rem 1.1rem;text-decoration:none;background:var(--card);transition:border-color .2s}}
+.intk:hover{{border-color:var(--accent)}}
+.intk b{{color:var(--ink);font-size:1rem}}.intk span{{color:var(--muted);font-size:.8rem}}
+.intk.dedikert span{{color:var(--accent-deep)}}
+.cta{{border:1px solid var(--line);border-radius:14px;padding:1.6rem;margin-top:2rem;background:var(--card)}}
+.cta b{{font-size:1.1rem}}</style>
+{_SELF_SNIPPET}</head><body>
+<div class=wrap>
+{_SITE_NAV}
+<div class=content>
+<h1>Fungerer med plattformen din</h1>
+<p class=lede>Sporløs er én liten kodesnutt — den virker på alt som lar deg legge til kode i
+&lt;head&gt;. For de vanligste plattformene har vi laget ferdige guider.</p>
+
+<h2>Dedikert plugin / app</h2>
+<div class=grid>
+  <a class="intk dedikert" href="https://wordpress.org/plugins/sporlos-analytics/"><b>WordPress</b><span>Offisiell plugin →</span></a>
+  <a class="intk dedikert" href="/shopify"><b>Shopify</b><span>Pixel — måler også checkout →</span></a>
+</div>
+
+<h2>Kodefrie lim-inn-guider</h2>
+<div class=grid>{guide_kort}</div>
+
+<h2>Alt annet</h2>
+<p class=muted>Egen nettside eller et rammeverk? Lim
+<a href="/utviklere">sporings-snippeten</a> rett inn i &lt;head&gt; — det er alt som skal til.</p>
+
+<div class=cta>
+<b>Mangler integrasjonen du trenger?</b>
+<p class=muted style="margin:.4rem 0 0">Si fra på <a href="mailto:post@sporlos.no?subject=Integrasjon">post@sporlos.no</a>
+— trenger du en integrasjon vi ikke har ennå, fikser vi det.</p>
+</div>
+</div></div>
+{_SITE_FOOTER}</body></html>"""
+    )
+
+
 async def vilkar(request):
     return _legal(
         "Salgsbetingelser",
@@ -1936,7 +2155,9 @@ async def llms_txt(request):
 
 
 async def sitemap(request):
-    pages = ["/", "/demo", "/google-analytics-alternativ", "/sporsmal", "/shopify", "/signup", "/vilkar", "/personvern", "/utviklere"]
+    pages = ["/", "/demo", "/google-analytics-alternativ", "/sporsmal", "/integrasjoner",
+             "/shopify", "/signup", "/vilkar", "/personvern", "/utviklere"]
+    pages += [f"/integrasjoner/{slug}" for slug in _GUIDES]
     urls = "".join(f"<url><loc>https://sporlos.no{p}</loc></url>" for p in pages)
     return Response(
         f'<?xml version="1.0" encoding="UTF-8"?>'
@@ -2976,6 +3197,8 @@ routes = [
     Route("/app/password", change_password, methods=["POST"]),
     Route("/utviklere", utviklere),
     Route("/shopify", shopify_guide),
+    Route("/integrasjoner", integrasjoner),
+    Route("/integrasjoner/{slug}", platform_guide),
     Route("/api/v1/sites", api.sites),
     Route("/api/v1/stats", api.stats),
     Route("/api/v1/timeseries", api.timeseries),
