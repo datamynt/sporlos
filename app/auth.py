@@ -33,7 +33,14 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def _secret() -> bytes:
-    return (os.environ.get("SESSION_SECRET") or "dev-secret").encode()
+    # Samme nøkkel som resten av appen (main.py SESSION_SECRET). Leste tidligere feil
+    # env-navn (SESSION_SECRET) → HMAC-tokens stod på «dev-secret» selv i prod.
+    return (
+        os.environ.get("SPORLOS_SESSION_SECRET")
+        or os.environ.get("SPORLOS_SALT_SECRET")
+        or os.environ.get("SESSION_SECRET")
+        or "dev-secret"
+    ).encode()
 
 
 def sign_token(purpose: str, value: str) -> str:
