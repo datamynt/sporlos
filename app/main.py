@@ -11,6 +11,9 @@ Prod-lik (Postgres i Docker): se docker-compose.yml / DEPLOY.md.
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -1201,6 +1204,26 @@ async def billing_checkout(request):
     except Exception:
         return RedirectResponse("/app", status_code=302)
     return RedirectResponse(session.url, status_code=303)
+
+
+SHOPIFY_API_SECRET = os.environ.get("SHOPIFY_API_SECRET", "")
+
+
+async def shopify_compliance(request):
+    """Shopifys påkrevde GDPR-webhooks (customers/data_request, customers/redact, shop/redact).
+    Sporløs lagrer INGEN Shopify-kunde-PII (kun anonyme aggregater via pixelen) → ingenting å
+    utlevere eller slette. Men endepunktet MÅ verifisere HMAC og svare 200 for App Store-review."""
+    body = await request.body()
+    sig = request.headers.get("x-shopify-hmac-sha256", "")
+    if not SHOPIFY_API_SECRET:
+        return PlainTextResponse("not configured", status_code=503)
+    digest = base64.b64encode(
+        hmac.new(SHOPIFY_API_SECRET.encode(), body, hashlib.sha256).digest()
+    ).decode()
+    if not hmac.compare_digest(digest, sig):
+        return PlainTextResponse("bad hmac", status_code=401)
+    log.info("shopify compliance webhook: %s", request.headers.get("x-shopify-topic", "?"))
+    return PlainTextResponse("", status_code=200)
 
 
 async def stripe_webhook(request):
@@ -2921,6 +2944,7 @@ routes = [
     Route("/billing/vipps/retur", vipps_return),
     Route("/billing/vipps/avslutt", vipps_cancel, methods=["POST"]),
     Route("/webhooks/stripe", stripe_webhook, methods=["POST"]),
+    Route("/webhooks/shopify/compliance", shopify_compliance, methods=["POST"]),
     Route("/app", dashboard),
     Route("/app/export", export_csv),
     Route("/app/api-keys", api_key_create, methods=["POST"]),

@@ -54,7 +54,10 @@ register(({ analytics, settings }) => {
         um: u.medium || null,
         uc: u.campaign || null,
       });
-      // Ingen Content-Type-header => «simple request» => ingen CORS-preflight.
+      // Pixelen kjører i en Web Worker på Shopifys domene → POST til sporlos.no er
+      // cross-origin. To krav: (1) ingen Content-Type-header => «simple request» =>
+      // ingen CORS-preflight; (2) serveren MÅ svare med Access-Control-Allow-Origin.
+      // sporlos.no/api/event setter ACAO: * (CORSMiddleware) — verifisert i prod.
       fetch(endpoint, { method: "POST", body, keepalive: true });
     } catch (e) { /* analytics skal aldri knekke butikken */ }
   }

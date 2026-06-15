@@ -25,21 +25,42 @@ extensions/sporlos-pixel/
 `index.js` er gjenbruk av den beviste Fase 1-logikken (`../../sporlos-pixel.js`), men leser
 `settings.site_id` (kjøpmann fyller inn ved installasjon) i stedet for hardkodet konstant.
 
+## Hva som er klart nå (full CLI-app, ikke bare extension)
+
+App-wrapperen er scaffoldet og verifisert mot gjeldende Shopify-docs (adversariell review
+2026-06-15): `shopify.app.toml` (client_id 00e912…, scopes write_pixels+read_customer_events,
+GDPR-webhooks → sporlos.no, ingen [auth] siden managed install), `package.json`, og extensionen
+med påkrevd `api_version` + `uid`. GDPR-compliance-webhooken er bygget i Sporløs-backenden
+(`/webhooks/shopify/compliance`, HMAC-verifisert, gated på SHOPIFY_API_SECRET).
+
 ## Hva som gjenstår — krever deg (Thomas)
 
-1. **Shopify Partner-konto** + en **dev-store** (partners.shopify.com). Kan ikke gjøres av Claude.
-2. Kjør CLI-en (genererer app-wrapperen rundt extensionen vår):
+1. **Dev-store** under Partner-kontoen (partners.shopify.com → Stores → add development store).
+2. Kjør CLI-en herfra:
    ```bash
-   npm init @shopify/app@latest sporlos-shopify-app   # velg «start with extension»
-   # kopier extensions/sporlos-pixel/ inn i den genererte appen
-   shopify app dev      # test mot dev-store: installer, fyll site_id, sjekk events i sporlos.no/app
-   shopify app deploy
+   cd integrations/shopify/app
+   npm install
+   shopify app config link    # browser-login → koble til Sporløs-appen (client_id matcher alt)
+   shopify app dev            # test: installer på dev-store, fyll site_id, se events i sporlos.no/app
+   shopify app deploy         # pusher pixel-extensionen
    ```
-   Merk: CLI-en åpner nettleser-login → må kjøres av deg, ikke headless.
-3. **App-listing**: ikon (bruk Blekk-merket), skjermbilder, beskrivelse. Engelsk i App Store,
-   men la NO/Datatilsynet-vinkelen bære beskrivelsen.
-4. **Personvern-review**: Shopify krever data-erklæring. Vår er enkel (ingen PII, ingen salg
-   av data) — settings-feltene i toml-en deklarerer dette.
+   CLI-en åpner nettleser-login → må kjøres av deg. Klager `deploy` på toml-format (skjemaet
+   drifter mellom CLI-versjoner), kjør `shopify app generate extension --template web_pixel`
+   én gang og flett inn vår `src/index.js` + settings.
+3. Når review nærmer seg: legg `SHOPIFY_API_SECRET` (client secret) i server-`.env`, så svarer
+   compliance-webhooken 200 i stedet for 503.
+4. **App-listing**: ikon (Blekk-merket), skjermbilder, beskrivelse. Engelsk topp-tekst (App
+   Store-krav), norsk Datatilsynet-vinkel i body.
+
+## ⚖️ Consent-nyansen (beslutning før review)
+
+`[extensions.customer_privacy] analytics = true` betyr at pixelen kun fyrer når kjøpmannens
+kunde har gitt analyse-samtykke (Shopifys Customer Privacy API). Det er litt på tvers av Sporløs'
+egen tese — at vi IKKE utløser samtykkekrav siden vi ikke lagrer på enheten. Men innenfor Shopifys
+rammeverk er det ærligst å deklarere analyse-intensjon. Konsekvens: i butikker med samtykkebanner
+under-teller pixelen besøk uten samtykke. Avvei før innsending: ærlig deklarasjon (analytics=true,
+som nå) vs. å argumentere for unntak. Anbefaling: behold analytics=true til Shopify-review evt.
+sier noe annet — det er den trygge, ærlige posisjonen.
 
 ## ⚠️ Throttling-gotcha (ny 13. jan 2026)
 

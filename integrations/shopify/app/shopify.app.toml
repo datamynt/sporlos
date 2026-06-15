@@ -1,0 +1,28 @@
+# Sporløs — Shopify-app (Fase 2). CLI-konfig; `shopify app config link` fyller/
+# bekrefter client_id ved tilkobling til Partner-appen, `shopify app deploy` pusher.
+# Ikke-embedded ren web-pixel-app: ingen admin-UI, kjøpmann setter site_id i pixel-innstillingene.
+name = "Sporløs"
+client_id = "00e912a07daebc4233d6fe3e7e7dd189"
+application_url = "https://sporlos.no"
+embedded = false
+
+[access_scopes]
+# Absolutt minimum for en web-pixel-app. INGEN read_customers/read_orders — det ville
+# vært selvmotsigende for et personvernprodukt (og trigget Shopifys protected-data-review).
+scopes = "write_pixels,read_customer_events"
+
+# Ingen [auth]-seksjon: managed install (Shopify-håndtert) bruker ikke OAuth-redirect, og
+# en ren web-pixel-app har ingen egen callback-rute. Utelatt bevisst.
+
+[webhooks]
+api_version = "2026-01"
+
+  # Påkrevde personvern-/GDPR-webhooks for alle offentlige apper. Sporløs lagrer ingen
+  # Shopify-kunde-PII (kun anonyme aggregater) → ingenting å utlevere/slette, men endepunktet
+  # må verifisere HMAC og svare 200. Håndteres av Sporløs-backenden (app/main.py).
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "https://sporlos.no/webhooks/shopify/compliance"
+
+[pos]
+embedded = false
