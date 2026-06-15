@@ -814,6 +814,23 @@ def rollup_all(day: str | None = None) -> tuple[int, str]:
     return len(ids), day
 
 
+def last_event_at(site_id: int):
+    """Tidspunkt for siste registrerte hendelse (UTC-naiv) — driver «scriptet
+    lytter, siste livstegn»-tomtilstanden. None hvis aldri noe er målt."""
+    with _cursor() as cur:
+        cur.execute(f"SELECT MAX(ts) AS t FROM events WHERE site_id = {P}", (site_id,))
+        r = cur.fetchone()
+    t = r["t"] if r else None
+    if not t:
+        return None
+    if isinstance(t, str):  # SQLite lagrer ts som tekst
+        try:
+            return datetime.fromisoformat(t).replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
 def recent_rollups(site_id: int, limit: int = 14) -> list[dict]:
     with _cursor() as cur:
         cur.execute(

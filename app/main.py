@@ -1890,6 +1890,32 @@ text-decoration:none;color:var(--muted);font-size:.85rem;background:var(--card)}
 .kpi span{color:var(--muted);font-size:.8rem}
 .kpi .d{display:block;font-size:.78rem;font-weight:600;margin-top:.2rem}
 .dg{color:var(--ok)}.dr{color:var(--err)}.d0{color:var(--muted)}
+/* KPI-hierarki (v2): unike eier blikket — stort kort m/ sparkline + forseglet-badge,
+   fire sekundære KPI-er ved siden. Stables på smal skjerm. */
+.kpiband{display:grid;grid-template-columns:1.15fr .85fr;gap:.9rem;margin:1rem 0}
+@media(max-width:760px){.kpiband{grid-template-columns:1fr}}
+.kpihero{display:flex;flex-direction:column}
+.kpihero .top{display:flex;justify-content:space-between;align-items:flex-start;gap:.6rem}
+.kpihero .lbl{color:var(--muted);font-size:.82rem}
+.kpihero .big{font-size:2.7rem;font-weight:800;letter-spacing:-.025em;line-height:1.1;
+font-variant-numeric:tabular-nums}
+.kpihero .d{font-size:.82rem;font-weight:600}
+.kpihero .chart{height:84px;margin-top:.5rem}
+.kpisec{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
+.kpisec .kpi{padding:.7rem .9rem}
+.kpisec .kpi b{font-size:1.45rem}
+.segl-badge{display:inline-flex;align-items:center;gap:.4rem;border:1px solid var(--line);
+border-radius:999px;padding:.22rem .65rem .22rem .45rem;font-size:.7rem;color:var(--muted);
+background:var(--bg);white-space:nowrap;flex:none}
+.tomt{border:1.5px dashed var(--line);border-radius:12px;padding:1.6rem 1.2rem;text-align:center;
+position:relative;overflow:hidden;margin:1rem 0}
+.tomt svg.vm{position:absolute;right:-24px;bottom:-30px;width:130px;color:var(--accent);opacity:.06}
+.tomt b{font-size:1rem;display:block}
+.tomt small{color:var(--muted);font-size:.82rem;display:block;margin-top:.3rem}
+.tomt .puls{color:var(--ok);font-size:.78rem;margin-top:.6rem;display:inline-flex;align-items:center;gap:.4rem}
+.tomt .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block}
+@media (prefers-reduced-motion:no-preference){
+@keyframes p{0%,100%{opacity:1}50%{opacity:.35}}.tomt .dot{animation:p 2.4s ease-in-out infinite}}
 .chartcard{margin:0 0 .9rem;padding-bottom:.6rem}
 .chart{width:100%;height:170px;display:block}
 .chart circle{fill:transparent}.chart circle:hover{fill:var(--accent)}
@@ -1977,6 +2003,22 @@ def _delta(now, before, invert=False):
         f'<small class="d {"dg" if good else "dr"}" title="mot forrige periode">'
         f'{"↑" if up else "↓"} {abs(pct)} %</small>'
     )
+
+
+def _siden(ts):
+    """«for 4 min siden» o.l. fra et UTC-tidspunkt — driver tomtilstanden."""
+    if not ts:
+        return None
+    sek = (datetime.now(timezone.utc) - ts).total_seconds()
+    if sek < 90:
+        return "for et øyeblikk siden"
+    if sek < 3600:
+        return f"for {int(sek // 60)} min siden"
+    if sek < 86400:
+        t = int(sek // 3600)
+        return f"for {t} time{'r' if t != 1 else ''} siden"
+    d = int(sek // 86400)
+    return f"for {d} dag{'er' if d != 1 else ''} siden"
 
 
 # «Forseglet»-badgen (Segl × Presisjon fra design-runde 2): dobbel ring m/ luft
@@ -2504,6 +2546,54 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 
     table = _stat_table
 
+    # KPI-band v2: unike eier blikket (stort kort m/ sparkline + forseglet-badge),
+    # fire sekundære KPI-er ved siden. Tom periode → «scriptet lytter»-tilstand
+    # i stedet for nakne nuller, så brukeren vet at innsamlingen fungerer.
+    anchored = sum(1 for r in rollups if r.get("txid"))
+    hero_badge = ""
+    if rollups:
+        hero_badge = (
+            f'<span class=segl-badge>{_segl_badge(15, "var(--bg)")}'
+            f"{anchored}/{len(rollups)} forseglet</span>"
+        )
+    if s["pageviews"] == 0:
+        siden = _siden(store.last_event_at(site["id"]))
+        livstegn = (
+            f"Scriptet er aktivt og lytter — siste livstegn {siden}."
+            if siden
+            else "Legg inn sporings-koden nederst, så dukker tallene opp her."
+        )
+        puls = (
+            '<span class=puls><span class=dot></span>tilkoblet</span>'
+            if siden
+            else ""
+        )
+        kpiband = (
+            '<div class=tomt>'
+            '<svg class=vm viewBox="0 0 64 64" aria-hidden=true>'
+            '<circle cx="32" cy="32" r="16" fill="none" stroke="currentColor" stroke-width="7"/>'
+            '<line x1="17" y1="51" x2="47" y2="13" stroke="currentColor" stroke-width="7" stroke-linecap="round"/></svg>'
+            f"<b>Ingen besøk målt i {label.lower()}</b><small>{livstegn}</small>{puls}</div>"
+        )
+    else:
+        kpiband = f"""<div class=kpiband>
+  <div class="card kpihero">
+    <div class=top>
+      <div><div class=lbl>Unike besøkende · {escape(label)}</div>
+      <div class=big>{_fmt_n(s['visitors'])}</div>
+      {_delta(s['visitors'], prev['visitors']) or '<small class="d d0">&nbsp;</small>'}</div>
+      {hero_badge}
+    </div>
+    {chart}
+  </div>
+  <div class=kpisec>
+    <div class="card kpi"><b>{_fmt_n(s['sessions'])}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
+    <div class="card kpi"><b>{_fmt_n(s['pageviews'])}</b><span>sidevisninger</span>{_delta(s['pageviews'], prev['pageviews'])}</div>
+    <div class="card kpi"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
+    <div class="card kpi"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
+  </div>
+</div>"""
+
     # Mål / konverteringer
     goal_rows = "".join(
         f'<tr><td>{escape(g["name"])} <small style="color:var(--muted)">'
@@ -2632,18 +2722,8 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 <nav>{_WORDMARK}<div class=links><a href="/app">Mine sites</a><a href="/logout">Logg ut</a></div></nav>
 {verify_banner}
 <div class=head><h1>{escape(site['domain'])}</h1><div class=tabs>{tabs}</div></div>
-<div class=kpis>
-  <div class="card kpi"><b>{s['visitors']}</b><span>unike besøkende</span>{_delta(s['visitors'], prev['visitors'])}</div>
-  <div class="card kpi"><b>{s['sessions']}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
-  <div class="card kpi"><b>{s['pageviews']}</b><span>sidevisninger</span>{_delta(s['pageviews'], prev['pageviews'])}</div>
-  <div class="card kpi"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
-  <div class="card kpi"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
-</div>
-<div class="card chartcard">
-<p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende · {escape(label)} <span style="float:right">endring målt mot {_VS_LABEL[period]}</span></p>
-{chart}
-</div>
-<p class=muted style="font-size:.8rem;margin:-.2rem 0 .9rem">Last ned CSV (regneark):
+{kpiband}
+<p class=muted style="font-size:.8rem;margin:.3rem 0 .9rem">Last ned CSV (regneark):
   <a href="/app/export?site={escape(public_id)}&period={period}&what=tidsserie">tidsserie</a> ·
   <a href="/app/export?site={escape(public_id)}&period={period}&what=sider">sider</a> ·
   <a href="/app/export?site={escape(public_id)}&period={period}&what=kilder">kilder</a> ·
