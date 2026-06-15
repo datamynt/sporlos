@@ -27,6 +27,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import (
     HTMLResponse,
     JSONResponse,
@@ -1912,6 +1913,28 @@ async def robots(request):
     )
 
 
+async def llms_txt(request):
+    """llms.txt — kuratert oversikt for AI-assistenter (GEO). Bing-indeksen
+    mater Copilot/ChatGPT-søk, så en ren, siterbar oppsummering hjelper."""
+    return PlainTextResponse(
+        "# Sporløs\n\n"
+        "> Personvernvennlig, cookieløs webanalyse for EØS — et norsk "
+        "Plausible-alternativ. Ingen cookies og ingen samtykkebanner (kun "
+        "daglig-saltet enveis-hash, aldri rå-IP lagret). Self-hostbar (AGPL) "
+        "eller hosted SaaS. Valgfri BSV-forankring av dags-aggregater som "
+        "premium. Drevet av Datamynt AS.\n\n"
+        "## Sider\n"
+        "- [Hjem](https://sporlos.no/)\n"
+        "- [Google Analytics-alternativ](https://sporlos.no/google-analytics-alternativ)\n"
+        "- [Spørsmål og svar](https://sporlos.no/sporsmal)\n"
+        "- [Shopify-integrasjon](https://sporlos.no/shopify)\n"
+        "- [For utviklere](https://sporlos.no/utviklere)\n"
+        "- [Demo](https://sporlos.no/demo)\n"
+        "- [Personvern](https://sporlos.no/personvern)\n"
+        "- [Vilkår](https://sporlos.no/vilkar)\n"
+    )
+
+
 async def sitemap(request):
     pages = ["/", "/demo", "/google-analytics-alternativ", "/sporsmal", "/shopify", "/signup", "/vilkar", "/personvern", "/utviklere"]
     urls = "".join(f"<url><loc>https://sporlos.no{p}</loc></url>" for p in pages)
@@ -2910,6 +2933,7 @@ routes = [
     Route("/app/sites/public", site_public_toggle, methods=["POST"]),
     Route("/robots.txt", robots),
     Route("/sitemap.xml", sitemap),
+    Route("/llms.txt", llms_txt),
     Route("/favicon.svg", favicon),
     Route("/favicon.ico", favicon_ico),
     Route("/apple-touch-icon.png", apple_icon),
@@ -2981,6 +3005,9 @@ middleware = [
         https_only=HTTPS_ONLY,
         same_site="lax",
     ),
+    # Komprimer HTML/CSS/JSON (~70-80% mindre) på markedsførings- og /app-sider.
+    # minimum_size hopper over de bittesmå beacon-svarene (POST /api/v1/events).
+    Middleware(GZipMiddleware, minimum_size=500),
 ]
 
 app = Starlette(routes=routes, middleware=middleware)
