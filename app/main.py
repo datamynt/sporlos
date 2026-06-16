@@ -361,25 +361,6 @@ details p{{color:var(--muted);margin:.7rem 0 .2rem;max-width:60em}}
     )
 
 
-# «Måler allerede»-chips på forsiden: dagens unike per dogfood-site.
-# In-memory-cache 5 min — 7 lette KPI-spørringer per oppfriskning, ikke per visning.
-_STRIP_DOMAINS = ["peck.to", "merdata.no", "datamynt.no", "peck.world",
-                  "docs.peck.to", "peck.cat", "overlay.social"]
-_strip_cache: dict = {"t": 0.0, "data": None}
-
-
-async def strip_stats(request):
-    if _strip_cache["data"] is None or time.time() - _strip_cache["t"] > 300:
-        out = []
-        for s in store.sites_by_domains(_STRIP_DOMAINS):
-            out.append({"domain": s["domain"], "i_dag": store.kpis(s["id"], 1)["visitors"]})
-        out.sort(key=lambda x: _STRIP_DOMAINS.index(x["domain"]))
-        _strip_cache.update(t=time.time(), data=out)
-    return JSONResponse(
-        {"sites": _strip_cache["data"]}, headers={"cache-control": "public, max-age=300"}
-    )
-
-
 async def assist_js(request):
     if not assist.configured():
         return PlainTextResponse("", status_code=404)
@@ -702,18 +683,6 @@ font-variant-numeric:tabular-nums;line-height:1.15}
 @keyframes inn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .inn1{animation:inn .6s .1s both}.inn2{animation:inn .6s .25s both}.inn3{animation:inn .6s .4s both}
 }
-.strip{padding:1.2rem 0 2.2rem;border-bottom:1px solid var(--line)}
-.strip .kick{font-size:.78rem;color:var(--muted);font-weight:600;letter-spacing:.06em;
-text-transform:uppercase;margin-bottom:.7rem}
-.chips{display:flex;flex-wrap:wrap;gap:.6rem}
-.chip{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;
-padding:.42rem 1rem;font-size:.88rem;font-weight:600;background:var(--card);cursor:default;
-transition:border-color .25s;white-space:nowrap}
-.chip em{font-style:normal;font-weight:400;color:var(--accent-deep);font-variant-numeric:tabular-nums;
-max-width:0;overflow:hidden;opacity:0;transition:max-width .35s ease,opacity .25s ease}
-.chip:hover{border-color:var(--accent)}
-.chip:hover em{max-width:9em;opacity:1}
-.chip.selv{border-style:dashed;color:var(--muted);font-weight:400}
 .lov{display:grid;grid-template-columns:1fr 1.05fr;gap:2.6rem;align-items:center}
 @media(max-width:820px){.lov{grid-template-columns:1fr}}
 ul.aldri{list-style:none;margin:0;padding:0;display:grid;gap:.55rem}
@@ -785,20 +754,6 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
   <p class=fine style="margin:.2rem 0 0;text-align:right"><a href="/demo">Hele dashbordet →</a></p>
 </div>
 </header>
-
-<div class=strip>
-  <div class=kick>Måler allerede våre egne nettsteder</div>
-  <div class=chips id=chips>
-    <span class=chip data-d="peck.to">peck.to<em></em></span>
-    <span class=chip data-d="merdata.no">merdata.no<em></em></span>
-    <span class=chip data-d="datamynt.no">datamynt.no<em></em></span>
-    <span class=chip data-d="peck.world">peck.world<em></em></span>
-    <span class=chip data-d="docs.peck.to">docs.peck.to<em></em></span>
-    <span class=chip data-d="peck.cat">peck.cat<em></em></span>
-    <span class=chip data-d="overlay.social">overlay.social<em></em></span>
-    <span class="chip selv">+ denne siden — <a href="/demo" style="margin-left:.3em">se live-tallene →</a></span>
-  </div>
-</div>
 
 <section>
   <h2>Hvorfor slipper du banner?</h2>
@@ -909,13 +864,6 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
   }
   hent();
   setInterval(hent, 60000);
-  // «måler allerede»-chips: dagens unike per site, avsløres på hover
-  fetch('/api/maaler').then(function (r) { return r.json(); }).then(function (d) {
-    (d.sites || []).forEach(function (s) {
-      var c = document.querySelector('.chip[data-d="' + s.domain + '"] em');
-      if (c) c.textContent = '\\u00a0\\u00b7 ' + s.i_dag + ' i dag';
-    });
-  }).catch(function () {});
 })();
 </script>
 """
@@ -3188,7 +3136,6 @@ routes = [
     Route("/billing/checkout", billing_checkout),
     Route("/billing/portal", billing_portal),
     Route("/api/hero", hero_stats),
-    Route("/api/maaler", strip_stats),
     Route("/sporsmal", sporsmal),
     Route("/assist.js", assist_js),
     Route("/api/assist", assist_api, methods=["POST"]),
