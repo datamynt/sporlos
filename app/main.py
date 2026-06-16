@@ -515,7 +515,7 @@ _BRAND_HEAD = (
 _BRAND_CSS = """
 @font-face{font-family:'Schibsted Grotesk';font-style:normal;font-weight:400 900;
 font-display:swap;src:url(/static/schibsted-grotesk.woff2) format('woff2')}
-:root{--bg:#faf9f6;--ink:#17263e;--muted:#5f6b7d;--accent:#2f6fed;--accent-deep:#1d4ed8;
+:root{--bg:#faf9f6;--ink:#17263e;--footer:#17263e;--muted:#5f6b7d;--accent:#2f6fed;--accent-deep:#1d4ed8;
 --line:#e8e6e0;--card:#ffffff;--ok:#15803d;
 --bar:#e9effd;--ok-bg:#ecfdf5;--ok-ink:#065f46;--err:#b91c1c;--err-bg:#fef2f2;
 --info:#3730a3;--info-bg:#eef2ff;--warn:#a16207;
@@ -557,11 +557,18 @@ nav.site .links{display:flex;gap:1.2rem;align-items:center;font-size:.95rem;flex
 nav.site .links a{color:var(--muted);text-decoration:none}
 nav.site .links a:hover{color:var(--ink)}
 nav.site .links a.btn{color:#fff;padding:.5rem 1rem}
-footer.site{background:var(--ink);color:#aeb9cb;font-size:.85rem;line-height:1.9;margin-top:4rem}
+/* Footer = blekk-panel i BEGGE moduser, så --footer holdes mørk og flipper IKKE
+   slik --ink gjør i mørk modus (ellers lys-på-lys = usynlig, jf. knapp-fellen). */
+footer.site{background:var(--footer);color:#aeb9cb;font-size:.85rem;line-height:1.9;margin-top:4rem}
 footer.site .wrap{padding-top:2.6rem;padding-bottom:3rem}
 footer.site a{color:#cdd6e4}
 footer.site .brand{color:#fff;margin-bottom:.6rem}
-footer.site .brand svg{color:var(--accent);--mark-gap:var(--ink)}
+footer.site .brand svg{color:var(--accent);--mark-gap:var(--footer)}
+@media(max-width:640px){
+nav.site{flex-wrap:wrap;row-gap:.6rem;padding:1.1rem 0}
+nav.site .links{width:100%;justify-content:flex-start;gap:.55rem 1.1rem;font-size:.9rem}
+nav.site .links a.btn{margin-left:auto}
+}
 """
 
 _SITE_NAV = (
