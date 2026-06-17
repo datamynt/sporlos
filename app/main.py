@@ -2800,7 +2800,9 @@ th:not(:first-child),td:not(:first-child){{text-align:right;width:5.5rem;color:v
 tr:last-child td{{border-bottom:0}}
 td a{{color:var(--ink);text-decoration:none;font-weight:600}}td a:hover{{color:var(--accent-deep)}}
 form.add{{display:flex;gap:.5rem}}
-form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:.95rem;background:var(--card)}}
+input,textarea,select{{color:var(--ink);background:var(--card)}}
+input::placeholder,textarea::placeholder{{color:var(--muted)}}
+form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:.95rem;background:var(--card);color:var(--ink)}}
 .fine{{color:var(--muted);font-size:.8rem}}
 .tema{{background:none;border:1px solid var(--line);border-radius:99px;width:30px;height:30px;cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;padding:0;margin-right:.6rem}}
 .tema:hover{{color:var(--ink);border-color:var(--muted)}}</style>
