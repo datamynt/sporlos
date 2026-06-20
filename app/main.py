@@ -569,12 +569,14 @@ _SITE_FOOTER = (
     '<a href="/sporsmal">Spørsmål og svar</a> · '
     '<a href="https://status.sporlos.no">Status</a> · '
     '<a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>'
-    'Et produkt fra <a href="https://datamynt.no">Datamynt AS</a> · org.nr 936 017 207 · '
-    "Maridalsveien 163, 0461 Oslo · post@sporlos.no<br><br>"
-    '<a href="https://datamynt.no" aria-label="En tjeneste fra Datamynt" '
-    'style="display:inline-block;opacity:.85">'
-    '<img src="/static/datamynt-logo.svg" alt="Datamynt" height="22" '
-    'style="vertical-align:middle"></a>'
+    '<a href="https://datamynt.no">Datamynt AS</a> · org.nr 936 017 207 · '
+    "Maridalsveien 163, 0461 Oslo · post@sporlos.no"
+    '<hr style="border:0;border-top:1px solid rgba(255,255,255,.13);margin:22px 0 16px">'
+    '<div style="text-align:center">'
+    '<span style="display:block;font-size:10px;letter-spacing:.16em;text-transform:uppercase;opacity:.55;margin-bottom:7px">En del av</span>'
+    '<a href="https://datamynt.no" aria-label="En del av Datamynt" style="display:inline-block">'
+    '<img src="/static/datamynt-logo.svg" alt="Datamynt" height="24"></a>'
+    '</div>'
     "</div></footer>"
 )
 
