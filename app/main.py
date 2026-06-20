@@ -570,7 +570,12 @@ _SITE_FOOTER = (
     '<a href="https://status.sporlos.no">Status</a> · '
     '<a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>'
     'Et produkt fra <a href="https://datamynt.no">Datamynt AS</a> · org.nr 936 017 207 · '
-    "Maridalsveien 163, 0461 Oslo · post@sporlos.no</div></footer>"
+    "Maridalsveien 163, 0461 Oslo · post@sporlos.no<br><br>"
+    '<a href="https://datamynt.no" aria-label="En tjeneste fra Datamynt" '
+    'style="display:inline-block;opacity:.85">'
+    '<img src="/static/datamynt-logo.svg" alt="Datamynt" height="22" '
+    'style="vertical-align:middle"></a>'
+    "</div></footer>"
 )
 
 
