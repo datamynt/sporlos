@@ -1,11 +1,11 @@
 name: deploy
 
-# Auto-deploy til prod-VPS-en på hver push til master.
-# Kjører på GitHubs runnere → rører aldri en lokal maskin.
+# MANUELL deploy (workflow_dispatch). Auto-deploy-på-push er flyttet til b550 sin
+# pull-loop (scripts/deploy-b550.sh via cron): b550 har ikke åpen SSH utad, så
+# push-fra-GitHub-runner nådde den aldri. Behold denne for en evt. fremtidig
+# SSH-bar norsk-eid VPS — sett DEPLOY_HOST-secreten til den boksen først.
 # SSH-nøkkelen er låst til ett forced command på serveren (kun redeploy, ingen shell).
 on:
-  push:
-    branches: [master]
   workflow_dispatch: {}
 
 concurrency:

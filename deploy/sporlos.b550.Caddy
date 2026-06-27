@@ -1,0 +1,12 @@
+# --- Lim disse blokkene inn i b550 sin HOST-Caddyfile ---
+# (samme Caddyfile som allerede serverer postiz.peck.to → localhost:5000)
+# Caddy henter Let's Encrypt-sert for begge vertsnavn automatisk (boksen har 80+443).
+# Endre 8080 hvis du satte SPORLOS_PORT til noe annet i .env.
+
+sporlos.no {
+	reverse_proxy 127.0.0.1:8080
+}
+
+www.sporlos.no {
+	redir https://sporlos.no{uri} permanent
+}

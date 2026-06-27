@@ -1,0 +1,48 @@
+# Prod-stack for b550-kontorboksen.
+# Forskjell fra docker-compose.prod.yml: INGEN egen Caddy — b550 har allerede
+# en host-Caddy (samme som serverer postiz.peck.to). Vi binder appen til en
+# LOOPBACK-port og lar host-Caddy reverse-proxye sporlos.no inn (TLS termineres
+# der). Samme mønster som Postiz på samme boks.
+#
+#   cp .env.example .env            # behold SPORLOS_DOMAIN=sporlos.no
+#   docker compose -f docker-compose.b550.yml up -d --build
+#   docker compose -f docker-compose.b550.yml exec app python -m app.manage init   # KUN ny tom DB
+# Restore av eksisterende data: se MIGRATE_B550.md (pg_dump fra UpCloud).
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sporlos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: sporlos
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sporlos"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    # Hele .env injiseres (alle hemmeligheter). SPORLOS_DOMAIN=sporlos.no MÅ stå
+    # slik at snippet + reset-lenker fortsatt peker på https://sporlos.no.
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://sporlos:${POSTGRES_PASSWORD}@db:5432/sporlos
+      SPORLOS_HTTPS: "true"        # bygg https-URL-er sjøl om host-Caddy proxyer http internt
+      GEOIP_DB: /data/geoip.mmdb
+    # KUN loopback — appen er aldri eksponert direkte, kun via host-Caddy.
+    ports:
+      - "127.0.0.1:${SPORLOS_PORT:-8080}:8000"
+    volumes:
+      - ./geoip:/data:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
