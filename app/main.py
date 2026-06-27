@@ -194,11 +194,11 @@ _MND = ["", "januar", "februar", "mars", "april", "mai", "juni", "juli",
 
 async def hero_stats(request):
     """Ekte tall til forsidens hero — sporlos.no målt med Sporløs. Ingen pynt:
-    viser dagens faktiske tall, samme kilde som /demo."""
+    rullende 7-dagers vindu (ikke «i dag», som blir 0 på stille dager), samme kilde som /demo."""
     site = store.resolve_site(os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7"))
     if not site:
         return JSONResponse({}, status_code=404)
-    today = store.stats(site["id"], 1)
+    week = store.stats(site["id"], 7)
     series = store.timeseries(site["id"], 7)
     frist = ""
     if series:
@@ -209,8 +209,8 @@ async def hero_stats(request):
             frist = d
     return JSONResponse(
         {
-            "visitors": today["visitors"],
-            "bounce": today["bounce_rate"],
+            "visitors": week["visitors"],
+            "bounce": week["bounce_rate"],
             "spark": [p["visitors"] for p in series],
             "from": frist,
         },
@@ -743,17 +743,17 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
   <span class="tag inn1">Norsk · cookieløs · samtykkefri</span>
   <h1 class=inn2>Webanalyse uten cookie&#8209;banner.</h1>
   <p class="lede inn3">Sporløs måler nettstedet ditt uten cookies, uten å lagre IP, og uten å samle
-  personopplysninger. Tallene til høyre er ekte — denne siden, målt med Sporløs, akkurat nå.</p>
+  personopplysninger. Tallene til høyre er ekte — denne siden, målt med Sporløs, siste 7 dager.</p>
   <div class="hero-ctas inn3">
     <a class=btn href="/signup">Start gratis prøve</a>
     <a href="/google-analytics-alternativ" style="font-size:.95rem">Ærlig sammenligning med GA →</a>
   </div>
   <p class="fine inn3">30 dager gratis · uten kort · åpen kildekode</p>
 </div>
-<div class="live inn3" aria-label="Live-tall for sporlos.no">
-  <div class=live-top><b>sporlos.no</b><span class=na><i class=livedot></i>akkurat nå</span></div>
+<div class="live inn3" aria-label="Sporløs-tall for sporlos.no (siste 7 dager)">
+  <div class=live-top><b>sporlos.no</b><span class=na><i class=livedot></i>siste 7 dager</span></div>
   <div class=live-kpis>
-    <div><b id=lv>&nbsp;</b><span>unike besøkende i dag</span></div>
+    <div><b id=lv>&nbsp;</b><span>unike besøkende</span></div>
     <div><b id=lb>&nbsp;</b><span>fluktfrekvens</span></div>
   </div>
   <svg id=lspark viewBox="0 0 340 70" preserveAspectRatio="none" aria-hidden=true></svg>
