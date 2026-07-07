@@ -19,7 +19,7 @@ import logging
 import os
 import re
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 
@@ -89,31 +89,52 @@ def _user(request):
     return {"uid": uid, "tid": tid} if uid and tid else None
 
 
-# Google OAuth (OpenID Connect) — aktiveres kun når credentials er satt.
+# Ekstern innlogging (OpenID Connect) — hver leverandør aktiveres kun når
+# credentials er satt. «innlogg» = innlogg.no, Datamynt-flåtens felles innlogging
+# (Zitadel) — registrer sporløs som OIDC-app der og sett INNLOGG_CLIENT_ID/SECRET.
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+INNLOGG_ISSUER = os.environ.get("INNLOGG_ISSUER", "https://id.datamynt.no")
+INNLOGG_CLIENT_ID = os.environ.get("INNLOGG_CLIENT_ID")
+INNLOGG_CLIENT_SECRET = os.environ.get("INNLOGG_CLIENT_SECRET")
+_HAS_GOOGLE = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+_HAS_INNLOGG = bool(INNLOGG_CLIENT_ID and INNLOGG_CLIENT_SECRET)
 oauth = None
-if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET:
+if _HAS_GOOGLE or _HAS_INNLOGG:
     from authlib.integrations.starlette_client import OAuth
 
     oauth = OAuth()
-    oauth.register(
-        name="google",
-        client_id=GOOGLE_CLIENT_ID,
-        client_secret=GOOGLE_CLIENT_SECRET,
-        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-        client_kwargs={"scope": "openid email profile"},
-    )
+    if _HAS_GOOGLE:
+        oauth.register(
+            name="google",
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret=GOOGLE_CLIENT_SECRET,
+            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+            client_kwargs={"scope": "openid email profile"},
+        )
+    if _HAS_INNLOGG:
+        oauth.register(
+            name="innlogg",
+            client_id=INNLOGG_CLIENT_ID,
+            client_secret=INNLOGG_CLIENT_SECRET,
+            server_metadata_url=f"{INNLOGG_ISSUER}/.well-known/openid-configuration",
+            client_kwargs={"scope": "openid email profile"},
+        )
 
 
-def _google_button():
-    if not oauth:
-        return ""
-    return (
-        '<a href="/auth/google" style="display:block;text-align:center;border:1px solid #ccc;'
-        'border-radius:8px;padding:.6rem;margin-top:1rem;text-decoration:none;color:#222">'
-        "Fortsett med Google</a>"
+def _sso_buttons():
+    """«Fortsett med …»-knapper for aktiverte leverandører — tomt hvis ingen."""
+    btn = (
+        '<a href="{href}" style="display:block;text-align:center;border:1px solid var(--line);'
+        'border-radius:8px;padding:.6rem;margin-top:1rem;text-decoration:none;color:var(--ink)">'
+        "Fortsett med {navn}</a>"
     )
+    out = ""
+    if _HAS_GOOGLE:
+        out += btn.format(href="/auth/google", navn="Google")
+    if _HAS_INNLOGG:
+        out += btn.format(href="/auth/innlogg", navn="innlogg.no")
+    return out
 
 
 # Stripe (kort-betaling) — mode-bevisst: STRIPE_MODE=test|live velger _TEST/_LIVE-nøkler.
@@ -499,7 +520,7 @@ font-display:swap;src:url(/static/schibsted-grotesk.woff2) format('woff2')}
 :root{--bg:#faf9f6;--ink:#17263e;--footer:#17263e;--muted:#5f6b7d;--accent:#2f6fed;--accent-deep:#1d4ed8;
 --line:#e8e6e0;--card:#ffffff;--ok:#15803d;
 --bar:#e9effd;--ok-bg:#ecfdf5;--ok-ink:#065f46;--err:#b91c1c;--err-bg:#fef2f2;
---info:#3730a3;--info-bg:#eef2ff;--warn:#a16207;
+--info:#3730a3;--info-bg:#eef2ff;--warn:#a16207;--warn-bg:#fff7ed;
 --btn-bg:#17263e;--btn-bg-h:#0e1a2e;--accent-fill:#2f6fed;--accent-fill-h:#1d4ed8;
 font:17px/1.65 'Schibsted Grotesk',system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
 html{overflow-y:scroll}
@@ -954,7 +975,7 @@ async def signup(request):
   <label>Passord</label><input name=password type=password required minlength=8>
   <button>{"Fortsett til betaling" if plan else "Start gratis prøve"}</button>
 </form>
-{_google_button()}
+{_sso_buttons()}
 <p class=muted>Har du konto? <a href="/login">Logg inn</a></p>""",
     )
 
@@ -983,7 +1004,7 @@ async def login(request):
   <label>Passord</label><input name=password type=password required>
   <button>Logg inn</button>
 </form>
-{_google_button()}
+{_sso_buttons()}
 <p class=muted>Ny her? <a href="/signup">Opprett konto</a> · <a href="/forgot">Glemt passord?</a></p>""",
     )
 
@@ -1044,7 +1065,8 @@ async def forgot(request):
         f = await request.form()
         email = (f.get("email") or "").strip().lower()
         u = store.get_user_by_email(email) if email else None
-        if u and u["password_hash"] != "!google-oauth":
+        # «!»-prefiks = SSO-sentinel (Google/innlogg) — passordet styres hos leverandøren
+        if u and not str(u["password_hash"]).startswith("!"):
             token = store.create_reset_token(email)
             link = f"{PUBLIC_BASE}/reset?token={token}"
             mailer.send(
@@ -1115,32 +1137,51 @@ async def logout(request):
 
 
 async def google_login(request):
-    if not oauth:
+    if not _HAS_GOOGLE:
         return RedirectResponse("/login", status_code=302)
     return await oauth.google.authorize_redirect(request, f"{PUBLIC_BASE}/auth/google/callback")
 
 
-async def google_callback(request):
-    if not oauth:
+async def innlogg_login(request):
+    if not _HAS_INNLOGG:
+        return RedirectResponse("/login", status_code=302)
+    return await oauth.innlogg.authorize_redirect(request, f"{PUBLIC_BASE}/auth/innlogg/callback")
+
+
+async def _oidc_callback(request, provider: str, sentinel: str):
+    """Felles OIDC-retur: verifisert e-post → eksisterende konto eller ny.
+    Sentinel-hash => kontoen kan ikke passord-logge (styres hos leverandøren)."""
+    client = getattr(oauth, provider, None) if oauth else None
+    if client is None:
         return RedirectResponse("/login", status_code=302)
     try:
-        token = await oauth.google.authorize_access_token(request)
+        token = await client.authorize_access_token(request)
     except Exception:
         return RedirectResponse("/login", status_code=302)
     info = token.get("userinfo") or {}
     email = (info.get("email") or "").strip().lower()
-    if not email or info.get("email_verified") is False:
+    # Fail-closed: krev POSITIVT verifisert e-post. Kontolinking skjer på e-post
+    # alene (ingen provider+sub-binding enda), så en leverandør som asserter en
+    # uverifisert adresse ville ellers kunne overta en eksisterende konto.
+    if not email or info.get("email_verified") is not True:
         return RedirectResponse("/login", status_code=302)
     u = store.get_user_by_email(email)
     if u:
         request.session["uid"], request.session["tid"] = u["id"], u["tenant_id"]
     else:
-        # Ny Google-bruker → opprett konto. Sentinel-hash => kan ikke passord-logge.
         name = info.get("name") or email.split("@")[0]
-        tid, uid = store.create_account(name, email, "!google-oauth")
-        store.set_email_verified(uid)  # Google har allerede bekreftet — ingen evig banner
+        tid, uid = store.create_account(name, email, sentinel)
+        store.set_email_verified(uid)  # leverandøren har allerede bekreftet e-posten
         request.session["uid"], request.session["tid"] = uid, tid
     return RedirectResponse("/app", status_code=302)
+
+
+async def google_callback(request):
+    return await _oidc_callback(request, "google", "!google-oauth")
+
+
+async def innlogg_callback(request):
+    return await _oidc_callback(request, "innlogg", "!innlogg-oidc")
 
 
 async def billing_checkout(request):
@@ -2128,7 +2169,7 @@ async def sitemap(request):
     )
 
 
-_PERIODS = {"1": ("i dag", 1), "7": ("7 dager", 7), "30": ("30 dager", 30)}
+_PERIODS = {"1": ("i dag", 1), "7": ("7 dager", 7), "30": ("30 dager", 30), "90": ("90 dager", 90)}
 
 # Plan-grenser bor i store (delt med notify). Lokale alias beholdes.
 _PLAN_LIMITS = store.PLAN_LIMITS
@@ -2151,6 +2192,13 @@ def _trial_expired(tenant: dict) -> bool:
 def _fmt_n(n: int) -> str:
     return f"{n:,}".replace(",", " ")
 
+
+def _safe_filename(s: str) -> str:
+    """Domene o.l. inn i content-disposition: kun ufarlige tegn. `\"` brekker
+    header-quoting og CR/LF får h11 til å kaste — begge kan nå hit via
+    kundens eget domenefelt."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", s)
+
 # Delt dashboard-CSS (innlogget dashboard + offentlig live-demo).
 _DASH_CSS = """
 .wrap{max-width:980px;margin:0 auto;padding:0 1.2rem 4rem}
@@ -2163,7 +2211,8 @@ cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;padding:0}
 .tema:hover{color:var(--ink);border-color:var(--muted)}
 .head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
 h1{font-size:1.7rem;letter-spacing:-.02em;margin:0}
-.tabs a{padding:.32rem .8rem;margin-left:.3rem;border:1px solid var(--line);border-radius:99px;
+.tabs{display:flex;flex-wrap:wrap;gap:.3rem}
+.tabs a{padding:.32rem .8rem;border:1px solid var(--line);border-radius:99px;white-space:nowrap;
 text-decoration:none;color:var(--muted);font-size:.85rem;background:var(--card)}
 .tabs a.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem}
@@ -2189,6 +2238,7 @@ font-variant-numeric:tabular-nums}
 .segl-badge{display:inline-flex;align-items:center;gap:.4rem;border:1px solid var(--line);
 border-radius:999px;padding:.22rem .65rem .22rem .45rem;font-size:.7rem;color:var(--muted);
 background:var(--bg);white-space:nowrap;flex:none}
+.hint{color:var(--muted);font-size:.78rem;margin:.1rem 0 .45rem}
 .tomt{border:1.5px dashed var(--line);border-radius:12px;padding:1.6rem 1.2rem;text-align:center;
 position:relative;overflow:hidden;margin:1rem 0}
 .tomt svg.vm{position:absolute;right:-24px;bottom:-30px;width:130px;color:var(--accent);opacity:.06}
@@ -2200,7 +2250,14 @@ position:relative;overflow:hidden;margin:1rem 0}
 @keyframes p{0%,100%{opacity:1}50%{opacity:.35}}.tomt .dot{animation:p 2.4s ease-in-out infinite}}
 .chartcard{margin:0 0 .9rem;padding-bottom:.6rem}
 .chart{width:100%;height:170px;display:block}
-.chart circle{fill:transparent}.chart circle:hover{fill:var(--accent)}
+.chartwrap{position:relative;touch-action:pan-y}
+.ctip{position:absolute;top:0;left:0;pointer-events:none;background:var(--ink);color:var(--bg);
+padding:.4rem .65rem;border-radius:8px;font-size:.78rem;line-height:1.45;white-space:nowrap;
+transform:translate(-50%,-118%);box-shadow:0 8px 22px -8px rgba(23,38,62,.5);z-index:5}
+.ctip b{font-variant-numeric:tabular-nums}
+.ctip .tl{display:block;opacity:.75;font-size:.72rem}
+.cdot{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--accent);
+border:2px solid var(--card);transform:translate(-50%,-50%);pointer-events:none;z-index:4}
 .axis{display:flex;justify-content:space-between;color:var(--muted);font-size:.75rem;padding:0 .2rem}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.9rem;margin:.9rem 0}
 .block{margin:.9rem 0}
@@ -2212,6 +2269,12 @@ th{color:var(--muted);font-weight:600;font-size:.8rem}
 td:last-child,th:last-child{text-align:right;color:var(--muted);width:5rem}
 tr:last-child td{border-bottom:0}
 h3{margin:0 0 .5rem;font-size:1rem;letter-spacing:-.01em}
+/* Verifiserbare tall: Status-kolonnen må romme «✓ forankret ↗» (tillitssignalet
+   skal aldri ellipsis-klippes); Dag-kolonnen er fast smal, Segl tar resten. */
+.vt th:first-child,.vt td:first-child{width:6.2rem}
+.vt th:last-child,.vt td:last-child{width:7.6rem}
+@media(max-width:560px){.vt th:first-child,.vt td:first-child{width:5.4rem}
+.vt th:last-child,.vt td:last-child{width:6.4rem}}
 details summary{cursor:pointer;color:var(--accent-deep);font-size:.9rem}
 pre{background:var(--bg);padding:.8rem;border-radius:8px;overflow:auto;font-size:.78rem}
 .footnote{color:var(--muted);font-size:.8rem;margin-top:2rem}
@@ -2232,7 +2295,7 @@ _DARK_VARS = (
     "--bg:#121a2b;--card:#19233a;--line:#283450;--ink:#e9edf6;--muted:#9aa6bf;"
     "--accent:#7da2ff;--accent-deep:#8fb0ff;--ok:#4ade80;"
     "--bar:#22335a;--ok-bg:#10302a;--ok-ink:#6ee7a8;--err:#f58a8a;--err-bg:#371b21;"
-    "--info:#aebcff;--info-bg:#1b2843;--warn:#e3b341;"
+    "--info:#aebcff;--info-bg:#1b2843;--warn:#e3b341;--warn-bg:#33280f;"
     "--btn-bg:#2f6fed;--btn-bg-h:#1d4ed8"
 )
 # Manuell overstyring (data-theme) + auto (systeminnstilling, med mindre manuelt lyst).
@@ -2269,6 +2332,58 @@ _BARS_JS = """<script>
 })();
 </script>"""
 
+# Graf-hover: crosshair + boble som snapper til nærmeste bucket. Leser
+# forhåndsberegnede [x, y, etikett, unike, visninger] fra data-pts (_area_chart),
+# så JS-en slipper all geometri-logikk utover skalering viewBox→piksler.
+_CHART_JS = """<script>
+(function () {
+  var nf = new Intl.NumberFormat('nb-NO');
+  document.querySelectorAll('.chartwrap').forEach(function (w) {
+    var pts;
+    try { pts = JSON.parse(w.dataset.pts || '[]'); } catch (e) { return; }
+    if (pts.length < 2) return;
+    var svg = w.querySelector('svg'), tip = w.querySelector('.ctip'),
+        cx = svg.querySelector('.cx'), dot = w.querySelector('.cdot'),
+        W = +w.dataset.w || 880, H = +w.dataset.h || 170;
+    function show(clientX) {
+      var r = svg.getBoundingClientRect();
+      if (!r.width) return;
+      var x = (clientX - r.left) / r.width * W, best = 0, bd = 1e9;
+      for (var i = 0; i < pts.length; i++) {
+        var d = Math.abs(pts[i][0] - x);
+        if (d < bd) { bd = d; best = i; }
+      }
+      var p = pts[best];
+      cx.setAttribute('x1', p[0]); cx.setAttribute('x2', p[0]);
+      tip.innerHTML = '<span class=tl></span><b></b>';
+      tip.querySelector('.tl').textContent = p[2];
+      tip.querySelector('b').textContent = nf.format(p[3]);
+      tip.querySelector('b').insertAdjacentText('afterend',
+        ' unike \\u00b7 ' + nf.format(p[4]) + ' visn.');
+      tip.hidden = false;
+      /* svg ligger øverst i wrapperen, så svg-lokale piksler == wrapper-lokale */
+      var px = p[0] / W * r.width, py = p[1] / H * r.height;
+      dot.hidden = false;
+      dot.style.left = px + 'px'; dot.style.top = py + 'px';
+      var half = tip.offsetWidth / 2 + 6;
+      tip.style.left = Math.max(half, Math.min(r.width - half, px)) + 'px';
+      tip.style.top = Math.max(py, 34) + 'px';
+    }
+    function hide() {
+      tip.hidden = true;
+      dot.hidden = true;
+      cx.setAttribute('x1', -9); cx.setAttribute('x2', -9);
+    }
+    w.addEventListener('mousemove', function (e) { show(e.clientX); });
+    w.addEventListener('mouseleave', hide);
+    w.addEventListener('touchstart', function (e) { show(e.touches[0].clientX); }, {passive: true});
+    w.addEventListener('touchmove', function (e) { show(e.touches[0].clientX); }, {passive: true});
+    w.addEventListener('touchend', hide);
+    w.addEventListener('touchcancel', hide);
+  });
+})();
+</script>"""
+
 
 def _stat_table(items, key, icon=None):
     """Nøkkel/antall-tabell: andelssøyle bak hver rad (relativt til toppraden),
@@ -2290,7 +2405,7 @@ def _stat_table(items, key, icon=None):
     return f"<table>{rows or '<tr><td>ingen data enda</td></tr>'}</table>"
 
 
-_VS_LABEL = {"1": "i går", "7": "forrige 7 dager", "30": "forrige 30 dager"}
+_VS_LABEL = {"1": "i går", "7": "forrige 7 dager", "30": "forrige 30 dager", "90": "forrige 90 dager"}
 
 
 def _delta(now, before, invert=False):
@@ -2298,6 +2413,11 @@ def _delta(now, before, invert=False):
     if not before:
         return ""
     pct = round((now - before) / before * 100)
+    if abs(pct) > 500:
+        # «↑ 1862 %» sier bare at forrige periode var nesten tom (typisk ny site
+        # i 90-dagers-visning) — det er støy, ikke innsikt.
+        return ('<small class="d d0" title="forrige periode hadde for lite data '
+                'til meningsfull sammenligning">—</small>')
     if pct == 0:
         return '<small class="d d0" title="mot forrige periode">±0 %</small>'
     up = pct > 0
@@ -2337,13 +2457,33 @@ def _segl_badge(size=26, card="var(--card)"):
     )
 
 
-def _verify_table(rollups):
-    rr = "".join(
-        f'<tr><td>{escape(str(r["day"])[:10])}</td><td>{r["visitors"]}</td><td>{r["pageviews"]}</td>'
-        f'<td style="font-family:monospace;font-size:.72rem;color:var(--muted)">{escape((r["rollup_hash"] or "")[:12])}…</td>'
-        f'<td>{"✓ forankret" if r.get("txid") else "venter"}</td></tr>'
-        for r in rollups
-    )
+def _verify_table(rollups, public_id=None):
+    """Forseglede dagstall m/ status. Med public_id lenkes hver dag til /proof
+    (nedlastbart bevis) og hver forankring til en uavhengig kjede-utforsker."""
+    rows = []
+    for r in rollups:
+        day = str(r["day"])[:10]
+        if r.get("txid"):
+            status = (
+                f'<a href="https://whatsonchain.com/tx/{escape(str(r["txid"]))}" '
+                'title="Se forankrings-transaksjonen på en uavhengig utforsker" '
+                'style="color:var(--ok);text-decoration:none">✓ forankret ↗</a>'
+            )
+        else:
+            status = '<span title="Seglet er laget — venter på neste forankring til kjeden">venter</span>'
+        proof_link = ""
+        if public_id and r.get("rollup_hash"):
+            proof_link = (
+                f' <a href="/proof?site={escape(public_id)}&day={day}" title="Last ned bevis (JSON)" '
+                'style="font-size:.72rem">bevis</a>'
+            )
+        rows.append(
+            f"<tr><td>{escape(day)}</td><td>{r['visitors']}</td><td>{r['pageviews']}</td>"
+            f'<td style="font-family:monospace;font-size:.72rem;color:var(--muted)">'
+            f"{escape((r['rollup_hash'] or '')[:12])}…{proof_link}</td>"
+            f"<td>{status}</td></tr>"
+        )
+    rr = "".join(rows)
     anchored = sum(1 for r in rollups if r.get("txid"))
     badge = ""
     if rollups:
@@ -2351,23 +2491,75 @@ def _verify_table(rollups):
             '<span style="display:inline-flex;align-items:center;gap:.4rem;border:1px solid var(--line);'
             'border-radius:999px;padding:.22rem .7rem .22rem .45rem;font-size:.72rem;color:var(--muted);'
             f'background:var(--bg);float:right">{_segl_badge(16, "var(--bg)")}'
-            f"{anchored}/{len(rollups)} forseglet</span>"
+            f"{anchored}/{len(rollups)} forankret</span>"
         )
+    howto = (
+        '<details style="margin-top:.6rem"><summary>Hvordan etterprøver jeg dette selv?</summary>'
+        '<ol style="color:var(--muted);font-size:.85rem;margin:.6rem 0 .2rem;padding-left:1.3rem">'
+        "<li><b>Last ned beviset</b> for en dag (lenken ved seglet). Det inneholder dagens tall "
+        "nøyaktig slik de ble forseglet.</li>"
+        "<li><b>Regn ut seglet selv:</b> sha256 av tallene (kanonisk JSON, oppskrift i beviset) "
+        "skal gi nøyaktig samme hash som står her.</li>"
+        "<li><b>Følg Merkle-stien</b> i beviset opp til roten — hvert steg er én sha256.</li>"
+        "<li><b>Slå opp transaksjonen</b> på en uavhengig utforsker (lenken i Status-kolonnen): "
+        "roten ligger i OP_RETURN-feltet, tidsstemplet av et nettverk vi ikke kontrollerer.</li>"
+        "</ol>"
+        '<p style="color:var(--muted);font-size:.85rem;margin:.4rem 0 .2rem">Endres ett eneste tall '
+        "i ettertid, stemmer ikke seglet i steg 2 — det er hele poenget. Du trenger ikke stole på "
+        "oss, bare på sha256.</p></details>"
+    )
     return (
         f"<h3>{badge}<span style='display:inline-flex;align-items:center;gap:.5rem'>"
         f"{_segl_badge(22)}Verifiserbare tall</span></h3>"
-        '<p style="color:var(--muted);font-size:.85rem">Daglige tall forsegles med en kryptografisk hash og '
-        "forankres i en uavhengig, offentlig logg — så de ikke kan endres i ettertid.</p>"
-        "<table><tr><th>Dag</th><th>Unike</th><th>Visn.</th><th>Segl</th><th>Status</th></tr>"
-        f"{rr or '<tr><td>ingen forseglede dager enda</td><td></td><td></td><td></td><td></td></tr>'}</table>"
+        '<p style="color:var(--muted);font-size:.85rem">Hver dags tall forsegles med en kryptografisk '
+        "hash som forankres i en offentlig blokkjede — etter det kan ingen, heller ikke vi, endre dem "
+        "uten at det synes.</p>"
+        '<table class=vt><tr><th>Dag</th><th>Unike</th><th>Visn.</th><th>Segl</th><th>Status</th></tr>'
+        f"{rr or '<tr><td>ingen forseglede dager enda — første segl lages i natt</td><td></td><td></td><td></td><td></td></tr>'}</table>"
+        f"{howto}"
     )
 
 
-def _area_chart(series, width=880, height=170):
-    """SVG-areagraf (unike per bucket): aksent-linje + gradientflate + hover-punkter.
+_UKEDAGER = ["man.", "tir.", "ons.", "tor.", "fre.", "lør.", "søn."]
+
+
+def _fmt_bucket(bucket, unit: str, win_start: date | None = None, today: date | None = None) -> str:
+    """Menneskelig etikett for en tidsserie-bucket: «kl. 14–15», «tir. 8. juli»,
+    «uke 28 · 6.–12. juli». Faller tilbake til råstrengen ved uventet format.
+
+    win_start/today klipper uke-spennet til det dataene faktisk dekker — første
+    og siste uke i et 90-dagers vindu er som regel delvise, og en etikett som
+    påstår hel uke ville forklart et «stup» i grafen med feil premiss."""
+    b = str(bucket)
+    try:
+        if unit == "hour":
+            h = int(b[11:13])
+            return f"kl. {h:02d}–{(h + 1) % 24:02d}"
+        d = date(int(b[:4]), int(b[5:7]), int(b[8:10]))
+    except (ValueError, IndexError):
+        return b
+    if unit == "week":
+        start = max(d, win_start) if win_start else d
+        full_end = d + timedelta(days=6)
+        end = min(full_end, today) if today else full_end
+        partial = " hittil" if (start > d or end < full_end) else ""
+        if start == end:
+            span = f"{start.day}. {_MND[start.month]}"
+        elif start.month == end.month:
+            span = f"{start.day}.–{end.day}. {_MND[end.month]}"
+        else:
+            span = f"{start.day}. {_MND[start.month][:3]}–{end.day}. {_MND[end.month][:3]}"
+        return f"uke {d.isocalendar()[1]} · {span}{partial}"
+    return f"{_UKEDAGER[d.weekday()]} {d.day}. {_MND[d.month]}"
+
+
+def _area_chart(series, width=880, height=170, days=7):
+    """SVG-areagraf (unike per bucket): aksent-linje + gradientflate + interaktiv
+    hover (crosshair + boble m/ tall for nærmeste bucket — se _CHART_JS).
     Rene rette segmenter — ærlig dataviz, ingen utjevning som lyver mellom punktene."""
     if not series:
         return '<p class=muted style="font-size:.9rem">ingen data enda</p>'
+    unit = "hour" if days == 1 else ("week" if days >= 60 else "day")
     pad_x, pad_top, pad_bot = 8, 14, 22
     peak = max((b["visitors"] for b in series), default=0) or 1
     n = len(series)
@@ -2377,18 +2569,33 @@ def _area_chart(series, width=880, height=170):
         (pad_x + i * step, pad_top + span * (1 - b["visitors"] / peak))
         for i, b in enumerate(series)
     ]
+    # Hover-data: [x, y, etikett, unike, visninger] per bucket — resten gjør JS-en.
+    today = datetime.now(timezone.utc).date()
+    win_start = today - timedelta(days=days - 1)
+    hover = "[]"
+    if n > 1:
+        hover = json.dumps(
+            [
+                [round(x, 1), round(y, 1), _fmt_bucket(b["bucket"], unit, win_start, today),
+                 b["visitors"], b["pageviews"]]
+                for (x, y), b in zip(pts, series)
+            ],
+            ensure_ascii=False,
+        )
     if n == 1:  # ett punkt: tegn en flat strek over hele bredden
         y = pts[0][1]
         pts = [(pad_x, y), (width - pad_x, y)]
     line = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts)
     area = f"{line} L{pts[-1][0]:.1f},{height - pad_bot} L{pts[0][0]:.1f},{height - pad_bot} Z"
-    dots = "".join(
-        f'<circle cx="{pad_x + i * step:.1f}" cy="{pad_top + span * (1 - b["visitors"] / peak):.1f}" r="9">'
-        f"<title>{escape(str(b['bucket']))}: {b['visitors']} unike · {b['pageviews']} visn.</title></circle>"
-        for i, b in enumerate(series)
-    ) if n > 1 else ""
-    first, last = escape(str(series[0]["bucket"])), escape(str(series[-1]["bucket"]))
+    # Aksen holdes kort (uke-spenn bryter over to linjer på mobil) — detaljene bor i hoveren.
+    if unit == "week":
+        first = escape(_fmt_bucket(series[0]["bucket"], unit).split(" · ")[0])
+        last = escape(_fmt_bucket(series[-1]["bucket"], unit).split(" · ")[0])
+    else:
+        first = escape(_fmt_bucket(series[0]["bucket"], unit))
+        last = "nå" if unit == "hour" else escape(_fmt_bucket(series[-1]["bucket"], unit))
     return (
+        f"<div class=chartwrap data-w={width} data-h={height} data-pts='{escape(hover)}'>"
         f'<svg viewBox="0 0 {width} {height}" preserveAspectRatio="none" class=chart role=img>'
         '<defs><linearGradient id=cg x1=0 y1=0 x2=0 y2=1>'
         '<stop offset=0 style="stop-color:var(--accent)" stop-opacity=".16"/>'
@@ -2396,12 +2603,14 @@ def _area_chart(series, width=880, height=170):
         f'<path d="{area}" fill="url(#cg)"/>'
         f'<path d="{line}" fill=none style="stroke:var(--accent)" stroke-width="2.5" '
         'stroke-linejoin=round stroke-linecap=round/>'
-        f"{dots}</svg>"
+        f'<line class=cx x1=-9 x2=-9 y1="{pad_top - 6}" y2="{height - pad_bot}" '
+        'style="stroke:var(--line)" stroke-width="1.5"/>'
+        "</svg><div class=cdot hidden></div><div class=ctip hidden></div></div>"
         f'<div class=axis><span>{first}</span><span>topp: {peak} unike</span><span>{last}</span></div>'
     )
 
 
-def _public_stats_page(request, site, base_path, *, suffix, intro, title, description, canonical):
+def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, title, description, canonical):
     """Delt renderer for offentlige statistikk-sider (/demo + /p/<site>). Read-only."""
     period = request.query_params.get("period", "7")
     if period not in _PERIODS:
@@ -2414,10 +2623,10 @@ def _public_stats_page(request, site, base_path, *, suffix, intro, title, descri
         {**c, "ikon": icons.flag(c["k"]), "k": country_no(c["k"])} for c in s["countries"]
     ]
     prev = store.kpis(site["id"], days, offset=1)
-    chart = _area_chart(store.timeseries(site["id"], days))
+    chart = _area_chart(store.timeseries(site["id"], days), days=days)
     flow = store.flow_stats(site["id"], days)
     transitions = store.path_transitions(site["id"], days)
-    verify_html = _verify_table(store.recent_rollups(site["id"]))
+    verify_html = _verify_table(store.recent_rollups(site["id"]), public_id)
 
     # Navigasjonsstier + kampanjer vises kun når det finnes data — demoen skal
     # vise bredden i produktet, men tomme kort selger ingenting.
@@ -2469,11 +2678,11 @@ padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
 <div class=head><h1>{escape(site["domain"])} <span class=muted style="font-size:1rem;font-weight:400">· {escape(suffix)}</span></h1>
 <div class=tabs>{tabs}</div></div>
 <div class=kpis>
-  <div class="card kpi"><b>{s['visitors']}</b><span>unike besøkende</span>{_delta(s['visitors'], prev['visitors'])}</div>
-  <div class="card kpi"><b>{s['sessions']}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
+  <div class="card kpi" title="Unike per dag — vi følger ingen på tvers av dager"><b>{s['visitors']}</b><span>unike besøkende</span>{_delta(s['visitors'], prev['visitors'])}</div>
+  <div class="card kpi" title="Én sammenhengende økt — 30 min pause regnes som nytt besøk"><b>{s['sessions']}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
   <div class="card kpi"><b>{s['pageviews']}</b><span>sidevisninger</span>{_delta(s['pageviews'], prev['pageviews'])}</div>
-  <div class="card kpi"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
-  <div class="card kpi"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
+  <div class="card kpi" title="Andel besøk som forlot nettstedet etter bare én side — lavere er bedre"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
+  <div class="card kpi" title="Sidevisninger delt på besøk — hvor dypt folk går"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
 </div>
 <div class="card chartcard">
 <p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende · {escape(label)} <span style="float:right">endring målt mot {_VS_LABEL[period]}</span></p>
@@ -2481,9 +2690,9 @@ padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
 </div>
 <div class=grid>
   <div class=card><h3>Topp sider</h3>{_stat_table(s['top_paths'], 'path')}</div>
-  <div class=card><h3>Topp kilder</h3>{_stat_table(s['top_sources'], 'src')}</div>
-  <div class=card><h3>Inngangssider</h3>{_stat_table(flow['entries'], 'path')}</div>
-  <div class=card><h3>Utgangssider</h3>{_stat_table(flow['exits'], 'path')}</div>
+  <div class=card><h3>Topp kilder</h3><p class=hint>hvor trafikken kommer fra — «direkte» = skrev inn adressen eller bokmerke</p>{_stat_table(s['top_sources'], 'src')}</div>
+  <div class=card><h3>Inngangssider</h3><p class=hint>første side i besøket — der folk lander</p>{_stat_table(flow['entries'], 'path')}</div>
+  <div class=card><h3>Utgangssider</h3><p class=hint>siste side før de dro — se etter lekkasjer</p>{_stat_table(flow['exits'], 'path')}</div>
   <div class=card><h3>Land</h3>{_stat_table(s['countries'], 'k')}</div>
   <div class=card><h3>Fylke / region</h3>{_stat_table(s['regions'], 'k')}</div>
   <div class=card><h3>Enheter</h3>{_stat_table(s['devices'], 'k', icons.device)}</div>
@@ -2504,8 +2713,83 @@ Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
 </div>
 {_SITE_FOOTER}
 {_BARS_JS}
+{_CHART_JS}
 {_SELF_SNIPPET}</body></html>""",
         headers={"cache-control": "public, max-age=60"},
+    )
+
+
+async def proof(request):
+    """GET /proof?site=<public_id>&day=YYYY-MM-DD — nedlastbart verifiserings-bevis.
+
+    Selvstendig JSON: dagens tall (kanonisk payload), segl-hash, Merkle-sti, rot og
+    txid — alt en tredjepart trenger for å etterprøve uten å stole på oss.
+    Tilgang: eier av siten, eller site med offentlig dashboard (inkl. demo-siten)."""
+    public_id = request.query_params.get("site") or ""
+    day = request.query_params.get("day") or ""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        return JSONResponse({"error": "day må være YYYY-MM-DD"}, status_code=400)
+    site = store.resolve_site(public_id) if public_id else None
+    if not site:
+        return JSONResponse({"error": "ukjent site"}, status_code=404)
+    user = _user(request)
+    allowed = (
+        (user and site["tenant_id"] == user["tid"])
+        or bool((store.get_public_site(public_id) or {}).get("public_dash"))
+        or public_id == os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7")
+    )
+    if not allowed:
+        return JSONResponse({"error": "ukjent site"}, status_code=404)  # ikke-eier ser ikke at den finnes
+    r = store.get_rollup(site["id"], day)
+    if not r or not r.get("rollup_hash"):
+        return JSONResponse({"error": "ingen forseglet rollup for denne dagen"}, status_code=404)
+
+    # Payload NØYAKTIG som i store.compute_rollup — sha256 av denne er seglet.
+    # int()-coercion er semantisk viktig: DB-kolonnen kan gi 100.0 (float) tilbake,
+    # men seglet ble laget av int (round()) — "100.0" ≠ "100" i kanonisk JSON.
+    payload = {
+        "site_id": int(r["site_id"]),
+        "day": day,
+        "pageviews": int(r["pageviews"]),
+        "visitors": int(r["visitors"]),
+        "sessions": int(r["sessions"]),
+        "bounce_rate": int(r["bounce_rate"]),
+    }
+    try:
+        mproof = json.loads(r["merkle_proof"]) if r.get("merkle_proof") else None
+    except (TypeError, ValueError):
+        mproof = None
+    txid = r.get("txid")
+    out = {
+        "hva": f"Verifiserings-bevis for {site['domain']} {day}, utstedt av Sporløs (sporlos.no).",
+        "domain": site["domain"],
+        "day": day,
+        "payload": payload,
+        "rollup_hash": r["rollup_hash"],
+        "steg_1": "sha256(json.dumps(payload, sort_keys=True, separators=(', ', ': ')).encode()).hexdigest() == rollup_hash",
+        "merkle": {
+            "steg_2": "RFC 6962-stil: blad = sha256(0x00 || bytes.fromhex(rollup_hash)); "
+                      "node = sha256(0x01 || venstre || høyre). Følg proof-stegene "
+                      "(right=true → søsken på høyre side) opp til root.",
+            "proof": mproof,
+            "root": r.get("merkle_root"),
+        },
+        "kjede": {
+            "steg_3": "root ligger i OP_RETURN-feltet i transaksjonen under (prefiks 'SPORLOS'), "
+                      "tidsstemplet av BSV-nettverket.",
+            "txid": txid,
+            "explorer": f"https://whatsonchain.com/tx/{txid}" if txid else None,
+            "anchored_at": str(r["anchored_at"])[:19] if r.get("anchored_at") else None,
+        }
+        if txid
+        else {"status": "venter", "note": "Seglet er laget, men ikke forankret on-chain enda."},
+    }
+    return JSONResponse(
+        out,
+        headers={
+            "content-disposition":
+                f'attachment; filename="sporlos-bevis-{_safe_filename(site["domain"])}-{day}.json"'
+        },
     )
 
 
@@ -2520,6 +2804,7 @@ async def demo(request):
     )
     return _public_stats_page(
         request, site, "/demo",
+        public_id=os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7"),
         suffix="live demo", intro=intro,
         title="Live demo — ekte tall for sporlos.no | Sporløs",
         description="Sporløs i drift: ekte, levende statistikk for sporlos.no — cookieløst og uten samtykke. Slik ser dashbordet ut.",
@@ -2535,6 +2820,7 @@ async def public_dash(request):
         return PlainTextResponse("not found", status_code=404)
     return _public_stats_page(
         request, site, f"/p/{escape(pid)}",
+        public_id=pid,
         suffix="offentlig statistikk", intro="",
         title=f"{site['domain']} — offentlig statistikk | Sporløs",
         description=f"Åpen, cookieløs statistikk for {site['domain']} — målt av Sporløs, uten cookies og uten samtykke.",
@@ -2572,7 +2858,9 @@ async def export_csv(request):
     w = csv.writer(buf, delimiter=";")
     if what == "tidsserie":
         w.writerow(["dag", "unike besøkende", "sidevisninger"])
-        for b in store.timeseries(site["id"], days):
+        # Alltid dagsoppløsning i CSV (unit="day") — regneark aggregerer selv;
+        # uke-buckets under en «dag»-header ville stille endret semantikken.
+        for b in store.timeseries(site["id"], days, unit=None if days == 1 else "day"):
             w.writerow([b["bucket"], b["visitors"], b["pageviews"]])
     elif what in ("sider", "kilder", "land"):
         w.writerow([what[:-1] if what != "land" else "land", "sidevisninger", "unike besøkende"])
@@ -2582,7 +2870,7 @@ async def export_csv(request):
     else:
         return PlainTextResponse("ukjent eksport", status_code=400)
 
-    fname = f"sporlos-{site['domain']}-{what}-{days}d.csv"
+    fname = f"sporlos-{_safe_filename(site['domain'])}-{what}-{days}d.csv"
     return Response(
         "\ufeff" + buf.getvalue(),  # BOM: Excel skal lese æøå riktig
         media_type="text/csv; charset=utf-8",
@@ -2606,9 +2894,9 @@ async def dashboard(request):
     if me and not me["email_verified"] and me.get("email"):
         sent = "Ny lenke sendt. " if request.query_params.get("vsent") else ""
         verify_banner = (
-            '<p style="background:#fff7ed;color:#9a3412;padding:.5rem .8rem;border-radius:7px;'
+            '<p style="background:var(--warn-bg);color:var(--warn);padding:.5rem .8rem;border-radius:7px;'
             f'font-size:.9rem">{sent}Bekreft e-posten din ({escape(me["email"])}) — sjekk innboksen, '
-            'eller <a href="/resend-verify" style="color:#9a3412;text-decoration:underline">send på nytt</a>.</p>'
+            'eller <a href="/resend-verify" style="color:inherit;text-decoration:underline">send på nytt</a>.</p>'
         )
 
     if not site:
@@ -2656,9 +2944,8 @@ async def dashboard(request):
                     "måneden — alt måles fortsatt, men vurder å oppgradere.</p>"
                 )
             usage_html = (
-                '<div style="background:#fff;border:1px solid #e8e6e0;border-radius:12px;'
-                'padding:.9rem 1.1rem;font-size:.85rem;color:#5f6b7d;margin:.9rem 0">'
-                f'Visninger denne måneden: <b style="color:#17263e">{_fmt_n(usage["pageviews"])}</b> '
+                '<div class=card style="font-size:.85rem;color:var(--muted)">'
+                f'Visninger denne måneden: <b style="color:var(--ink)">{_fmt_n(usage["pageviews"])}</b> '
                 f"av {_fmt_n(pv_lim)}"
                 f'<div style="background:var(--line);border-radius:99px;height:6px;margin:.35rem 0">'
                 f'<div style="width:{pct}%;background:{color};height:6px;border-radius:99px"></div></div>'
@@ -2734,7 +3021,7 @@ async def dashboard(request):
             else ""
         )
         api_html = (
-            '<div class=card><h3 style="margin-top:0">API-tilgang</h3>'
+            "<div class=card>"
             '<p class=fine style="margin:.2rem 0 .6rem">Read-only nøkler for AI-verktøy og '
             'integrasjoner — kun aggregater, aldri rådata. <a href="/utviklere">Dokumentasjon</a>.</p>'
             f"{new_key_html}{keys_table}"
@@ -2757,7 +3044,7 @@ async def dashboard(request):
             '<input name=new type=password placeholder="Nytt passord (min. 8)" required minlength=8 '
             'style="flex:1;min-width:10rem;padding:.5rem;border:1px solid var(--line);border-radius:8px">'
             "<button class=btn>Bytt</button></form>"
-            '<p class=fine style="margin:.5rem 0 0">Logget inn med Google? Da styres innloggingen der.</p>'
+            '<p class=fine style="margin:.5rem 0 0">Logget inn med Google eller innlogg.no? Da styres innloggingen der.</p>'
             "</details></div>"
         )
 
@@ -2788,9 +3075,12 @@ async def dashboard(request):
             "feil": '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Noe gikk galt mot Vipps — prøv igjen, eller bruk kort.</p>',
             "stoppet": '<p style="background:var(--info-bg);color:var(--info);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-avtalen er stoppet. Planen gjelder ut betalt periode.</p>',
         }.get(request.query_params.get("vipps") or "", "")
+        plan_sec = ""
+        if planinfo or usage_html or upgrade:
+            plan_sec = f"<h2 class=sec>Plan og forbruk</h2>{planinfo}{usage_html}{upgrade}"
         return HTMLResponse(
             f"""<!doctype html><html lang=no><meta charset=utf-8>
-<title>Sporløs — mine sites</title>
+<title>Sporløs — mine nettsteder</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
 <style>{_BRAND_CSS}{_DARK_CSS}
@@ -2798,6 +3088,8 @@ async def dashboard(request):
 nav{{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}}
 nav a.ut{{color:var(--muted);text-decoration:none;font-size:.9rem}}
 h1{{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 .3rem}}
+h2.sec{{font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+font-weight:700;margin:2rem 0 .4rem}}
 .card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem;margin:.9rem 0}}
 table{{border-collapse:collapse;width:100%;table-layout:fixed}}
 th,td{{border-bottom:1px solid var(--line);padding:.55rem .2rem;text-align:left;font-size:.95rem;
@@ -2816,23 +3108,24 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 {_THEME_HEAD}
 <div class=wrap>
 <nav>{_WORDMARK}<span>{_THEME_BTN}<a class=ut href="/logout">Logg ut</a></span></nav>
-<h1>Mine sites</h1><p class="fine" style="margin:0 0 1rem">tall for i dag</p>
+<h1>Mine nettsteder</h1>
 {verify_banner}
 {trial}
 {limit_msg}
 {vipps_flash}
-{planinfo}
-{usage_html}
-{upgrade}
+<h2 class=sec>Nettsteder <span style="float:right;text-transform:none;letter-spacing:0;font-weight:400">tall for i dag</span></h2>
 <div class=card>
 <table><tr><th>Nettsted</th><th>Unike</th><th>Visn.</th></tr>
-{rows or '<tr><td>ingen sites enda — legg til ett under</td><td></td><td></td></tr>'}</table>
+{rows or '<tr><td>ingen nettsteder enda — legg til det første under</td><td></td><td></td></tr>'}</table>
 </div>
 <form class=add method=post action="/app/sites">
   <input name=domain placeholder="dittdomene.no" required>
   <button class=btn>Legg til nettsted</button>
 </form>
+{plan_sec}
+<h2 class=sec>API-tilgang</h2>
 {api_html}
+<h2 class=sec>Konto</h2>
 {pw_flash}
 {password_html}
 <p class=fine style="margin-top:1.5rem">Cookieløs · ingen IP lagret · samtykkefri</p>
@@ -2864,7 +3157,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
         for k, v in _PERIODS.items()
     )
 
-    chart = _area_chart(series)
+    chart = _area_chart(series, days=days)
 
     table = _stat_table
 
@@ -2902,7 +3195,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
     if rollups:
         hero_badge = (
             f'<span class=segl-badge>{_segl_badge(15, "var(--bg)")}'
-            f"{anchored}/{len(rollups)} forseglet</span>"
+            f"{anchored}/{len(rollups)} forankret</span>"
         )
     if s["pageviews"] == 0:
         siden = _siden(store.last_event_at(site["id"]))
@@ -2935,10 +3228,10 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
     {chart}
   </div>
   <div class=kpisec>
-    <div class="card kpi"><b>{_fmt_n(s['sessions'])}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
+    <div class="card kpi" title="Én sammenhengende økt — 30 min pause regnes som nytt besøk"><b>{_fmt_n(s['sessions'])}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
     <div class="card kpi"><b>{_fmt_n(s['pageviews'])}</b><span>sidevisninger</span>{_delta(s['pageviews'], prev['pageviews'])}</div>
-    <div class="card kpi"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
-    <div class="card kpi"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
+    <div class="card kpi" title="Andel besøk som forlot nettstedet etter bare én side — lavere er bedre"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
+    <div class="card kpi" title="Sidevisninger delt på besøk — hvor dypt folk går"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
   </div>
 </div>"""
 
@@ -2956,6 +3249,9 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
     )
     goals_html = (
         "<h3>Mål / konverteringer</h3>"
+        '<p class=hint>Et mål teller besøk som når noe du bryr deg om: en side '
+        "(f.eks. <code>/takk</code>) eller en hendelse (f.eks. <code>signup</code>). "
+        "Rate = andel av alle besøk i perioden.</p>"
         f"<table><tr><th>Mål</th><th>Fullført</th><th>Rate</th><th></th></tr>"
         f"{goal_rows or '<tr><td>ingen mål enda</td><td></td><td></td><td></td></tr>'}</table>"
         '<form method=post action="/app/goals" style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0;font-size:.9rem">'
@@ -2984,9 +3280,16 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
             f"<table>{steprows}</table></div>"
         )
     if not frows:
-        frows = '<p style="color:var(--muted);font-size:.9rem">Ingen funnels enda.</p>'
+        frows = (
+            '<p style="color:var(--muted);font-size:.9rem">Ingen funnels enda. '
+            "Eksempel: <code>/</code> → <code>/priser</code> → <code>signup</code> "
+            "viser hvor mange som går hele veien — og hvor de faller fra.</p>"
+        )
     funnels_html = (
-        f"<h3>Funnels</h3>{frows}"
+        "<h3>Funnels</h3>"
+        '<p class=hint>En funnel følger besøk gjennom en stegvis rekke sider/hendelser '
+        "og viser frafallet mellom hvert steg.</p>"
+        f"{frows}"
         '<form method=post action="/app/funnels" style="margin:.5rem 0;font-size:.9rem">'
         f'<input type=hidden name=site value="{escape(public_id)}">'
         '<input name=name placeholder="Navn (f.eks. Kjøpstrakt)" required '
@@ -3012,11 +3315,15 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
         f'<tr><td>{escape(e["k"])}</td><td>{e["u"]}</td><td>{e["n"]}</td></tr>' for e in events
     )
     events_html = (
-        "<h3>Hendelser</h3><table><tr><th>Hendelse</th><th>Unike</th><th>Totalt</th></tr>"
+        "<h3>Hendelser</h3>"
+        '<p class=hint>Egendefinerte hendelser du selv sender: '
+        "<code>sporlos('navn')</code> i JS, eller <code>data-sporlos-event=\"navn\"</code> "
+        "på en knapp/lenke.</p>"
+        "<table><tr><th>Hendelse</th><th>Unike</th><th>Totalt</th></tr>"
         f"{event_rows or '<tr><td>ingen hendelser enda</td><td></td><td></td></tr>'}</table>"
     )
     # Verifiserbare tall (B): forseglet hash per dag, status forankret/venter
-    verify_html = _verify_table(rollups)
+    verify_html = _verify_table(rollups, public_id)
 
     # Kampanjer (UTM) — vises kun når det finnes kampanjetrafikk i perioden.
     camp_rows = "".join(
@@ -3046,15 +3353,20 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
         f'<form method=post action="/app/sites/public" style="display:inline;margin-left:.6rem">'
         f'<input type=hidden name=site value="{escape(public_id)}">'
         f'<input type=hidden name=on value="{0 if pub_on else 1}">'
-        f'<button class=btn style="font-size:.8rem;padding:.25rem .6rem">Slå {"av" if pub_on else "på"}</button></form>'
+        '<button class=btn style="font-size:.8rem;padding:.25rem .6rem">'
+        f'{"Skru av delingen" if pub_on else "Del med åpen lenke"}</button></form>'
     )
     if pub_on:
         pub_text = (
-            f'Åpent på <a href="/p/{escape(public_id)}">sporlos.no/p/{escape(public_id)}</a> — '
-            "alle med lenken ser tallene (read-only)."
+            '<span style="color:var(--ok)">● Delt.</span> Alle med lenken '
+            f'<a href="/p/{escape(public_id)}">sporlos.no/p/{escape(public_id)}</a> ser tallene — '
+            "read-only, uten innlogging."
         )
     else:
-        pub_text = "Del tallene dine med en åpen lenke (slik vi gjør på /demo). Av som standard."
+        pub_text = (
+            "Ikke delt — bare du ser tallene. Deling gir en åpen, read-only lenke "
+            "(som vår egen <a href=/demo>live-demo</a>) du kan gi til styre, kunder eller annonsører."
+        )
     public_html = (
         '<div class="card block"><h3>Offentlig dashboard</h3>'
         f'<p class=muted style="font-size:.85rem">{pub_text}{toggle_btn}</p></div>'
@@ -3081,9 +3393,9 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
   · <a href="#" id=barstoggle>andelssøyler av/på</a></p>
 <div class=grid>
   <div class=card><h3>Topp sider</h3>{table(s['top_paths'], 'path')}</div>
-  <div class=card><h3>Topp kilder</h3>{table(s['top_sources'], 'src')}</div>
-  <div class=card><h3>Inngangssider</h3>{table(flow['entries'], 'path')}</div>
-  <div class=card><h3>Utgangssider</h3>{table(flow['exits'], 'path')}</div>
+  <div class=card><h3>Topp kilder</h3><p class=hint>hvor trafikken kommer fra — «direkte» = skrev inn adressen eller bokmerke</p>{table(s['top_sources'], 'src')}</div>
+  <div class=card><h3>Inngangssider</h3><p class=hint>første side i besøket — der folk lander</p>{table(flow['entries'], 'path')}</div>
+  <div class=card><h3>Utgangssider</h3><p class=hint>siste side før de dro — se etter lekkasjer</p>{table(flow['exits'], 'path')}</div>
   <div class=card><h3>Land</h3>{table(s['countries'], 'k')}</div>
   <div class=card><h3>Fylke / region</h3>{table(s['regions'], 'k')}</div>
   <div class=card><h3>Enheter</h3>{table(s['devices'], 'k', icons.device)}</div>
@@ -3100,7 +3412,8 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 <p class=footnote>Cookieløs · ingen IP lagret · samtykkefri ·
 Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
 </div>
-{_BARS_JS}"""
+{_BARS_JS}
+{_CHART_JS}"""
     )
 
 
@@ -3141,10 +3454,13 @@ routes = [
     Route("/logout", logout),
     Route("/auth/google", google_login),
     Route("/auth/google/callback", google_callback, name="google_callback"),
+    Route("/auth/innlogg", innlogg_login),
+    Route("/auth/innlogg/callback", innlogg_callback, name="innlogg_callback"),
     Route("/betal", betal),
     Route("/billing/checkout", billing_checkout),
     Route("/billing/portal", billing_portal),
     Route("/api/hero", hero_stats),
+    Route("/proof", proof),
     Route("/sporsmal", sporsmal),
     Route("/assist.js", assist_js),
     Route("/api/assist", assist_api, methods=["POST"]),

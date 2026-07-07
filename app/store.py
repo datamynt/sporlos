@@ -864,6 +864,20 @@ def recent_rollups(site_id: int, limit: int = 14) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def get_rollup(site_id: int, day: str) -> dict | None:
+    """Full rollup for én dag inkl. Merkle-bevis — grunnlaget for nedlastbart
+    verifiserings-bevis (/proof)."""
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT site_id, day, pageviews, visitors, sessions, bounce_rate, "
+            f"rollup_hash, merkle_root, merkle_proof, txid, anchored_at "
+            f"FROM daily_rollups WHERE site_id = {P} AND day = {P}",
+            (site_id, day),
+        )
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
 def pending_rollups() -> list[dict]:
     """Alle forseglede, men ikke-forankrede rollups — bladene i neste Merkle-batch.
     Deterministisk rekkefølge (site_id, day) så roten er reproduserbar."""
@@ -1234,9 +1248,17 @@ def export_breakdown(site_id: int, days: int, what: str) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
-def timeseries(site_id: int, days: int = 7) -> list[dict]:
-    """Per-dag (eller per-time for days=1) buckets med pv + unike. Tomme fylles med 0."""
-    unit = "hour" if days == 1 else "day"
+def timeseries(site_id: int, days: int = 7, unit: str | None = None) -> list[dict]:
+    """Buckets med pv + unike, oppløsning etter vinduslengde: time (days=1),
+    dag, eller uke (days >= 60). Tomme buckets fylles med 0.
+    Eksplisitt unit="day" overstyrer uke-aggregeringen (CSV-eksport vil ha
+    dagsoppløsning uansett periodelengde).
+
+    Uke-unike = sum av dags-unike — EKSAKT, ikke tilnærmet: visitor_hash roterer
+    daglig, så samme person har ulik hash hver dag og DISTINCT over uka gir
+    samme tall som summen (jf. stats()-docstringen)."""
+    forced = unit is not None
+    unit = unit or ("hour" if days == 1 else "day")
     start, end = _period_window(days)
     b = _bucket_expr(unit)
     where = f"site_id = {P} AND ts >= {P} AND ts < {P}"
@@ -1257,6 +1279,15 @@ def timeseries(site_id: int, days: int = 7) -> list[dict]:
                 "visitors": r["vis"] if r else 0,
             }
         )
+    if days >= 60 and not forced:  # uke-buckets: bucket = mandagen i uka
+        weeks: dict[str, dict] = {}
+        for b_ in out:
+            d = datetime.strptime(b_["bucket"], "%Y-%m-%d")
+            monday = (d - timedelta(days=d.weekday())).strftime("%Y-%m-%d")
+            w = weeks.setdefault(monday, {"bucket": monday, "pageviews": 0, "visitors": 0})
+            w["pageviews"] += b_["pageviews"]
+            w["visitors"] += b_["visitors"]
+        return [weeks[k] for k in sorted(weeks)]
     return out
 
 
