@@ -213,14 +213,28 @@ _MND = ["", "januar", "februar", "mars", "april", "mai", "juni", "juli",
         "august", "september", "oktober", "november", "desember"]
 
 
+# Under denne grensen (unike besøkende / 7 dager) er ukesvinduet mer anti-proof
+# enn proof (12 besøkende + fluktfrekvens over en håndfull sesjoner = støy).
+# Da viser heroen i stedet 30-dagers aggregat med sidevisninger — fortsatt EKTE
+# tall fra samme kilde, aldri pyntet, bare et ærligere utsnitt for lav trafikk.
+_HERO_MIN_WEEK_VISITORS = 100
+
+
 async def hero_stats(request):
     """Ekte tall til forsidens hero — sporlos.no målt med Sporløs. Ingen pynt:
-    rullende 7-dagers vindu (ikke «i dag», som blir 0 på stille dager), samme kilde som /demo."""
+    rullende vindu (ikke «i dag», som blir 0 på stille dager), samme kilde som /demo.
+    7-dagers vindu m/ fluktfrekvens ved nok trafikk; ellers 30 dager m/ sidevisninger
+    (fluktfrekvens over få sesjoner er støy, ikke innsikt). `period` styrer etikettene
+    i widgeten så visningen aldri påstår et annet vindu enn tallene kommer fra."""
     site = store.resolve_site(os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7"))
     if not site:
         return JSONResponse({}, status_code=404)
-    week = store.stats(site["id"], 7)
-    series = store.timeseries(site["id"], 7)
+    days = 7
+    stats = store.stats(site["id"], days)
+    if stats["visitors"] < _HERO_MIN_WEEK_VISITORS:
+        days = 30
+        stats = store.stats(site["id"], days)
+    series = store.timeseries(site["id"], days)
     frist = ""
     if series:
         d = str(series[0]["bucket"])[:10]
@@ -228,15 +242,17 @@ async def hero_stats(request):
             frist = f"{int(d[8:10])}. {_MND[int(d[5:7])]}"
         except (ValueError, IndexError):
             frist = d
-    return JSONResponse(
-        {
-            "visitors": week["visitors"],
-            "bounce": week["bounce_rate"],
-            "spark": [p["visitors"] for p in series],
-            "from": frist,
-        },
-        headers={"cache-control": "public, max-age=60"},
-    )
+    payload = {
+        "visitors": stats["visitors"],
+        "spark": [p["visitors"] for p in series],
+        "from": frist,
+        "period": days,
+    }
+    if days == 7:
+        payload["bounce"] = stats["bounce_rate"]
+    else:
+        payload["pageviews"] = stats["pageviews"]
+    return JSONResponse(payload, headers={"cache-control": "public, max-age=60"})
 
 
 # Strukturert data (JSON-LD) for Google: hva Sporløs ER + prisspenn.
@@ -576,6 +592,7 @@ nav.site .links a.btn{margin-left:auto}
 _SITE_NAV = (
     "<nav class=site>" + _WORDMARK + '<div class=links>'
     '<a href="/demo">Live demo</a>'
+    '<a href="/#priser">Priser</a>'
     '<a href="/google-analytics-alternativ">Mot Google Analytics</a>'
     '<a href="/login">Logg inn</a>'
     '<a class="btn btn-accent" href="/signup">Prøv gratis</a></div></nav>'
@@ -583,7 +600,7 @@ _SITE_NAV = (
 
 _SITE_FOOTER = (
     "<footer class=site><div class=wrap>" + _WORDMARK + "<br>"
-    "Personvennlig webanalyse, bygget i Norge.<br><br>"
+    "Personvernvennlig webanalyse, bygget i Norge.<br><br>"
     '<a href="/demo">Live demo</a> · '
     '<a href="/google-analytics-alternativ">Sporløs mot Google Analytics</a> · '
     '<a href="/integrasjoner">Integrasjoner</a> · '
@@ -710,6 +727,10 @@ font-variant-numeric:tabular-nums;line-height:1.15}
 .livedot{animation:pulsdot 2.4s ease-in-out infinite}
 @keyframes inn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .inn1{animation:inn .6s .1s both}.inn2{animation:inn .6s .25s both}.inn3{animation:inn .6s .4s both}
+/* Scroll-reveal under folden: skjules KUN når observeren faktisk kjører (body.io),
+   så uten JS / uten IntersectionObserver vises alt som normalt. */
+body.io .reveal{opacity:0}
+body.io .reveal.vist{animation:inn .6s both}
 }
 .lov{display:grid;grid-template-columns:1fr 1.05fr;gap:2.6rem;align-items:center}
 @media(max-width:820px){.lov{grid-template-columns:1fr}}
@@ -733,9 +754,15 @@ padding:1.4rem .2rem;margin:1.8rem 0 .4rem}
 .loft b{font-size:1.25rem;font-weight:800;letter-spacing:-.025em;line-height:1.25;display:block}
 .loft small{color:var(--muted);font-size:.88rem;display:block;margin-top:.2rem}
 section{padding:3rem 0;border-bottom:1px solid var(--line)}
-h2{font-size:1.5rem;letter-spacing:-.015em;margin:0 0 1.2rem}
+h2{font-size:1.9rem;letter-spacing:-.02em;margin:0 0 1.2rem}
+.kicker{display:block;margin-bottom:.3rem}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.2rem 1.3rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.2rem 1.3rem;
+transition:transform .15s,box-shadow .15s}
+.card:hover{transform:translateY(-2px);box-shadow:0 14px 30px -18px rgba(23,38,62,.35)}
+.kode{background:var(--footer);color:#dbe4f2;border-radius:12px;padding:1.1rem 1.3rem;
+overflow-x:auto;font-size:.86rem;line-height:1.6;margin:0}
+.kode code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre}
 .card h3{margin:0 0 .4rem;font-size:1.02rem}
 .card p{margin:0;font-size:.92rem;color:var(--muted)}
 .law{max-width:42em}
@@ -764,18 +791,18 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
   <span class="tag inn1">Norsk · cookieløs · samtykkefri</span>
   <h1 class=inn2>Webanalyse uten cookie&#8209;banner.</h1>
   <p class="lede inn3">Sporløs måler nettstedet ditt uten cookies, uten å lagre IP, og uten å samle
-  personopplysninger. Tallene til høyre er ekte — denne siden, målt med Sporløs, siste 7 dager.</p>
+  personopplysninger. Tallene til høyre er ekte — denne siden, målt med Sporløs.</p>
   <div class="hero-ctas inn3">
     <a class=btn href="/signup">Start gratis prøve</a>
     <a href="/google-analytics-alternativ" style="font-size:.95rem">Ærlig sammenligning med GA →</a>
   </div>
   <p class="fine inn3">30 dager gratis · uten kort · åpen kildekode</p>
 </div>
-<div class="live inn3" aria-label="Sporløs-tall for sporlos.no (siste 7 dager)">
-  <div class=live-top><b>sporlos.no</b><span class=na><i class=livedot></i>siste 7 dager</span></div>
+<div class="live inn3" aria-label="Sporløs-tall for sporlos.no">
+  <div class=live-top><b>sporlos.no</b><span class=na><i class=livedot></i><span id=lper>&nbsp;</span></span></div>
   <div class=live-kpis>
     <div><b id=lv>&nbsp;</b><span>unike besøkende</span></div>
-    <div><b id=lb>&nbsp;</b><span>fluktfrekvens</span></div>
+    <div><b id=lb>&nbsp;</b><span id=lblab>fluktfrekvens</span></div>
   </div>
   <svg id=lspark viewBox="0 0 340 70" preserveAspectRatio="none" aria-hidden=true></svg>
   <div class=demo-axis><span id=lfrom></span><span>i dag</span></div>
@@ -784,8 +811,9 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
 </header>
 
 <section>
-  <h2>Hvorfor slipper du banner?</h2>
-  <div class=lov>
+  <span class="tag kicker reveal">Hvorfor</span>
+  <h2 class=reveal>Hvorfor slipper du banner?</h2>
+  <div class="lov reveal">
   <div>
   <p style="color:var(--muted);max-width:40ch;margin:.2rem 0 1.1rem">Samtykkekravet utløses av det
   som skjer på besøkerens enhet. Sporløs rører den aldri.</p>
@@ -810,43 +838,58 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
 </section>
 
 <section>
-  <h2>Alt du faktisk trenger</h2>
+  <span class="tag kicker reveal">Funksjoner</span>
+  <h2 class=reveal>Alt du faktisk trenger</h2>
   <div class=cards>
-    <div class=card><h3>Hele bildet, ikke et utvalg</h3><p>Uten samtykkekrav måles alle besøk —
+    <div class="card reveal"><h3>Hele bildet, ikke et utvalg</h3><p>Uten samtykkekrav måles alle besøk —
     ikke bare de som trykker «godta». Tallene blir mer riktige enn med GA, ikke mindre.</p></div>
-    <div class=card><h3>Mål, funnels og kampanjer</h3><p>Egendefinerte hendelser, konverteringsrate,
+    <div class="card reveal"><h3>Mål, funnels og kampanjer</h3><p>Egendefinerte hendelser, konverteringsrate,
     funnels med drop-off og UTM-kampanjer. Uten at noen blir identifisert.</p></div>
-    <div class=card><h3>Data i Norge</h3><p>Norsk-eid drift på servere i Stavanger, utenfor
+    <div class="card reveal"><h3>Data i Norge</h3><p>Norsk-eid drift på servere i Stavanger, utenfor
     rekkevidden til US CLOUD Act. Sporingsscriptet er
     <a href="https://github.com/datamynt/sporlos-tracker">åpen kildekode</a> — etterprøv selv.</p></div>
-    <div class=card><h3>Lett som en fjær</h3><p>Sporingsscriptet er ~1,5 kB — rundt en
+    <div class="card reveal"><h3>Lett som en fjær</h3><p>Sporingsscriptet er ~1,5 kB komprimert — rundt en
     sekstidel av Google Analytics. Siden din merker det ikke.</p></div>
-    <div class=card><h3>Inngang, utgang og stier</h3><p>Hvor folk lander, hvor de forsvinner og
+    <div class="card reveal"><h3>Inngang, utgang og stier</h3><p>Hvor folk lander, hvor de forsvinner og
     hvordan de beveger seg — som aggregat, aldri som enkeltpersoner.</p></div>
-    <div class=card><h3>Verifiserbare tall</h3><p>Dagstallene forsegles i en uavhengig offentlig
+    <div class="card reveal"><h3>Verifiserbare tall</h3><p>Dagstallene forsegles i en uavhengig offentlig
     logg, så de kan ikke pyntes i etterkant. Dokumentasjon som holder. (Pro)</p></div>
   </div>
 </section>
 
+<section>
+  <span class="tag kicker reveal">Kom i gang</span>
+  <h2 class=reveal>Én linje, ferdig</h2>
+  <p class="muted reveal" style="margin:0 0 1.1rem;max-width:42em">Lim inn før
+  <code>&lt;/head&gt;</code> — det er hele installasjonen. Ingen cookies å konfigurere,
+  ingen banner å sette opp. Du får din egen site-ID når du registrerer deg.</p>
+  <pre class="kode reveal"><code>"""
+        + escape(_SNIPPET_TPL)
+        + """</code></pre>
+  <p class="fine reveal" style="margin-top:.8rem">Bruker du WordPress, Shopify, Wix eller lignende?
+  <a href="/integrasjoner">Se lim-inn-guidene →</a></p>
+</section>
+
 <section id=priser>
-  <h2>Priser</h2>
+  <span class="tag kicker reveal">Priser</span>
+  <h2 class=reveal>Forutsigbare priser</h2>
   <p class=muted style="margin:0">Etter sidevisninger per måned (totale visninger, ikke unike
   besøkende) · eks. mva · årlig = 2 måneder gratis.</p>
   <div class=plans>
-    <div class=plan><b>Liten</b><span class=pris>99 kr<small>/mnd</small></span>
+    <div class="plan reveal"><b>Liten</b><span class=pris>99 kr<small>/mnd</small></span>
       <small class=hva>10 000 visninger<br>1 nettsted</small>
       <a class=velg href="/signup?plan=liten">Kom i gang</a></div>
-    <div class="plan hl"><b>Vekst</b><span class=pris>249 kr<small>/mnd</small></span>
+    <div class="plan hl reveal"><b>Vekst</b><span class=pris>249 kr<small>/mnd</small></span>
       <small class=hva>100 000 visninger<br>10 nettsteder</small>
       <a class="velg velg-hl" href="/signup?plan=vekst">Kom i gang</a></div>
-    <div class=plan><b>Pro</b><span class=pris>599 kr<small>/mnd</small></span>
+    <div class="plan reveal"><b>Pro</b><span class=pris>599 kr<small>/mnd</small></span>
       <small class=hva>1 mill. visninger<br>15 nettsteder<br>verifiserbare tall</small>
       <a class=velg href="/signup?plan=pro">Kom i gang</a></div>
-    <div class=plan><b>Byrå</b><span class=pris>fra 1 490 kr</span>
+    <div class="plan reveal"><b>Byrå</b><span class=pris>fra 1 490 kr</span>
       <small class=hva>fra 25 kundenettsteder<br>white-label · forsegling inkl.</small>
       <a class=velg href="mailto:post@sporlos.no?subject=Byr%C3%A5-avtale">Ta kontakt</a></div>
   </div>
-  <div class=loft>
+  <div class="loft reveal">
     <svg width=44 height=44 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--bg)" stroke-width=8 stroke-linecap=round/></svg>
     <div>
       <b>Vi slutter aldri å måle — og sender aldri overraskelsesregninger.</b>
@@ -867,7 +910,15 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
   function fmt(x) { return String(x).replace(/\\B(?=(\\d{3})+(?!\\d))/g, '\\u00a0'); }
   function last(d) {
     lv.textContent = fmt(d.visitors || 0);
-    document.getElementById('lb').textContent = (d.bounce || 0) + ' %';
+    // Serveren velger vindu (7 el. 30 dager) etter trafikkmengde — etikettene følger med.
+    document.getElementById('lper').textContent = 'siste ' + (d.period || 7) + ' dager';
+    if (d.pageviews != null) {
+      document.getElementById('lb').textContent = fmt(d.pageviews);
+      document.getElementById('lblab').textContent = 'sidevisninger';
+    } else {
+      document.getElementById('lb').textContent = (d.bounce || 0) + ' %';
+      document.getElementById('lblab').textContent = 'fluktfrekvens';
+    }
     document.getElementById('lfrom').textContent = d.from || '';
     var s = d.spark || [];
     if (s.length < 2) return;
@@ -892,6 +943,19 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
   }
   hent();
   setInterval(hent, 60000);
+})();
+// Scroll-reveal: gjenbruker `inn`-keyframen på .reveal under folden. Gated på
+// prefers-reduced-motion; body.io settes kun her, så uten JS/IO skjules ingenting.
+(function () {
+  if (!('IntersectionObserver' in window) ||
+      !window.matchMedia('(prefers-reduced-motion: no-preference)').matches) return;
+  document.body.classList.add('io');
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) { e.target.classList.add('vist'); io.unobserve(e.target); }
+    });
+  }, { rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
 })();
 </script>
 """
@@ -2094,7 +2158,7 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
     <tr><th></th><th>Google Analytics</th><th>Sporløs</th></tr>
     <tr><td>Cookie-banner nødvendig</td><td class=nei>Ja</td><td class=ja>Nei</td></tr>
     <tr><td>Måler besøkende uten samtykke</td><td class=delvis>Delvis (modellert)</td><td class=ja>Alle, faktiske tall</td></tr>
-    <tr><td>Scriptvekt</td><td class=nei>~90 kB+</td><td class=ja>~1,5 kB</td></tr>
+    <tr><td>Scriptvekt</td><td class=nei>~90 kB+</td><td class=ja>~1,5 kB komprimert</td></tr>
     <tr><td>Datalagring</td><td class=nei>Google (USA-tilknyttet)</td><td class=ja>Norge, norsk-eid drift</td></tr>
     <tr><td>Google Ads-integrasjon</td><td class=ja>Ja</td><td class=nei>Nei</td></tr>
     <tr><td>Bruker-/segmentanalyse, BigQuery</td><td class=ja>Ja</td><td class=nei>Nei (kun aggregater)</td></tr>
