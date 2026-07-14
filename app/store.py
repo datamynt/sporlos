@@ -83,9 +83,23 @@ CREATE TABLE IF NOT EXISTS events (
     utm_medium TEXT,
     utm_campaign TEXT,
     visitor_hash TEXT NOT NULL,
-    session_id TEXT
+    session_id TEXT,
+    revenue_cents INTEGER,
+    currency TEXT
 );
 CREATE INDEX IF NOT EXISTS events_site_ts ON events (site_id, ts);
+CREATE TABLE IF NOT EXISTS event_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    site_id INTEGER NOT NULL REFERENCES sites(id),
+    event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
+    ts TEXT NOT NULL DEFAULT (datetime('now')),
+    name TEXT NOT NULL,
+    sku TEXT,
+    qty INTEGER NOT NULL DEFAULT 1,
+    unit_price_cents INTEGER NOT NULL DEFAULT 0,
+    currency TEXT
+);
+CREATE INDEX IF NOT EXISTS event_items_site_ts ON event_items (site_id, ts);
 CREATE TABLE IF NOT EXISTS goals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     site_id INTEGER NOT NULL REFERENCES sites(id),
@@ -219,6 +233,8 @@ def init_db() -> None:
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vipps_agreement_id TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vipps_pending_plan TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vipps_charged_through TEXT")
+            cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS revenue_cents BIGINT")
+            cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS currency TEXT")
     else:
         with _cursor() as cur:
             cur.executescript(_SQLITE_SCHEMA)
@@ -239,6 +255,8 @@ def init_db() -> None:
                 "ALTER TABLE tenants ADD COLUMN vipps_agreement_id TEXT",
                 "ALTER TABLE tenants ADD COLUMN vipps_pending_plan TEXT",
                 "ALTER TABLE tenants ADD COLUMN vipps_charged_through TEXT",
+                "ALTER TABLE events ADD COLUMN revenue_cents INTEGER",
+                "ALTER TABLE events ADD COLUMN currency TEXT",
             ):
                 try:
                     cur.execute(ddl)
@@ -594,6 +612,84 @@ def top_events(site_id: int, days: int = 7) -> list[dict]:
             (site_id, start, end),
         )
         return [dict(r) for r in cur.fetchall()]
+
+
+def has_ecommerce(site_id: int) -> bool:
+    """Har siten noen gang målt kjøp? Styrer om E-handel-seksjonen vises i det hele tatt."""
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT 1 FROM events WHERE site_id = {P} AND revenue_cents IS NOT NULL LIMIT 1",
+            (site_id,),
+        )
+        return cur.fetchone() is not None
+
+
+def ecommerce_stats(site_id: int, days: int = 7, offset: int = 0) -> dict:
+    """Ordrer + omsetning per valuta i vinduet. En «ordre» = hendelse med revenue_cents.
+
+    by_currency er sortert på antall ordrer — første rad er sitens dominerende valuta,
+    og det er den produkt-/kilde-tabellene filtreres på (blander aldri valutaer)."""
+    start, end = _period_window(days, offset)
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT COALESCE(currency, 'NOK') AS currency, COUNT(*) AS orders, "
+            f"SUM(revenue_cents) AS revenue_cents "
+            f"FROM events WHERE site_id = {P} AND ts >= {P} AND ts < {P} "
+            f"AND revenue_cents IS NOT NULL "
+            "GROUP BY COALESCE(currency, 'NOK') ORDER BY orders DESC",
+            (site_id, start, end),
+        )
+        by_currency = [dict(r) for r in cur.fetchall()]
+    return {
+        "orders": sum(r["orders"] for r in by_currency),
+        "by_currency": by_currency,
+    }
+
+
+def top_products(site_id: int, days: int = 7, currency: str = "NOK", limit: int = 10) -> list[dict]:
+    """Toppprodukter etter omsetning (antall × enhetspris) i én valuta."""
+    start, end = _period_window(days)
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT name, SUM(qty) AS qty, SUM(qty * unit_price_cents) AS revenue_cents "
+            f"FROM event_items WHERE site_id = {P} AND ts >= {P} AND ts < {P} "
+            f"AND COALESCE(currency, 'NOK') = {P} "
+            f"GROUP BY name ORDER BY revenue_cents DESC LIMIT {P}",
+            (site_id, start, end, currency, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def revenue_by_source(site_id: int, days: int = 7, currency: str = "NOK", limit: int = 10) -> list[dict]:
+    """Omsetning per trafikk-kilde: førstekontakt SAMME DAG som kjøpet.
+
+    Kjøps-hendelsens egen referrer er ubrukelig (betalings-redirect → PSP-domenet),
+    så kilden slås opp som besøkerens første pageview før kjøpet i vinduet. Siden
+    visitor-hashen roterer daglig er dette i praksis samme-dags-attribusjon —
+    en ærlig personvern-begrensning, ikke en bug."""
+    start, end = _period_window(days)
+    with _cursor() as cur:
+        cur.execute(
+            f"""SELECT e.revenue_cents,
+                   COALESCE(
+                       (SELECT COALESCE(p.utm_source, p.referrer_src, 'direkte')
+                          FROM events p
+                         WHERE p.site_id = e.site_id AND p.visitor_hash = e.visitor_hash
+                           AND p.name = 'pageview' AND p.ts >= {P} AND p.ts <= e.ts
+                         ORDER BY p.ts LIMIT 1),
+                       'direkte') AS src
+              FROM events e
+             WHERE e.site_id = {P} AND e.ts >= {P} AND e.ts < {P}
+               AND e.revenue_cents IS NOT NULL AND COALESCE(e.currency, 'NOK') = {P}""",
+            (start, site_id, start, end, currency),
+        )
+        rows = cur.fetchall()
+    agg: dict[str, dict] = {}
+    for r in rows:
+        a = agg.setdefault(r["src"], {"src": r["src"], "orders": 0, "revenue_cents": 0})
+        a["orders"] += 1
+        a["revenue_cents"] += r["revenue_cents"]
+    return sorted(agg.values(), key=lambda a: -a["revenue_cents"])[:limit]
 
 
 def create_goal(site_id: int, name: str, match_type: str, match_value: str) -> None:
@@ -999,6 +1095,8 @@ def retention_sweep(days: int = 90) -> tuple[int, int]:
     for site_id, day in missing:
         compute_rollup(site_id, day)
     with _cursor() as cur:
+        # Produktlinjer først — FK peker på events (SQLite håndhever ikke cascade her).
+        cur.execute(f"DELETE FROM event_items WHERE ts < {P}", (cutoff,))
         cur.execute(f"DELETE FROM events WHERE ts < {P}", (cutoff,))
         deleted = cur.rowcount
     return deleted, len(missing)
@@ -1035,30 +1133,55 @@ def set_public_dash(public_id: str, tenant_id: int, on: bool) -> None:
         )
 
 
-def insert_event(site_id: int, ev: dict) -> None:
-    """Lagre ett event. INGEN IP, INGEN cookie i `ev` — kun grove kategorier."""
+def insert_event(site_id: int, ev: dict, items: list[dict] | None = None) -> None:
+    """Lagre ett event. INGEN IP, INGEN cookie i `ev` — kun grove kategorier.
+
+    `items` = ferdig-validerte produktlinjer (e-handel): name/sku/qty/unit_price_cents.
+    Beløp i øre. Aldri ordre-ID eller kundedata — da ville kjøp kunne kobles til person."""
+    sql = (
+        f"""INSERT INTO events
+            (site_id, name, path, referrer_src, country, region, device, browser, os,
+             utm_source, utm_medium, utm_campaign, visitor_hash, session_id,
+             revenue_cents, currency)
+            VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P})"""
+    )
+    args = (
+        site_id,
+        ev.get("name", "pageview"),
+        ev.get("path", "/"),
+        ev.get("referrer_src"),
+        ev.get("country"),
+        ev.get("region"),
+        ev.get("device"),
+        ev.get("browser"),
+        ev.get("os"),
+        ev.get("utm_source"),
+        ev.get("utm_medium"),
+        ev.get("utm_campaign"),
+        ev["visitor_hash"],
+        ev.get("session_id"),
+        ev.get("revenue_cents"),
+        ev.get("currency"),
+    )
     with _cursor() as cur:
-        cur.execute(
-            f"""INSERT INTO events
-                (site_id, name, path, referrer_src, country, region, device, browser, os,
-                 utm_source, utm_medium, utm_campaign, visitor_hash, session_id)
-                VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P})""",
-            (
-                site_id,
-                ev.get("name", "pageview"),
-                ev.get("path", "/"),
-                ev.get("referrer_src"),
-                ev.get("country"),
-                ev.get("region"),
-                ev.get("device"),
-                ev.get("browser"),
-                ev.get("os"),
-                ev.get("utm_source"),
-                ev.get("utm_medium"),
-                ev.get("utm_campaign"),
-                ev["visitor_hash"],
-                ev.get("session_id"),
-            ),
+        if not items:
+            cur.execute(sql, args)
+            return
+        if _USE_PG:
+            cur.execute(sql + " RETURNING id", args)
+            event_id = cur.fetchone()["id"]
+        else:
+            cur.execute(sql, args)
+            event_id = cur.lastrowid
+        cur.executemany(
+            f"""INSERT INTO event_items
+                (site_id, event_id, name, sku, qty, unit_price_cents, currency)
+                VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P})""",
+            [
+                (site_id, event_id, it["name"], it.get("sku"), it.get("qty", 1),
+                 it.get("unit_price_cents", 0), ev.get("currency"))
+                for it in items
+            ],
         )
 
 

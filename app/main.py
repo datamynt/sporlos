@@ -438,11 +438,20 @@ async def ingest(request):
     country, region = geo_lookup(ip)  # land + fylke, by-nivå brukes aldri
     # ip og ua brukes KUN her (hash + kategorisering + geo) — aldri lagret.
 
+    name = payload.get("n", "pageview")
+    # E-handel: valgfri ordresum/produktlinjer på egendefinerte hendelser (aldri pageview).
+    revenue, currency, items = None, None, []
+    if name != "pageview":
+        revenue = _clean_money(payload.get("rv"))
+        items = _clean_items(payload.get("it"))
+        if revenue is not None or items:
+            currency = _clean_currency(payload.get("cur"))
+
     try:
         store.insert_event(
             site["id"],
             {
-                "name": payload.get("n", "pageview"),
+                "name": name,
                 "path": payload.get("p", "/"),
                 "referrer_src": _normalize_referrer(payload.get("r")),
                 "utm_source": _clean_utm(payload.get("us")),
@@ -454,7 +463,10 @@ async def ingest(request):
                 "browser": browser,
                 "os": os_,
                 "visitor_hash": vhash,
+                "revenue_cents": revenue,
+                "currency": currency,
             },
+            items=items,
         )
     except Exception:
         # Aldri 500 til tracker (den re-sender ikke). Logg så VI ser det.
@@ -467,6 +479,59 @@ def _clean_utm(v) -> str | None:
     if not v or not isinstance(v, str):
         return None
     return v.strip()[:120] or None
+
+
+_MAX_MONEY = 100_000_000  # 1 mill. kr i øre — beløp over dette er åpenbart søppel
+
+
+def _clean_money(v) -> int | None:
+    """Beløp i øre fra tracker: heltall i [0, cap], ellers None. Aldri avvis hendelsen."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    if isinstance(v, float) and not v.is_integer():
+        return None
+    v = int(v)
+    return v if 0 <= v <= _MAX_MONEY else None
+
+
+def _clean_currency(v) -> str:
+    """ISO 4217-kode; alt ugyldig faller til NOK (sitene våre er norske først)."""
+    if isinstance(v, str):
+        c = v.strip().upper()
+        if len(c) == 3 and c.isalpha() and c.isascii():
+            return c
+    return "NOK"
+
+
+def _clean_items(raw) -> list[dict]:
+    """Produktlinjer fra tracker → validert liste. Ugyldige linjer droppes stille.
+    Caps: 25 linjer, navn 160 tegn, sku 64, qty 1–999, enhetspris [0, cap] øre."""
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for x in raw[:25]:
+        if not isinstance(x, dict):
+            continue
+        name = x.get("n")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        qty = x.get("q", 1)
+        if isinstance(qty, float) and qty.is_integer():
+            qty = int(qty)
+        if isinstance(qty, bool) or not isinstance(qty, int) or not 1 <= qty <= 999:
+            qty = 1
+        price = _clean_money(x.get("p", 0))
+        sku = x.get("s")
+        sku = sku.strip()[:64] if isinstance(sku, str) and sku.strip() else None
+        out.append(
+            {
+                "name": name.strip()[:160],
+                "sku": sku,
+                "qty": qty,
+                "unit_price_cents": price if price is not None else 0,
+            }
+        )
+    return out
 
 
 def _normalize_referrer(ref: str | None) -> str | None:
@@ -1543,10 +1608,26 @@ eller hent alle med <code>/api/v1/sites</code>). <code>period</code> er 1, 7 ell
 <tr><td><code>GET /api/v1/breakdown</code></td><td>full liste per dimensjon: <code>prop=pages|sources|countries|regions|devices|browsers|os</code> (+ <code>limit</code>, maks 1000)</td></tr>
 <tr><td><code>GET /api/v1/goals</code></td><td>mål/konverteringer med rate</td></tr>
 <tr><td><code>GET /api/v1/events</code></td><td>egendefinerte hendelser</td></tr>
+<tr><td><code>GET /api/v1/ecommerce</code></td><td>e-handel: ordrer + omsetning per valuta, toppprodukter og omsetning per kilde (beløp i øre)</td></tr>
 <tr><td><code>GET /api/v1/anchors</code></td><td>forseglede dags-aggregater: sha256-hash + blokkjede-txid — bevis på at historiske tall ikke er endret i etterkant</td></tr>
 </table>
 <p class=muted>Alle svar er JSON. Land returneres som ISO-koder. Feil gir
 <code>{{"error": "..."}}</code> med 400/401/404. Nøkler kan trekkes tilbake når som helst i dashbordet.</p>
+
+<h2>E-handel: send kjøp</h2>
+<p>Kall <code>sporlos('purchase', …)</code> fra ordrebekreftelsen, så får du omsetning,
+ordrer, snittordre, toppprodukter og omsetning per kilde i dashbordet:</p>
+<pre>sporlos('purchase', {{
+  revenue: 1198,           // ordresum i kroner
+  currency: 'NOK',         // valgfri, NOK er standard
+  items: [
+    {{ name: 'eSIM Europa 10 GB', qty: 2, price: 599 }}
+  ]
+}});</pre>
+<p class=muted>Kun beløp og produktnavn sendes — <b>aldri ordre-ID eller kundedata</b>,
+så kjøp kan ikke kobles til enkeltpersoner. Fyr kallet én gang per fullført ordre
+(typisk gated på en parameter fra betalings-redirecten, ikke på hver visning av
+kvitteringssiden).</p>
 
 <h2>Eksempel: spør en AI om tallene dine</h2>
 <p>Lim denne siden + nøkkelen din inn i Claude eller ChatGPT og be den f.eks.
@@ -1605,11 +1686,13 @@ vanlige tema-snippets ikke får tilgang til (Shopify-checkout ligger på et lås
 <tr><td><code>product_viewed</code></td><td>produktvisning</td></tr>
 <tr><td><code>product_added_to_cart</code></td><td>lagt i handlekurv</td></tr>
 <tr><td><code>checkout_started</code></td><td>påbegynt checkout</td></tr>
-<tr><td><code>checkout_completed</code></td><td>fullført kjøp — sett som konverteringsmål i Sporløs</td></tr>
+<tr><td><code>checkout_completed</code></td><td>fullført kjøp — med ordresum og produktlinjer:
+gir omsetning, snittordre og toppprodukter under «E-handel» i dashbordet</td></tr>
 <tr><td><code>search_submitted</code></td><td>butikksøk</td></tr>
 </table>
-<p class=muted>Ingen ordreverdi eller kundedata sendes — kun hendelsesnavnet. Ingen cookies,
-ingen <code>localStorage</code>, ingen fingerprinting. Derfor: ingen cookie-banner for Sporløs.</p>
+<p class=muted>Ved kjøp sendes kun beløp og produktnavn/antall — <b>aldri ordre-ID eller
+kundedata</b>, så kjøp kan ikke kobles til person. Ingen cookies, ingen
+<code>localStorage</code>, ingen fingerprinting. Derfor: ingen cookie-banner for Sporløs.</p>
 
 <div class=note>Tipset gjelder kun <b>app-pixler</b> (ikke denne): Shopifys «Optimized»-modus
 struper aldri en egendefinert pixel som denne. Du er trygg.</div>
@@ -2063,7 +2146,6 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
     Sporløs vet ikke hvem folk er — det er hele poenget.</li>
     <li><b>Bruker-nivå analyse.</b> Utforskninger, segmenter på enkeltbrukere, reiser på tvers av
     enheter og dager, BigQuery-eksport. Sporløs viser aggregater, aldri enkeltpersoner.</li>
-    <li><b>E-handelsrapporter på produktnivå.</b> Ikke støttet ennå.</li>
     <li><b>Avansert kampanjeattribusjon.</b> UTM-kampanjer (kilde/medium/kampanje) måles, men
     fler-stegs attribusjonsmodeller og <code>utm_content</code>/<code>utm_term</code> finnes ikke ennå.</li>
     <li><b>Prisen.</b> GA er gratis. Sporløs koster fra 99 kr/mnd — eller null, hvis du kjører
@@ -2079,6 +2161,9 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
     hvordan de fant den. Komplementært.</li>
     <li><b>Mål og konvertering.</b> Egendefinerte hendelser, mål med konverteringsrate og funnels med
     drop-off finnes i Sporløs.</li>
+    <li><b>E-handel på produktnivå.</b> Omsetning, ordrer, snittordre, toppprodukter og omsetning
+    per kilde — med ett <code>purchase</code>-kall fra ordrebekreftelsen. Forskjellen fra GA: vi
+    tar aldri imot ordre-ID eller kundedata, så kjøp kan ikke kobles til enkeltpersoner.</li>
     <li><b>Kampanjemåling.</b> UTM-merkede lenker (kilde, medium, kampanje) måles — uten at hele
     URL-en med potensielt personidentifiserende parametre noensinne lagres.</li>
     <li><b>Kilder, enheter, geografi.</b> Hvor trafikken kommer fra, mobil/desktop, nettleser og
@@ -2099,6 +2184,7 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
     <tr><td>Google Ads-integrasjon</td><td class=ja>Ja</td><td class=nei>Nei</td></tr>
     <tr><td>Bruker-/segmentanalyse, BigQuery</td><td class=ja>Ja</td><td class=nei>Nei (kun aggregater)</td></tr>
     <tr><td>Mål, funnels, kilder, enheter</td><td class=ja>Ja</td><td class=ja>Ja</td></tr>
+    <tr><td>E-handel (omsetning, produkter)</td><td class=ja>Ja</td><td class=ja>Ja (uten ordre-ID/kundedata)</td></tr>
     <tr><td>Åpen kildekode / self-host</td><td class=nei>Nei</td><td class=ja>Ja</td></tr>
     <tr><td>Etterprøvbare, forseglede tall</td><td class=nei>Nei</td><td class=ja>Ja (Pro)</td></tr>
     <tr><td>Pris</td><td class=ja>Gratis</td><td class=delvis>Fra 99 kr/mnd · self-host gratis</td></tr>
@@ -2191,6 +2277,11 @@ def _trial_expired(tenant: dict) -> bool:
 
 def _fmt_n(n: int) -> str:
     return f"{n:,}".replace(",", " ")
+
+
+def _fmt_kr(cents: int, currency: str = "NOK") -> str:
+    """Øre → hele kroner for visning. Andre valutaer får koden som suffiks."""
+    return f"{_fmt_n(round(cents / 100))} {'kr' if currency == 'NOK' else currency}"
 
 
 def _safe_filename(s: str) -> str:
@@ -3318,7 +3409,7 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
         "<h3>Hendelser</h3>"
         '<p class=hint>Egendefinerte hendelser du selv sender: '
         "<code>sporlos('navn')</code> i JS, eller <code>data-sporlos-event=\"navn\"</code> "
-        "på en knapp/lenke.</p>"
+        'på en knapp/lenke. Kjøp med beløp/produkter: se <a href="/utviklere">E-handel</a>.</p>'
         "<table><tr><th>Hendelse</th><th>Unike</th><th>Totalt</th></tr>"
         f"{event_rows or '<tr><td>ingen hendelser enda</td><td></td><td></td></tr>'}</table>"
     )
@@ -3341,9 +3432,77 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
             f"<th style='text-align:right;color:var(--muted);font-size:.85rem'>Visn.</th></tr>{camp_rows}</table>"
         )
 
+    # E-handel — seksjonen finnes kun for sites som faktisk har målt kjøp (all-time),
+    # så en rolig uke ikke får seksjonen til å forsvinne, og ikke-butikker slipper støy.
+    ecom_html = ""
+    if store.has_ecommerce(site["id"]):
+        ec = store.ecommerce_stats(site["id"], days)
+        ec_prev = store.ecommerce_stats(site["id"], days, offset=1)
+        # Dominerende valuta styrer KPI-er og tabeller — valutaer blandes aldri.
+        dom = ec["by_currency"][0]["currency"] if ec["by_currency"] else "NOK"
+        row = next((r for r in ec["by_currency"] if r["currency"] == dom), None)
+        prow = next((r for r in ec_prev["by_currency"] if r["currency"] == dom), None)
+        rev = row["revenue_cents"] if row else 0
+        orders = row["orders"] if row else 0
+        prev_rev = prow["revenue_cents"] if prow else 0
+        prev_orders = prow["orders"] if prow else 0
+        aov = round(rev / orders) if orders else 0
+        prev_aov = round(prev_rev / prev_orders) if prev_orders else 0
+
+        if orders:
+            stat = (
+                '<div style="display:flex;gap:1.8rem;flex-wrap:wrap;margin:.4rem 0 1rem">'
+                f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_kr(rev, dom)}</div>'
+                f'<small style="color:var(--muted)">omsetning</small> {_delta(rev, prev_rev)}</div>'
+                f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_n(orders)}</div>'
+                f'<small style="color:var(--muted)">ordrer</small> {_delta(orders, prev_orders)}</div>'
+                f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_kr(aov, dom)}</div>'
+                f'<small style="color:var(--muted)">snittordre</small> {_delta(aov, prev_aov)}</div>'
+                "</div>"
+            )
+            prod_rows = "".join(
+                f"<tr><td>{escape(p['name'])}</td>"
+                f"<td style='text-align:right;color:var(--muted)'>{_fmt_n(p['qty'])}</td>"
+                f"<td style='text-align:right'>{_fmt_kr(p['revenue_cents'], dom)}</td></tr>"
+                for p in store.top_products(site["id"], days, dom)
+            )
+            src_rows = "".join(
+                f"<tr><td>{escape(sr['src'])}</td>"
+                f"<td style='text-align:right;color:var(--muted)'>{_fmt_n(sr['orders'])}</td>"
+                f"<td style='text-align:right'>{_fmt_kr(sr['revenue_cents'], dom)}</td></tr>"
+                for sr in store.revenue_by_source(site["id"], days, dom)
+            )
+            tables = (
+                '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem">'
+                "<div><table><tr><th>Produkt</th><th style='text-align:right'>Antall</th>"
+                f"<th style='text-align:right'>Omsetning</th></tr>"
+                f"{prod_rows or '<tr><td>kjøp uten produktlinjer</td><td></td><td></td></tr>'}</table></div>"
+                "<div><table><tr><th>Kilde</th><th style='text-align:right'>Ordrer</th>"
+                f"<th style='text-align:right'>Omsetning</th></tr>{src_rows}</table>"
+                '<p style="color:var(--muted);font-size:.78rem;margin:.4rem 0 0">Kilde = besøkerens '
+                "første kilde samme dag — hashen roterer daglig, så attribusjon krysser aldri døgn.</p>"
+                "</div></div>"
+            )
+            other_orders = ec["orders"] - orders
+            if other_orders:
+                tables += (
+                    f'<p style="color:var(--muted);font-size:.8rem">+ {other_orders} '
+                    "ordrer i andre valutaer — full liste i API-et.</p>"
+                )
+            body = stat + tables
+        else:
+            body = f'<p style="color:var(--muted);font-size:.9rem">Ingen kjøp målt i {label.lower()}.</p>'
+        ecom_html = (
+            "<h3>E-handel</h3>"
+            "<p class=hint>Kjøp sendes med <code>sporlos('purchase', {…})</code> — beløp og "
+            "produktnavn, aldri ordre-ID eller kundedata. "
+            '<a href="/utviklere">Slik sender du kjøp</a>.</p>'
+            + body
+        )
+
     blocks = "".join(
         f'<div class="card block">{b}</div>'
-        for b in (campaigns_html, goals_html, funnels_html, nav_html, events_html, verify_html)
+        for b in (ecom_html, campaigns_html, goals_html, funnels_html, nav_html, events_html, verify_html)
         if b
     )
 
@@ -3484,6 +3643,7 @@ routes = [
     Route("/api/v1/breakdown", api.breakdown),
     Route("/api/v1/goals", api.goals),
     Route("/api/v1/events", api.events),
+    Route("/api/v1/ecommerce", api.ecommerce),
     Route("/api/v1/anchors", api.anchors),
     Route("/app/sites", create_site_post, methods=["POST"]),
     Route("/app/goals", goal_create, methods=["POST"]),
