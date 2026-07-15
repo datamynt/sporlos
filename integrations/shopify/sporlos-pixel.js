@@ -102,10 +102,13 @@ analytics.subscribe("checkout_completed", function (event) {
       var line = { n: String(title).slice(0, 160) };
       var q = Number(li.quantity);
       if (isFinite(q) && q >= 1) line.q = Math.min(999, Math.round(q));
-      var p = money(li.variant && li.variant.price);
-      if (p === null && li.finalLinePrice && q >= 1) {
+      // finalLinePrice er ETTER rabatter — bruk den først, ellers avstemmer ikke
+      // produkttabellen mot ordresummen (variant.price er fullpris før rabatt).
+      var p = null;
+      if (li.finalLinePrice && isFinite(q) && q >= 1) {
         p = money({ amount: Number(li.finalLinePrice.amount) / q });
       }
+      if (p === null) p = money(li.variant && li.variant.price);
       if (p !== null) line.p = p;
       it.push(line);
     });

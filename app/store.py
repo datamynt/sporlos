@@ -88,18 +88,19 @@ CREATE TABLE IF NOT EXISTS events (
     currency TEXT
 );
 CREATE INDEX IF NOT EXISTS events_site_ts ON events (site_id, ts);
+CREATE INDEX IF NOT EXISTS events_site_visitor_ts ON events (site_id, visitor_hash, ts);
 CREATE TABLE IF NOT EXISTS event_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     site_id INTEGER NOT NULL REFERENCES sites(id),
     event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
     ts TEXT NOT NULL DEFAULT (datetime('now')),
     name TEXT NOT NULL,
-    sku TEXT,
     qty INTEGER NOT NULL DEFAULT 1,
     unit_price_cents INTEGER NOT NULL DEFAULT 0,
     currency TEXT
 );
 CREATE INDEX IF NOT EXISTS event_items_site_ts ON event_items (site_id, ts);
+CREATE INDEX IF NOT EXISTS event_items_event_id ON event_items (event_id);
 CREATE TABLE IF NOT EXISTS goals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     site_id INTEGER NOT NULL REFERENCES sites(id),
@@ -235,6 +236,11 @@ def init_db() -> None:
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vipps_charged_through TEXT")
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS revenue_cents BIGINT")
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS currency TEXT")
+            # Etter kolonne-migreringen over — kan ikke stå i schema.sql (se merknad der).
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
+                "WHERE revenue_cents IS NOT NULL"
+            )
     else:
         with _cursor() as cur:
             cur.executescript(_SQLITE_SCHEMA)
@@ -257,6 +263,9 @@ def init_db() -> None:
                 "ALTER TABLE tenants ADD COLUMN vipps_charged_through TEXT",
                 "ALTER TABLE events ADD COLUMN revenue_cents INTEGER",
                 "ALTER TABLE events ADD COLUMN currency TEXT",
+                # Etter kolonne-migreringene — samme grunn som i PG-grenen over.
+                "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
+                "WHERE revenue_cents IS NOT NULL",
             ):
                 try:
                     cur.execute(ddl)
@@ -639,7 +648,12 @@ def ecommerce_stats(site_id: int, days: int = 7, offset: int = 0) -> dict:
             "GROUP BY COALESCE(currency, 'NOK') ORDER BY orders DESC",
             (site_id, start, end),
         )
-        by_currency = [dict(r) for r in cur.fetchall()]
+        # int(): PG returnerer SUM(bigint) som Decimal — JSONResponse kaster på den.
+        by_currency = [
+            {"currency": r["currency"], "orders": int(r["orders"]),
+             "revenue_cents": int(r["revenue_cents"] or 0)}
+            for r in cur.fetchall()
+        ]
     return {
         "orders": sum(r["orders"] for r in by_currency),
         "by_currency": by_currency,
@@ -657,16 +671,32 @@ def top_products(site_id: int, days: int = 7, currency: str = "NOK", limit: int 
             f"GROUP BY name ORDER BY revenue_cents DESC LIMIT {P}",
             (site_id, start, end, currency, limit),
         )
-        return [dict(r) for r in cur.fetchall()]
+        # int(): PG-SUM gir Decimal (se ecommerce_stats).
+        return [
+            {"name": r["name"], "qty": int(r["qty"] or 0),
+             "revenue_cents": int(r["revenue_cents"] or 0)}
+            for r in cur.fetchall()
+        ]
+
+
+_PSP_SOURCES = {
+    # Betalings-redirects er aldri en trafikk-kilde. Rammer kjøp som krysser
+    # UTC-midnatt: «første pageview i døgnet» kan da være returen fra PSP-en.
+    "checkout.vipps.no", "pay.vipps.no", "api.vipps.no",
+    "checkout.stripe.com", "pay.stripe.com", "hooks.stripe.com",
+    "checkout.klarna.com", "pay.klarna.com",
+    "www.paypal.com", "paypal.com",
+}
 
 
 def revenue_by_source(site_id: int, days: int = 7, currency: str = "NOK", limit: int = 10) -> list[dict]:
-    """Omsetning per trafikk-kilde: førstekontakt SAMME DAG som kjøpet.
+    """Omsetning per trafikk-kilde: førstekontakt i samme UTC-DØGN som kjøpet.
 
     Kjøps-hendelsens egen referrer er ubrukelig (betalings-redirect → PSP-domenet),
     så kilden slås opp som besøkerens første pageview før kjøpet i vinduet. Siden
-    visitor-hashen roterer daglig er dette i praksis samme-dags-attribusjon —
-    en ærlig personvern-begrensning, ikke en bug."""
+    visitor-hashen roterer ved UTC-midnatt er dette i praksis samme-døgns-attribusjon —
+    en ærlig personvern-begrensning, ikke en bug. Kjente PSP-hosts normaliseres til
+    'direkte' (kjøp som krysser midnatt får ellers PSP-returen som «første» kilde)."""
     start, end = _period_window(days)
     with _cursor() as cur:
         cur.execute(
@@ -686,9 +716,10 @@ def revenue_by_source(site_id: int, days: int = 7, currency: str = "NOK", limit:
         rows = cur.fetchall()
     agg: dict[str, dict] = {}
     for r in rows:
-        a = agg.setdefault(r["src"], {"src": r["src"], "orders": 0, "revenue_cents": 0})
+        src = "direkte" if r["src"] in _PSP_SOURCES else r["src"]
+        a = agg.setdefault(src, {"src": src, "orders": 0, "revenue_cents": 0})
         a["orders"] += 1
-        a["revenue_cents"] += r["revenue_cents"]
+        a["revenue_cents"] += int(r["revenue_cents"])
     return sorted(agg.values(), key=lambda a: -a["revenue_cents"])[:limit]
 
 
@@ -1136,8 +1167,9 @@ def set_public_dash(public_id: str, tenant_id: int, on: bool) -> None:
 def insert_event(site_id: int, ev: dict, items: list[dict] | None = None) -> None:
     """Lagre ett event. INGEN IP, INGEN cookie i `ev` — kun grove kategorier.
 
-    `items` = ferdig-validerte produktlinjer (e-handel): name/sku/qty/unit_price_cents.
-    Beløp i øre. Aldri ordre-ID eller kundedata — da ville kjøp kunne kobles til person."""
+    `items` = ferdig-validerte produktlinjer (e-handel): name/qty/unit_price_cents.
+    Beløp i øre. Vi ber aldri om ordre-ID eller kundedata, og lagrer ingen
+    identifikatorer (ikke engang sku — ubrukte fritekstfelt er der ordre-ID-er havner)."""
     sql = (
         f"""INSERT INTO events
             (site_id, name, path, referrer_src, country, region, device, browser, os,
@@ -1175,10 +1207,10 @@ def insert_event(site_id: int, ev: dict, items: list[dict] | None = None) -> Non
             event_id = cur.lastrowid
         cur.executemany(
             f"""INSERT INTO event_items
-                (site_id, event_id, name, sku, qty, unit_price_cents, currency)
-                VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P})""",
+                (site_id, event_id, name, qty, unit_price_cents, currency)
+                VALUES ({P}, {P}, {P}, {P}, {P}, {P})""",
             [
-                (site_id, event_id, it["name"], it.get("sku"), it.get("qty", 1),
+                (site_id, event_id, it["name"], it.get("qty", 1),
                  it.get("unit_price_cents", 0), ev.get("currency"))
                 for it in items
             ],

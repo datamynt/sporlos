@@ -446,6 +446,18 @@ async def ingest(request):
         items = _clean_items(payload.get("it"))
         if revenue is not None or items:
             currency = _clean_currency(payload.get("cur"))
+            if currency is None:
+                # Oppgitt men UGYLDIG valuta: ærlig bortfall av beløpene er bedre
+                # enn å blande dem inn i NOK. Hendelsen og produktnavnene beholdes.
+                revenue = None
+                for it in items:
+                    it["unit_price_cents"] = 0
+            elif revenue is None and items:
+                # Uten ordresum avledes den av linjene — ellers ville produkt-
+                # tabellen vist omsetning som ikke fantes i ordre-KPI-ene.
+                derived = sum(it["qty"] * it["unit_price_cents"] for it in items)
+                if 0 < derived <= _MAX_MONEY:
+                    revenue = derived
 
     try:
         store.insert_event(
@@ -494,18 +506,24 @@ def _clean_money(v) -> int | None:
     return v if 0 <= v <= _MAX_MONEY else None
 
 
-def _clean_currency(v) -> str:
-    """ISO 4217-kode; alt ugyldig faller til NOK (sitene våre er norske først)."""
+def _clean_currency(v) -> str | None:
+    """ISO 4217-kode. Utelatt/tom → NOK (sitene våre er norske først).
+    Oppgitt men UGYLDIG («KR», «€», tall) → None: kallstedet dropper beløpene —
+    å tvangskonvertere en oppgitt fremmed valuta til NOK ville blandet valutaer."""
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return "NOK"
     if isinstance(v, str):
         c = v.strip().upper()
         if len(c) == 3 and c.isalpha() and c.isascii():
             return c
-    return "NOK"
+    return None
 
 
 def _clean_items(raw) -> list[dict]:
     """Produktlinjer fra tracker → validert liste. Ugyldige linjer droppes stille.
-    Caps: 25 linjer, navn 160 tegn, sku 64, qty 1–999, enhetspris [0, cap] øre."""
+    Caps: 25 linjer, navn 160 tegn, qty 1–999, enhetspris [0, cap] øre.
+    KUN navn/antall/pris tas imot — ingen sku/id-felt (ubrukte fritekstfelt er
+    nøyaktig der ordre-ID-er og kundedata ville havnet; dataminimering)."""
     if not isinstance(raw, list):
         return []
     out = []
@@ -521,12 +539,9 @@ def _clean_items(raw) -> list[dict]:
         if isinstance(qty, bool) or not isinstance(qty, int) or not 1 <= qty <= 999:
             qty = 1
         price = _clean_money(x.get("p", 0))
-        sku = x.get("s")
-        sku = sku.strip()[:64] if isinstance(sku, str) and sku.strip() else None
         out.append(
             {
                 "name": name.strip()[:160],
-                "sku": sku,
                 "qty": qty,
                 "unit_price_cents": price if price is not None else 0,
             }
@@ -1624,10 +1639,12 @@ ordrer, snittordre, toppprodukter og omsetning per kilde i dashbordet:</p>
     {{ name: 'eSIM Europa 10 GB', qty: 2, price: 599 }}
   ]
 }});</pre>
-<p class=muted>Kun beløp og produktnavn sendes — <b>aldri ordre-ID eller kundedata</b>,
-så kjøp kan ikke kobles til enkeltpersoner. Fyr kallet én gang per fullført ordre
-(typisk gated på en parameter fra betalings-redirecten, ikke på hver visning av
-kvitteringssiden).</p>
+<p class=muted>Kun beløp og produktnavn sendes — vi <b>ber aldri om ordre-ID eller
+kundedata</b>, og det finnes ikke felt for dem. Ikke send ordrenummer eller
+personaliserte produktnavn (gravering o.l.) i navnefeltet. Fyr kallet én gang per
+fullført ordre (typisk gated på en parameter fra betalings-redirecten, ikke på hver
+visning av kvitteringssiden). Tallene rapporteres av kundens nettleser og er
+veiledende — bruk ordresystemet, ikke analysen, som regnskaps- og avregningsgrunnlag.</p>
 
 <h2>Eksempel: spør en AI om tallene dine</h2>
 <p>Lim denne siden + nøkkelen din inn i Claude eller ChatGPT og be den f.eks.
@@ -1690,8 +1707,8 @@ vanlige tema-snippets ikke får tilgang til (Shopify-checkout ligger på et lås
 gir omsetning, snittordre og toppprodukter under «E-handel» i dashbordet</td></tr>
 <tr><td><code>search_submitted</code></td><td>butikksøk</td></tr>
 </table>
-<p class=muted>Ved kjøp sendes kun beløp og produktnavn/antall — <b>aldri ordre-ID eller
-kundedata</b>, så kjøp kan ikke kobles til person. Ingen cookies, ingen
+<p class=muted>Ved kjøp sendes kun beløp og produktnavn/antall — vi <b>ber aldri om ordre-ID
+eller kundedata</b>, og lagrer ingenting som identifiserer kjøperen. Ingen cookies, ingen
 <code>localStorage</code>, ingen fingerprinting. Derfor: ingen cookie-banner for Sporløs.</p>
 
 <div class=note>Tipset gjelder kun <b>app-pixler</b> (ikke denne): Shopifys «Optimized»-modus
@@ -2163,7 +2180,7 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
     drop-off finnes i Sporløs.</li>
     <li><b>E-handel på produktnivå.</b> Omsetning, ordrer, snittordre, toppprodukter og omsetning
     per kilde — med ett <code>purchase</code>-kall fra ordrebekreftelsen. Forskjellen fra GA: vi
-    tar aldri imot ordre-ID eller kundedata, så kjøp kan ikke kobles til enkeltpersoner.</li>
+    ber aldri om ordre-ID eller kundedata, og lagrer ingenting som identifiserer kjøperen.</li>
     <li><b>Kampanjemåling.</b> UTM-merkede lenker (kilde, medium, kampanje) måles — uten at hele
     URL-en med potensielt personidentifiserende parametre noensinne lagres.</li>
     <li><b>Kilder, enheter, geografi.</b> Hvor trafikken kommer fra, mobil/desktop, nettleser og
@@ -3480,7 +3497,8 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
                 "<div><table><tr><th>Kilde</th><th style='text-align:right'>Ordrer</th>"
                 f"<th style='text-align:right'>Omsetning</th></tr>{src_rows}</table>"
                 '<p style="color:var(--muted);font-size:.78rem;margin:.4rem 0 0">Kilde = besøkerens '
-                "første kilde samme dag — hashen roterer daglig, så attribusjon krysser aldri døgn.</p>"
+                "første kilde i samme døgn (UTC) — hashen roterer ved midnatt, så attribusjon "
+                "krysser aldri døgn.</p>"
                 "</div></div>"
             )
             other_orders = ec["orders"] - orders
@@ -3494,8 +3512,9 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
             body = f'<p style="color:var(--muted);font-size:.9rem">Ingen kjøp målt i {label.lower()}.</p>'
         ecom_html = (
             "<h3>E-handel</h3>"
-            "<p class=hint>Kjøp sendes med <code>sporlos('purchase', {…})</code> — beløp og "
-            "produktnavn, aldri ordre-ID eller kundedata. "
+            "<p class=hint>Kjøp sendes med <code>sporlos('purchase', {…})</code> — kun beløp og "
+            "produktnavn, uten ordre-ID eller kundedata. Nettleser-rapporterte tall: "
+            "veiledende, ikke avregningsgrunnlag. "
             '<a href="/utviklere">Slik sender du kjøp</a>.</p>'
             + body
         )
