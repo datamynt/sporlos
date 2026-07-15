@@ -21,4 +21,7 @@ RUN useradd -m appuser
 USER appuser
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# init = idempotent skjema-migrering (IF NOT EXISTS/ALTER). MÅ kjøre før appen:
+# 15.07 deployet en kolonne-endring uten migrering → ingest droppet events
+# stille og dashbordet 500-et til `manage init` ble kjørt manuelt på b550.
+CMD ["sh", "-c", "python -m app.manage init && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
