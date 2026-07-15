@@ -19,9 +19,9 @@
     });
   } catch (e) { /* eldre nettlesere: dropp kampanjedata, mål resten */ }
 
-  function send(name) {
+  function send(name, extra) {
     try {
-      var body = JSON.stringify({
+      var b = {
         s: site,
         n: name,
         p: location.pathname,        // ingen query-string => ingen utilsiktet PII
@@ -29,7 +29,9 @@
         us: utm.source || null,
         um: utm.medium || null,
         uc: utm.campaign || null,
-      });
+      };
+      if (extra) for (var k in extra) b[k] = extra[k];
+      var body = JSON.stringify(b);
       // sendBeacon overlever sidebytte og blokkerer ikke navigasjon
       if (navigator.sendBeacon) {
         navigator.sendBeacon(endpoint, body);
@@ -49,9 +51,42 @@
   };
   addEventListener("popstate", function () { send("pageview"); });
 
+  // E-handel: beløp i KRONER inn, øre (heltall) over ledningen. Kun beløp og
+  // produktnavn — det finnes ikke felt for ordre-ID eller kundedata, og du skal
+  // heller ikke sende dem (unngå ordrenummer/personaliserte navn i name-feltet).
+  //   sporlos("purchase", {revenue: 1198, currency: "NOK",
+  //     items: [{name: "eSIM Europa 10 GB", qty: 1, price: 599}]});
+  function money(v) {
+    return typeof v === "number" && isFinite(v) && v >= 0 ? Math.round(v * 100) : null;
+  }
+  function ecom(d) {
+    if (!d || typeof d !== "object") return null;
+    var o = {}, rv = money(d.revenue);
+    if (rv !== null) o.rv = rv;
+    if (typeof d.currency === "string") o.cur = d.currency.toUpperCase().slice(0, 3);
+    if (Array.isArray(d.items)) {
+      var it = [];
+      d.items.slice(0, 25).forEach(function (x) {
+        if (!x || typeof x.name !== "string") return;
+        var line = { n: x.name.slice(0, 160) };
+        if (typeof x.qty === "number" && x.qty >= 1) line.q = Math.min(999, Math.round(x.qty));
+        var p = money(x.price);
+        if (p !== null) line.p = p;
+        it.push(line);
+      });
+      if (it.length) o.it = it;
+    }
+    return o.rv != null || o.it ? o : null;
+  }
+
   // Egendefinerte hendelser: sporlos("signup") fra kundens egen kode.
   // Også auto: klikk på elementer med data-sporlos-event="navn".
-  window.sporlos = function (name) { if (name) send(String(name)); };
+  window.sporlos = function (name, data) {
+    if (!name) return;
+    var extra = null;
+    try { extra = ecom(data); } catch (e) { /* ugyldig data ⇒ send hendelsen uten */ }
+    send(String(name), extra);
+  };
   document.addEventListener("click", function (e) {
     var el = e.target.closest ? e.target.closest("[data-sporlos-event]") : null;
     if (el) send(el.getAttribute("data-sporlos-event"));

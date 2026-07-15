@@ -132,6 +132,31 @@ async def events(request):
     )
 
 
+async def ecommerce(request):
+    """E-handel: ordrer/omsetning per valuta + toppprodukter + omsetning per kilde.
+
+    Beløp i øre (heltall). products/sources gjelder dominerende valuta (flest ordrer);
+    kilde = besøkerens første kilde samme dag (hashen roterer daglig)."""
+    key = _auth(request)
+    if not key:
+        return _err("ugyldig eller manglende API-nøkkel", 401)
+    site, days, err = _site_and_days(request, key)
+    if err:
+        return err
+    try:
+        limit = min(1000, max(1, int(request.query_params.get("limit", "100"))))
+    except ValueError:
+        return _err("limit må være et tall", 400)
+    ec = store.ecommerce_stats(site["id"], days)
+    dom = ec["by_currency"][0]["currency"] if ec["by_currency"] else "NOK"
+    return JSONResponse(
+        {"site": request.query_params.get("site"), "period_days": days,
+         "orders": ec["orders"], "revenue": ec["by_currency"], "currency": dom,
+         "products": store.top_products(site["id"], days, dom, limit),
+         "sources": store.revenue_by_source(site["id"], days, dom, limit)}
+    )
+
+
 async def anchors(request):
     """Dags-aggregater m/ sha256 + ev. BSV-txid — bevis på at tallene ikke er etterjustert."""
     key = _auth(request)

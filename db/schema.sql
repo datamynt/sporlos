@@ -55,10 +55,33 @@ CREATE TABLE IF NOT EXISTS events (
     utm_medium    TEXT,                    -- (aldri hele query-strengen — PII-vern)
     utm_campaign  TEXT,
     visitor_hash  TEXT NOT NULL,           -- IKKE re-identifiserbar på tvers av dager
-    session_id    TEXT
+    session_id    TEXT,
+    revenue_cents BIGINT,                  -- ordresum i øre på kjøps-hendelser (aldri ordre-ID)
+    currency      TEXT                     -- ISO 4217 (NOK når utelatt)
 );
 -- Dekker både tidsvindu-filteret og DISTINCT visitor_hash per site/dag.
 CREATE INDEX IF NOT EXISTS events_site_ts_visitor ON events (site_id, ts, visitor_hash);
+-- Kilde-attribusjon for kjøp: første pageview per visitor_hash (revenue_by_source).
+CREATE INDEX IF NOT EXISTS events_site_visitor_ts ON events (site_id, visitor_hash, ts);
+-- MERK: events_site_ecom (partiell indeks på revenue_cents, for has_ecommerce-proben)
+-- opprettes i init_db ETTER kolonne-migreringene — den kan ikke stå her, for på en
+-- eksisterende DB kjører denne fila FØR ALTER-en som legger til revenue_cents.
+
+-- E-handel: produktlinjer på kjøps-hendelser. Kun produktnavn/antall/beløp —
+-- vi ber aldri om ordre-ID eller kundedata, og lagrer ingen identifikatorer.
+CREATE TABLE IF NOT EXISTS event_items (
+    id               BIGSERIAL PRIMARY KEY,
+    site_id          BIGINT NOT NULL REFERENCES sites(id),
+    event_id         BIGINT REFERENCES events(id) ON DELETE CASCADE,
+    ts               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    name             TEXT NOT NULL,
+    qty              INTEGER NOT NULL DEFAULT 1,
+    unit_price_cents BIGINT NOT NULL DEFAULT 0,
+    currency         TEXT                  -- arver hendelsens valuta
+);
+CREATE INDEX IF NOT EXISTS event_items_site_ts ON event_items (site_id, ts);
+-- FK-cascade fra events-slettinger (retention) trenger denne for å ikke seq-scanne.
+CREATE INDEX IF NOT EXISTS event_items_event_id ON event_items (event_id);
 
 -- Dags-aggregater. Disse hashes og anchres on-chain (aldri rådata).
 CREATE TABLE IF NOT EXISTS daily_rollups (
