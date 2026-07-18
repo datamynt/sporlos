@@ -69,7 +69,7 @@
 
   /* Kjente stier i assistent-svar gjøres klikkbare. Bygger DOM-noder (aldri
      innerHTML fra modelltekst) — ny fane så samtalen overlever klikket. */
-  var PATHS = /(\/(?:integrasjoner(?:\/[a-z]+)?|priser|demo|sporsmal|signup|vilkar|personvern|google-analytics-alternativ|utviklere|shopify|registrer|logg-inn|login|app))(?![\w-])/g;
+  var PATHS = /(\/(?:integrasjoner(?:\/[a-z]+)?|blogg(?:\/[a-z0-9-]+)?|priser|demo|sporsmal|signup|vilkar|personvern|google-analytics-alternativ|utviklere|shopify|registrer|logg-inn|login|app))(?![\w-])/g;
 
   function render(el, text) {
     el.textContent = "";
