@@ -133,10 +133,11 @@ async def events(request):
 
 
 async def ecommerce(request):
-    """E-handel: ordrer/omsetning per valuta + toppprodukter + omsetning per kilde.
+    """E-handel: ordrer/omsetning per valuta + toppprodukter + kilde + betalingsmåte.
 
-    Beløp i øre (heltall). products/sources gjelder dominerende valuta (flest ordrer);
-    kilde = besøkerens første kilde samme dag (hashen roterer daglig)."""
+    Beløp i øre (heltall). products/sources/payment_methods gjelder dominerende valuta
+    (flest ordrer); kilde = besøkerens første kilde samme dag (hashen roterer daglig);
+    betalingsmåte = slug butikken selv sendte i purchase-kallet ('ukjent' når utelatt)."""
     key = _auth(request)
     if not key:
         return _err("ugyldig eller manglende API-nøkkel", 401)
@@ -153,7 +154,8 @@ async def ecommerce(request):
         {"site": request.query_params.get("site"), "period_days": days,
          "orders": ec["orders"], "revenue": ec["by_currency"], "currency": dom,
          "products": store.top_products(site["id"], days, dom, limit),
-         "sources": store.revenue_by_source(site["id"], days, dom, limit)}
+         "sources": store.revenue_by_source(site["id"], days, dom, limit),
+         "payment_methods": store.revenue_by_payment(site["id"], days, dom, limit)}
     )
 
 

@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS events (
     visitor_hash  TEXT NOT NULL,           -- IKKE re-identifiserbar på tvers av dager
     session_id    TEXT,
     revenue_cents BIGINT,                  -- ordresum i øre på kjøps-hendelser (aldri ordre-ID)
-    currency      TEXT                     -- ISO 4217 (NOK når utelatt)
+    currency      TEXT,                    -- ISO 4217 (NOK når utelatt)
+    payment_method TEXT                    -- slug fra butikken («vipps», «stripe_card» …), aldri fritekst
 );
 -- Dekker både tidsvindu-filteret og DISTINCT visitor_hash per site/dag.
 CREATE INDEX IF NOT EXISTS events_site_ts_visitor ON events (site_id, ts, visitor_hash);
