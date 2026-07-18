@@ -968,7 +968,7 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
       <small class=hva>1 mill. visninger<br>15 nettsteder<br>verifiserbare tall</small>
       <a class=velg href="/signup?plan=pro">Kom i gang</a></div>
     <div class="plan reveal"><b>Byrå</b><span class=pris>fra 1 490 kr</span>
-      <small class=hva>fra 25 kundenettsteder<br>white-label · forsegling inkl.</small>
+      <small class=hva>fra 25 kundenettsteder<br>forsegling inkludert</small>
       <a class=velg href="mailto:post@sporlos.no?subject=Byr%C3%A5-avtale">Ta kontakt</a></div>
   </div>
   <div class="loft reveal">
