@@ -38,7 +38,7 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from app import api, assist, icons, mailer, notify, store, vipps
+from app import api, assist, blogg, icons, mailer, notify, store, vipps
 from app.auth import check_token, hash_password, verify_password
 from app.datacenter import is_datacenter
 from app.geo import country_no
@@ -644,7 +644,7 @@ _SELF_SNIPPET = (
 # Assistenten rir på samme injeksjonspunkt — vises kun når LLM-nøkkel er satt.
 # ?v= buster 1t-cachen ved widget-endringer — bump ved endring i assist/widget.js.
 if assist.configured():
-    _SELF_SNIPPET += '<script defer src="/assist.js?v=2"></script>'
+    _SELF_SNIPPET += '<script defer src="/assist.js?v=3"></script>'
 
 # Felles header/footer for alle offentlige sider — samme ramme overalt,
 # så ingen side føles som å «dette ut» av nettstedet.
@@ -674,6 +674,7 @@ _SITE_NAV = (
     '<a href="/demo">Live demo</a>'
     '<a href="/#priser">Priser</a>'
     '<a href="/google-analytics-alternativ">Mot Google Analytics</a>'
+    '<a href="/blogg">Blogg</a>'
     '<a href="/login">Logg inn</a>'
     '<a class="btn btn-accent" href="/signup">Prøv gratis</a></div></nav>'
 )
@@ -685,6 +686,7 @@ _SITE_FOOTER = (
     '<a href="/google-analytics-alternativ">Sporløs mot Google Analytics</a> · '
     '<a href="/integrasjoner">Integrasjoner</a> · '
     '<a href="/sporsmal">Spørsmål og svar</a> · '
+    '<a href="/blogg">Blogg</a> · '
     '<a href="https://status.sporlos.no">Status</a> · '
     '<a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>'
     '<a href="https://datamynt.no">Datamynt AS</a> · org.nr 936 017 207 · '
@@ -2289,6 +2291,163 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
     )
 
 
+# ---------- Blogg — innhold bor i app/blogg.py, rendering her (jf. _GUIDES) ----------
+
+_BLOGG_LEDE = "Om sporing, personvern og ærlig måling — fra folkene bak Sporløs."
+_BLOGG_RSS_LINK = (
+    '<link rel="alternate" type="application/rss+xml" title="Sporløs-bloggen" '
+    'href="/blogg/rss.xml">'
+)
+_BLOGG_CSS = """
+.content{max-width:680px;margin:0 auto;padding-bottom:1rem}
+h1{font-size:1.9rem;letter-spacing:-.02em;line-height:1.25}
+h2{font-size:1.2rem;margin-top:2.2rem}
+.dato{font-size:.85rem;color:var(--muted)}
+.lede{font-size:1.12rem;color:var(--muted)}
+blockquote{margin:1.4rem 0;padding:.2rem 0 .2rem 1.1rem;border-left:3px solid var(--accent);
+font-size:1.05rem}
+.content ul{padding-left:1.2rem}.content ul li{margin:.3rem 0}
+.muted{font-size:.9rem;color:var(--muted)}
+"""
+
+
+def _blogg_norsk_dato(iso: str) -> str:
+    return f"{int(iso[8:10])}. {_MND[int(iso[5:7])]} {iso[:4]}"
+
+
+# RFC 822-datoer for RSS — egne navnelister så output aldri avhenger av locale.
+_RSS_DAG = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+_RSS_MND = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _blogg_rss_dato(iso: str) -> str:
+    d = date.fromisoformat(iso)
+    return f"{_RSS_DAG[d.weekday()]}, {d.day:02d} {_RSS_MND[d.month]} {d.year} 08:00:00 +0200"
+
+
+def _render_blogg_post(slug):
+    p = blogg.POSTS[slug]
+    url = f"https://sporlos.no/blogg/{slug}"
+    ld = (
+        '<script type="application/ld+json">'
+        + json.dumps(
+            {
+                "@context": "https://schema.org",
+                "@type": "BlogPosting",
+                "headline": p["tittel"],
+                "description": p["beskrivelse"],
+                "datePublished": p["dato"],
+                "url": url,
+                "inLanguage": "nb",
+                "author": {"@type": "Organization", "name": "Sporløs", "url": "https://sporlos.no"},
+                "publisher": {
+                    "@type": "Organization",
+                    "name": "Datamynt AS",
+                    "logo": {
+                        "@type": "ImageObject",
+                        "url": "https://sporlos.no/static/brand/app-ikon.png",
+                    },
+                },
+            },
+            ensure_ascii=False,
+        )
+        + "</script>"
+    )
+    return HTMLResponse(
+        f"""<!doctype html><html lang="no"><head><meta charset="utf-8">
+<title>{escape(p['tittel'])} — Sporløs-bloggen</title>
+<meta name=viewport content="width=device-width, initial-scale=1">
+<meta name="description" content="{escape(p['beskrivelse'])}">
+<link rel="canonical" href="{url}">
+<meta property="og:title" content="{escape(p['tittel'])}">
+<meta property="og:description" content="{escape(p['beskrivelse'])}">
+<meta property="og:type" content="article">
+<meta property="og:url" content="{url}">
+<meta property="og:locale" content="nb_NO">
+<meta property="article:published_time" content="{p['dato']}">
+{_BRAND_HEAD}{_OG_META}{_BLOGG_RSS_LINK}{ld}
+<style>{_BRAND_CSS}{_CHROME_CSS}{_BLOGG_CSS}</style>
+{_SELF_SNIPPET}</head><body>
+<div class=wrap>
+{_SITE_NAV}
+<div class=content>
+<p class=muted style="margin:0"><a href="/blogg">← Bloggen</a></p>
+<h1>{escape(p['tittel'])}</h1>
+<p class=dato>{escape(_blogg_norsk_dato(p['dato']))}</p>
+<p class=lede>{escape(p['ingress'])}</p>
+{p['body']}
+</div></div>
+{_SITE_FOOTER}</body></html>"""
+    )
+
+
+async def blogg_post(request):
+    slug = request.path_params.get("slug", "")
+    if slug not in blogg.POSTS:
+        return RedirectResponse("/blogg", status_code=302)
+    return _render_blogg_post(slug)
+
+
+async def blogg_index(request):
+    kort = "".join(
+        f'<a class=post href="/blogg/{slug}">'
+        f'<span class=dato>{escape(_blogg_norsk_dato(p["dato"]))}</span>'
+        f"<b>{escape(p['tittel'])}</b>"
+        f'<span class=ing>{escape(p["ingress"])}</span></a>'
+        for slug, p in blogg.POSTS.items()
+    )
+    return HTMLResponse(
+        f"""<!doctype html><html lang="no"><head><meta charset="utf-8">
+<title>Blogg — Sporløs</title>
+<meta name=viewport content="width=device-width, initial-scale=1">
+<meta name="description" content="{escape(_BLOGG_LEDE)}">
+<link rel="canonical" href="https://sporlos.no/blogg">
+{_BRAND_HEAD}{_OG_META}{_BLOGG_RSS_LINK}
+<style>{_BRAND_CSS}{_CHROME_CSS}
+.content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
+h1{{font-size:2.1rem;letter-spacing:-.025em}}
+.lede{{font-size:1.15rem;color:var(--muted)}}
+.post{{display:flex;flex-direction:column;gap:.25rem;border:1px solid var(--line);border-radius:12px;
+padding:1.2rem 1.3rem;margin:.8rem 0;text-decoration:none;background:var(--card);transition:border-color .2s}}
+.post:hover{{border-color:var(--accent)}}
+.post b{{color:var(--ink);font-size:1.08rem;line-height:1.35}}
+.post .dato{{color:var(--muted);font-size:.8rem}}
+.post .ing{{color:var(--muted);font-size:.92rem}}
+.muted{{font-size:.9rem;color:var(--muted)}}</style>
+{_SELF_SNIPPET}</head><body>
+<div class=wrap>
+{_SITE_NAV}
+<div class=content>
+<h1>Bloggen</h1>
+<p class=lede>{escape(_BLOGG_LEDE)}</p>
+{kort}
+<p class=muted>Abonner med <a href="/blogg/rss.xml">RSS</a>.</p>
+</div></div>
+{_SITE_FOOTER}</body></html>"""
+    )
+
+
+async def blogg_rss(request):
+    items = "".join(
+        f"<item><title>{escape(p['tittel'])}</title>"
+        f"<link>https://sporlos.no/blogg/{slug}</link>"
+        f"<guid>https://sporlos.no/blogg/{slug}</guid>"
+        f"<pubDate>{_blogg_rss_dato(p['dato'])}</pubDate>"
+        f"<description>{escape(p['beskrivelse'])}</description></item>"
+        for slug, p in blogg.POSTS.items()
+    )
+    return Response(
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<rss version="2.0"><channel>'
+        "<title>Sporløs-bloggen</title>"
+        "<link>https://sporlos.no/blogg</link>"
+        f"<description>{escape(_BLOGG_LEDE)}</description>"
+        f"<language>nb</language>{items}</channel></rss>",
+        media_type="application/rss+xml",
+    )
+
+
 def _alias(to):
     """Norsk URL-alias → kanonisk rute (redirect, ingen duplisert side for SEO)."""
     async def handler(request):
@@ -2316,6 +2475,7 @@ async def llms_txt(request):
         "- [Hjem](https://sporlos.no/)\n"
         "- [Google Analytics-alternativ](https://sporlos.no/google-analytics-alternativ)\n"
         "- [Spørsmål og svar](https://sporlos.no/sporsmal)\n"
+        "- [Blogg](https://sporlos.no/blogg)\n"
         "- [Shopify-integrasjon](https://sporlos.no/shopify)\n"
         "- [For utviklere](https://sporlos.no/utviklere)\n"
         "- [Demo](https://sporlos.no/demo)\n"
@@ -2326,8 +2486,9 @@ async def llms_txt(request):
 
 async def sitemap(request):
     pages = ["/", "/demo", "/google-analytics-alternativ", "/sporsmal", "/integrasjoner",
-             "/shopify", "/signup", "/vilkar", "/personvern", "/utviklere"]
+             "/shopify", "/signup", "/vilkar", "/personvern", "/utviklere", "/blogg"]
     pages += [f"/integrasjoner/{slug}" for slug in _GUIDES]
+    pages += [f"/blogg/{slug}" for slug in blogg.POSTS]
     urls = "".join(f"<url><loc>https://sporlos.no{p}</loc></url>" for p in pages)
     return Response(
         f'<?xml version="1.0" encoding="UTF-8"?>'
@@ -3720,6 +3881,9 @@ routes = [
     Route("/shopify", shopify_guide),
     Route("/integrasjoner", integrasjoner),
     Route("/integrasjoner/{slug}", platform_guide),
+    Route("/blogg", blogg_index),
+    Route("/blogg/rss.xml", blogg_rss),  # må stå FØR {slug}-ruta
+    Route("/blogg/{slug}", blogg_post),
     Route("/api/v1/sites", api.sites),
     Route("/api/v1/stats", api.stats),
     Route("/api/v1/timeseries", api.timeseries),
