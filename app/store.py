@@ -329,6 +329,90 @@ def list_sites(tenant_id: int) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def overview_stats(tenant_id: int, days: int = 7) -> list[dict]:
+    """Alle sites for ÉN tenant med aggregater over et periodevindu — driver
+    portefølje-oversikten på /app (sammenlign sites mot hverandre over tid,
+    ikke bare «tall for i dag» som nullstilles ved midnatt).
+
+    Speiler stats()/kpis()-semantikken (samme events-kilde, samme
+    'pageview'-filter, samme daglig-roterende unike) så tallene her stemmer
+    NØYAKTIG med hver sites egen dashboard-side. Tre grupperte spørringer totalt
+    (nåværende vindu, forrige vindu for delta, per-dag-serie for sparkline),
+    uavhengig av antall sites — hver treffer events_site_ts_visitor-indeksen.
+
+    Unike over flere dager = sum av dags-unike: visitor_hash roterer daglig, så
+    COUNT(DISTINCT ...) over vinduet gir samme tall som summen (jf. stats())."""
+    with _cursor() as cur:
+        cur.execute(
+            f"""SELECT s.id, s.public_id, s.domain,
+                       (SELECT MAX(ts) FROM events WHERE site_id = s.id) AS last_ts
+                FROM sites s WHERE s.tenant_id = {P} ORDER BY s.domain""",
+            (tenant_id,),
+        )
+        sites = [dict(r) for r in cur.fetchall()]
+        if not sites:
+            return []
+        ids = [s["id"] for s in sites]
+        ph = ",".join([P] * len(ids))
+
+        def _window_map(offset: int) -> dict:
+            start, end = _period_window(days, offset)
+            cur.execute(
+                f"""SELECT site_id, COUNT(*) AS pv,
+                           COUNT(DISTINCT visitor_hash) AS vis
+                    FROM events
+                    WHERE site_id IN ({ph}) AND ts >= {P} AND ts < {P}
+                          AND name = 'pageview'
+                    GROUP BY site_id""",
+                (*ids, start, end),
+            )
+            return {r["site_id"]: dict(r) for r in cur.fetchall()}
+
+        cur_map = _window_map(0)
+        prev_map = _window_map(1)
+
+        # Per-dag unike per site → sparkline. Dagsbøtter uansett periodelengde
+        # (mange tynne punkter i en liten sparkline er greit — og ærligere enn
+        # uke-snitt for et trend-blikk).
+        start, end = _period_window(days)
+        bucket = _bucket_expr("day")
+        cur.execute(
+            f"""SELECT site_id, {bucket} AS bucket,
+                       COUNT(DISTINCT visitor_hash) AS vis
+                FROM events
+                WHERE site_id IN ({ph}) AND ts >= {P} AND ts < {P}
+                      AND name = 'pageview'
+                GROUP BY site_id, bucket""",
+            (*ids, start, end),
+        )
+        series: dict[int, dict[str, int]] = {}
+        for r in cur.fetchall():
+            series.setdefault(r["site_id"], {})[r["bucket"]] = r["vis"]
+
+    labels = _bucket_labels(days, "day")
+    out = []
+    for s in sites:
+        c = cur_map.get(s["id"]) or {}
+        p = prev_map.get(s["id"]) or {}
+        sp = series.get(s["id"], {})
+        out.append(
+            {
+                "public_id": s["public_id"],
+                "domain": s["domain"],
+                "last_ts": s["last_ts"],
+                "visitors": c.get("vis", 0) or 0,
+                "pageviews": c.get("pv", 0) or 0,
+                "prev_visitors": p.get("vis", 0) or 0,
+                "prev_pageviews": p.get("pv", 0) or 0,
+                "spark": [sp.get(lbl, 0) for lbl in labels],
+            }
+        )
+    # Rangér etter unike i perioden (synkende) så oversikten faktisk sammenligner
+    # — mest trafikk øverst, domene som stabil sekundærsortering.
+    out.sort(key=lambda r: (-r["visitors"], r["domain"]))
+    return out
+
+
 def create_account(company: str, email: str, password_hash: str, trial_days: int = 30) -> tuple[int, int]:
     """Opprett tenant (trial) + første bruker. (tenant_id, user_id). Reiser ved dup epost."""
     trial_ends = (datetime.now(timezone.utc) + timedelta(days=trial_days)).strftime(

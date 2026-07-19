@@ -2943,6 +2943,37 @@ def _area_chart(series, width=880, height=170, days=7):
     )
 
 
+def _sparkline(series, width=96, height=26):
+    """Kompakt trend-sparkline (unike per dag) for oversikts-radene — ren strek,
+    ingen akse/hover/JS (til forskjell fra _area_chart). Flat baseline når det
+    ikke finnes data, så radhøyden ikke hopper."""
+    vals = [max(0, int(v)) for v in (series or [])]
+    peak = max(vals, default=0)
+    if not vals or peak == 0:
+        return (
+            f'<svg viewBox="0 0 {width} {height}" class=spark preserveAspectRatio=none aria-hidden=true>'
+            f'<line x1=0 y1="{height - 3}" x2="{width}" y2="{height - 3}" '
+            'style="stroke:var(--line)" stroke-width=1.5/></svg>'
+        )
+    n = len(vals)
+    pad = 3
+    step = (width - 2 * pad) / max(n - 1, 1)
+    span = height - 2 * pad
+    pts = [(pad + i * step, pad + span * (1 - v / peak)) for i, v in enumerate(vals)]
+    if n == 1:  # ett punkt → flat strek over hele bredden
+        y = pts[0][1]
+        pts = [(pad, y), (width - pad, y)]
+    line = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+    area = f"{line} L{pts[-1][0]:.1f},{height - pad} L{pts[0][0]:.1f},{height - pad} Z"
+    return (
+        f'<svg viewBox="0 0 {width} {height}" class=spark preserveAspectRatio=none role=img '
+        f'aria-label="topp {peak} unike/dag">'
+        f'<path d="{area}" fill="var(--accent)" fill-opacity=".13"/>'
+        f'<path d="{line}" fill=none style="stroke:var(--accent)" stroke-width=1.7 '
+        'stroke-linejoin=round stroke-linecap=round/></svg>'
+    )
+
+
 def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, title, description, canonical):
     """Delt renderer for offentlige statistikk-sider (/demo + /p/<site>). Read-only."""
     period = request.query_params.get("period", "7")
@@ -3233,7 +3264,14 @@ async def dashboard(request):
         )
 
     if not site:
-        sites = store.list_sites(user["tid"])
+        # Porteføljeoversikt over et valgt vindu (default 7 dager, IKKE «i dag»):
+        # ved midnatt nullstilles ellers alle radene til 0, og du kan ikke
+        # sammenligne sitene mot hverandre over tid.
+        ov_period = request.query_params.get("period", "7")
+        if ov_period not in _PERIODS:
+            ov_period = "7"
+        ov_label, ov_days = _PERIODS[ov_period]
+        sites = store.overview_stats(user["tid"], ov_days)
         tenant = store.get_tenant(user["tid"]) or {}
         def _dot(s):
             # Tilkoblet hvis vi noen gang har sett et event; ellers venter på første besøk.
@@ -3241,9 +3279,17 @@ async def dashboard(request):
                 return ('<span title="tilkoblet — data mottatt" style="color:var(--ok)">●</span> ')
             return ('<span title="venter på første besøk" style="color:var(--muted)">○</span> ')
 
+        ov_tabs = " ".join(
+            f'<a href="/app?period={k}" class="{"on" if k == ov_period else ""}">{escape(v[0])}</a>'
+            for k, v in _PERIODS.items()
+        )
+        single_day = ov_days == 1  # sparkline meningsløs for ett døgn
         rows = "".join(
-            f'<tr><td>{_dot(s)}<a href="/app?site={escape(s["public_id"])}">{escape(s["domain"])}</a></td>'
-            f'<td>{s["visitors"]}</td><td>{s["pv"]}</td></tr>'
+            f'<tr><td>{_dot(s)}<a href="/app?site={escape(s["public_id"])}&period={ov_period}">'
+            f'{escape(s["domain"])}</a></td>'
+            f'<td class=trend>{"" if single_day else _sparkline(s["spark"])}</td>'
+            f'<td class=num><b>{_fmt_n(s["visitors"])}</b>{_delta(s["visitors"], s["prev_visitors"])}</td>'
+            f'<td class=num><b>{_fmt_n(s["pageviews"])}</b>{_delta(s["pageviews"], s["prev_pageviews"])}</td></tr>'
             for s in sites
         )
         plan = tenant.get("plan") or "trial"
@@ -3437,7 +3483,18 @@ input::placeholder,textarea::placeholder{{color:var(--muted)}}
 form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:.95rem;background:var(--card);color:var(--ink)}}
 .fine{{color:var(--muted);font-size:.8rem}}
 .tema{{background:none;border:1px solid var(--line);border-radius:99px;width:30px;height:30px;cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;padding:0;margin-right:.6rem}}
-.tema:hover{{color:var(--ink);border-color:var(--muted)}}</style>
+.tema:hover{{color:var(--ink);border-color:var(--muted)}}
+.ovtabs{{display:flex;flex-wrap:wrap;gap:.3rem;margin:.1rem 0 .8rem}}
+.ovtabs a{{padding:.3rem .75rem;border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--muted);font-size:.82rem;background:var(--card)}}
+.ovtabs a.on{{background:var(--ink);color:var(--bg);border-color:var(--ink)}}
+table.ov th:nth-child(2),table.ov td.trend{{width:5.4rem}}
+table.ov th:nth-child(3),table.ov td:nth-child(3),table.ov th:nth-child(4),table.ov td:nth-child(4){{width:4.4rem}}
+table.ov td.num{{white-space:normal;line-height:1.15;vertical-align:middle}}
+table.ov td.num b{{display:block;color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}}
+table.ov td.trend{{overflow:visible;vertical-align:middle}}
+table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:auto}}
+.ov .d{{display:block;font-size:.68rem;font-weight:600;margin-top:.05rem}}
+.dg{{color:var(--ok)}}.dr{{color:var(--err)}}.d0{{color:var(--muted)}}</style>
 {_THEME_HEAD}
 <div class=wrap>
 <nav>{_WORDMARK}<span>{_THEME_BTN}<a class=ut href="/logout">Logg ut</a></span></nav>
@@ -3446,10 +3503,11 @@ form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:
 {trial}
 {limit_msg}
 {vipps_flash}
-<h2 class=sec>Nettsteder <span style="float:right;text-transform:none;letter-spacing:0;font-weight:400">tall for i dag</span></h2>
+<h2 class=sec>Nettsteder <span style="float:right;text-transform:none;letter-spacing:0;font-weight:400">{escape(ov_label)}</span></h2>
+<div class=ovtabs>{ov_tabs}</div>
 <div class=card>
-<table><tr><th>Nettsted</th><th>Unike</th><th>Visn.</th></tr>
-{rows or '<tr><td>ingen nettsteder enda — legg til det første under</td><td></td><td></td></tr>'}</table>
+<table class=ov><tr><th>Nettsted</th><th>Trend</th><th>Unike</th><th>Visn.</th></tr>
+{rows or '<tr><td>ingen nettsteder enda — legg til det første under</td><td></td><td></td><td></td></tr>'}</table>
 </div>
 <form class=add method=post action="/app/sites">
   <input name=domain placeholder="dittdomene.no" required>
