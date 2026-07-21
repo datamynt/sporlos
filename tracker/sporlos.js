@@ -54,7 +54,7 @@
   // E-handel: beløp i KRONER inn, øre (heltall) over ledningen. Kun beløp og
   // produktnavn — det finnes ikke felt for ordre-ID eller kundedata, og du skal
   // heller ikke sende dem (unngå ordrenummer/personaliserte navn i name-feltet).
-  //   sporlos("purchase", {revenue: 1198, currency: "NOK",
+  //   sporlos("purchase", {revenue: 1198, currency: "NOK", payment: "vipps",
   //     items: [{name: "eSIM Europa 10 GB", qty: 1, price: 599}]});
   function money(v) {
     return typeof v === "number" && isFinite(v) && v >= 0 ? Math.round(v * 100) : null;
@@ -64,6 +64,10 @@
     var o = {}, rv = money(d.revenue);
     if (rv !== null) o.rv = rv;
     if (typeof d.currency === "string") o.cur = d.currency.toUpperCase().slice(0, 3);
+    if (typeof d.payment === "string") {
+      var pm = d.payment.trim().toLowerCase().slice(0, 32);
+      if (pm) o.pm = pm;
+    }
     if (Array.isArray(d.items)) {
       var it = [];
       d.items.slice(0, 25).forEach(function (x) {

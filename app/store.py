@@ -85,7 +85,8 @@ CREATE TABLE IF NOT EXISTS events (
     visitor_hash TEXT NOT NULL,
     session_id TEXT,
     revenue_cents INTEGER,
-    currency TEXT
+    currency TEXT,
+    payment_method TEXT
 );
 CREATE INDEX IF NOT EXISTS events_site_ts ON events (site_id, ts);
 CREATE INDEX IF NOT EXISTS events_site_visitor_ts ON events (site_id, visitor_hash, ts);
@@ -247,6 +248,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vipps_charged_through TEXT")
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS revenue_cents BIGINT")
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS currency TEXT")
+            cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS payment_method TEXT")
             # Etter kolonne-migreringen over — kan ikke stå i schema.sql (se merknad der).
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
@@ -274,6 +276,7 @@ def init_db() -> None:
                 "ALTER TABLE tenants ADD COLUMN vipps_charged_through TEXT",
                 "ALTER TABLE events ADD COLUMN revenue_cents INTEGER",
                 "ALTER TABLE events ADD COLUMN currency TEXT",
+                "ALTER TABLE events ADD COLUMN payment_method TEXT",
                 # Etter kolonne-migreringene — samme grunn som i PG-grenen over.
                 "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
                 "WHERE revenue_cents IS NOT NULL",
@@ -818,6 +821,29 @@ def revenue_by_source(site_id: int, days: int = 7, currency: str = "NOK", limit:
     return sorted(agg.values(), key=lambda a: -a["revenue_cents"])[:limit]
 
 
+def revenue_by_payment(site_id: int, days: int = 7, currency: str = "NOK", limit: int = 10) -> list[dict]:
+    """Ordrer + omsetning per betalingsmåte i én valuta. Kjøp uten oppgitt
+    betalingsmåte (eldre hendelser, butikker som ikke sender feltet) grupperes
+    som 'ukjent' — ærligere enn å late som de ikke finnes."""
+    start, end = _period_window(days)
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT COALESCE(payment_method, 'ukjent') AS method, COUNT(*) AS orders, "
+            f"SUM(revenue_cents) AS revenue_cents "
+            f"FROM events WHERE site_id = {P} AND ts >= {P} AND ts < {P} "
+            f"AND revenue_cents IS NOT NULL AND COALESCE(currency, 'NOK') = {P} "
+            f"GROUP BY COALESCE(payment_method, 'ukjent') "
+            f"ORDER BY revenue_cents DESC LIMIT {P}",
+            (site_id, start, end, currency, limit),
+        )
+        # int(): PG-SUM gir Decimal (se ecommerce_stats).
+        return [
+            {"method": r["method"], "orders": int(r["orders"] or 0),
+             "revenue_cents": int(r["revenue_cents"] or 0)}
+            for r in cur.fetchall()
+        ]
+
+
 def create_goal(site_id: int, name: str, match_type: str, match_value: str) -> None:
     with _cursor() as cur:
         cur.execute(
@@ -1269,8 +1295,8 @@ def insert_event(site_id: int, ev: dict, items: list[dict] | None = None) -> Non
         f"""INSERT INTO events
             (site_id, name, path, referrer_src, country, region, device, browser, os,
              utm_source, utm_medium, utm_campaign, visitor_hash, session_id,
-             revenue_cents, currency)
-            VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P})"""
+             revenue_cents, currency, payment_method)
+            VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P}, {P})"""
     )
     args = (
         site_id,
@@ -1289,6 +1315,7 @@ def insert_event(site_id: int, ev: dict, items: list[dict] | None = None) -> Non
         ev.get("session_id"),
         ev.get("revenue_cents"),
         ev.get("currency"),
+        ev.get("payment_method"),
     )
     with _cursor() as cur:
         if not items:

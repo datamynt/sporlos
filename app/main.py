@@ -469,11 +469,12 @@ async def ingest(request):
 
     name = payload.get("n", "pageview")
     # E-handel: valgfri ordresum/produktlinjer på egendefinerte hendelser (aldri pageview).
-    revenue, currency, items = None, None, []
+    revenue, currency, items, payment = None, None, [], None
     if name != "pageview":
         revenue = _clean_money(payload.get("rv"))
         items = _clean_items(payload.get("it"))
         if revenue is not None or items:
+            payment = _clean_payment(payload.get("pm"))
             currency = _clean_currency(payload.get("cur"))
             if currency is None:
                 # Oppgitt men UGYLDIG valuta: ærlig bortfall av beløpene er bedre
@@ -506,6 +507,7 @@ async def ingest(request):
                 "visitor_hash": vhash,
                 "revenue_cents": revenue,
                 "currency": currency,
+                "payment_method": payment,
             },
             items=items,
         )
@@ -545,6 +547,18 @@ def _clean_currency(v) -> str | None:
         c = v.strip().upper()
         if len(c) == 3 and c.isalpha() and c.isascii():
             return c
+    return None
+
+
+def _clean_payment(v) -> str | None:
+    """Betalingsmåte fra tracker («vipps», «stripe_card», «klarna» …): lav-slug,
+    maks 32 tegn av [a-z0-9_-]. Alt annet avvises — feltet skal aldri kunne
+    bære ordre-ID eller kundedata (samme grunn som at sku-felt ikke finnes)."""
+    if not isinstance(v, str):
+        return None
+    s = v.strip().lower()
+    if s and len(s) <= 32 and all(c.isascii() and (c.isalnum() or c in "_-") for c in s):
+        return s
     return None
 
 
@@ -1757,7 +1771,7 @@ eller hent alle med <code>/api/v1/sites</code>). <code>period</code> er 1, 7 ell
 <tr><td><code>GET /api/v1/breakdown</code></td><td>full liste per dimensjon: <code>prop=pages|sources|countries|regions|devices|browsers|os</code> (+ <code>limit</code>, maks 1000)</td></tr>
 <tr><td><code>GET /api/v1/goals</code></td><td>mål/konverteringer med rate</td></tr>
 <tr><td><code>GET /api/v1/events</code></td><td>egendefinerte hendelser</td></tr>
-<tr><td><code>GET /api/v1/ecommerce</code></td><td>e-handel: ordrer + omsetning per valuta, toppprodukter og omsetning per kilde (beløp i øre)</td></tr>
+<tr><td><code>GET /api/v1/ecommerce</code></td><td>e-handel: ordrer + omsetning per valuta, toppprodukter, omsetning per kilde og per betalingsmåte (beløp i øre)</td></tr>
 <tr><td><code>GET /api/v1/anchors</code></td><td>forseglede dags-aggregater: sha256-hash + blokkjede-txid — bevis på at historiske tall ikke er endret i etterkant</td></tr>
 </table>
 <p class=muted>Alle svar er JSON. Land returneres som ISO-koder. Feil gir
@@ -1769,11 +1783,13 @@ ordrer, snittordre, toppprodukter og omsetning per kilde i dashbordet:</p>
 <pre>sporlos('purchase', {{
   revenue: 1198,           // ordresum i kroner
   currency: 'NOK',         // valgfri, NOK er standard
+  payment: 'vipps',        // valgfri betalingsmåte-slug, f.eks. vipps/stripe_card/klarna
   items: [
     {{ name: 'eSIM Europa 10 GB', qty: 2, price: 599 }}
   ]
 }});</pre>
-<p class=muted>Kun beløp og produktnavn sendes — vi <b>ber aldri om ordre-ID eller
+<p class=muted>Kun beløp, produktnavn og ev. betalingsmåte (kort slug som «vipps» —
+fritekst avvises) sendes — vi <b>ber aldri om ordre-ID eller
 kundedata</b>, og det finnes ikke felt for dem. Ikke send ordrenummer eller
 personaliserte produktnavn (gravering o.l.) i navnefeltet. Fyr kallet én gang per
 fullført ordre (typisk gated på en parameter fra betalings-redirecten, ikke på hver
@@ -3850,6 +3866,21 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
                 f"<td style='text-align:right'>{_fmt_kr(sr['revenue_cents'], dom)}</td></tr>"
                 for sr in store.revenue_by_source(site["id"], days, dom)
             )
+            # Betalingsmåte-tabellen vises kun når minst ett kjøp faktisk sendte
+            # feltet — sites uten payment i purchase-kallet får ikke en ren «ukjent»-tabell.
+            pay = store.revenue_by_payment(site["id"], days, dom)
+            pay_html = ""
+            if any(pr["method"] != "ukjent" for pr in pay):
+                pay_rows = "".join(
+                    f"<tr><td>{escape(pr['method'])}</td>"
+                    f"<td style='text-align:right;color:var(--muted)'>{_fmt_n(pr['orders'])}</td>"
+                    f"<td style='text-align:right'>{_fmt_kr(pr['revenue_cents'], dom)}</td></tr>"
+                    for pr in pay
+                )
+                pay_html = (
+                    "<div><table><tr><th>Betalingsmåte</th><th style='text-align:right'>Ordrer</th>"
+                    f"<th style='text-align:right'>Omsetning</th></tr>{pay_rows}</table></div>"
+                )
             tables = (
                 '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem">'
                 "<div><table><tr><th>Produkt</th><th style='text-align:right'>Antall</th>"
@@ -3860,7 +3891,9 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
                 '<p style="color:var(--muted);font-size:.78rem;margin:.4rem 0 0">Kilde = besøkerens '
                 "første kilde i samme døgn (UTC) — hashen roterer ved midnatt, så attribusjon "
                 "krysser aldri døgn.</p>"
-                "</div></div>"
+                "</div>"
+                f"{pay_html}"
+                "</div>"
             )
             other_orders = ec["orders"] - orders
             if other_orders:
@@ -3873,8 +3906,8 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
             body = f'<p style="color:var(--muted);font-size:.9rem">Ingen kjøp målt i {label.lower()}.</p>'
         ecom_html = (
             "<h3>E-handel</h3>"
-            "<p class=hint>Kjøp sendes med <code>sporlos('purchase', {…})</code> — kun beløp og "
-            "produktnavn, uten ordre-ID eller kundedata. Nettleser-rapporterte tall: "
+            "<p class=hint>Kjøp sendes med <code>sporlos('purchase', {…})</code> — kun beløp, "
+            "produktnavn og betalingsmåte, uten ordre-ID eller kundedata. Nettleser-rapporterte tall: "
             "veiledende, ikke avregningsgrunnlag. "
             '<a href="/utviklere">Slik sender du kjøp</a>.</p>'
             + body
