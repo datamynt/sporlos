@@ -68,14 +68,14 @@ def configured() -> bool:
     return bool(_sa() or _bing_key())
 
 
-def _gsc_token(sa: dict) -> str:
+def _sa_token(sa: dict, scope: str) -> str:
     """OAuth2 JWT-bearer for service account — Authlib signerer RS256 (ingen ny dep)."""
     from authlib.jose import jwt  # allerede i requirements via Authlib
 
     now = int(time.time())
     assertion = jwt.encode(
         {"alg": "RS256", "typ": "JWT"},
-        {"iss": sa["client_email"], "scope": GSC_SCOPE, "aud": sa["token_uri"],
+        {"iss": sa["client_email"], "scope": scope, "aud": sa["token_uri"],
          "iat": now, "exp": now + 3600},
         sa["private_key"],
     ).decode()
@@ -85,6 +85,10 @@ def _gsc_token(sa: dict) -> str:
     }, timeout=30)
     r.raise_for_status()
     return r.json()["access_token"]
+
+
+def _gsc_token(sa: dict) -> str:
+    return _sa_token(sa, GSC_SCOPE)
 
 
 def _gsc_properties(token: str) -> set[str]:
@@ -191,6 +195,140 @@ def _bing_fetch(key: str, site_url: str, site_id: int, start: str) -> list[tuple
     return rows
 
 
+# --- Per-site GSC-kobling (OAuth, «Koble til Search Console»-knappen) --------
+# Kunden godkjenner med egen Google-konto; vi lagrer KUN refresh-tokenet
+# (Fernet-kryptert med nøkkel avledet av SPORLOS_SALT_SECRET) + valgt property.
+# Dette er hosted-modellen; instans-SA-en over er self-host-modellen.
+
+def _fernet():
+    import base64
+    import hashlib
+
+    from cryptography.fernet import Fernet  # transitivt via Authlib
+
+    secret = os.environ.get("SPORLOS_SALT_SECRET", "dev-secret-change-me")
+    key = base64.urlsafe_b64encode(hashlib.sha256(f"gsc-conn:{secret}".encode()).digest())
+    return Fernet(key)
+
+
+def encrypt_token(raw: str) -> str:
+    return _fernet().encrypt(raw.encode()).decode()
+
+
+def decrypt_token(enc: str) -> str:
+    return _fernet().decrypt(enc.encode()).decode()
+
+
+def user_access_token(refresh_token: str) -> str:
+    """Ferskt access-token fra brukerens refresh-token (OAuth-koblede sites)."""
+    r = httpx.post("https://oauth2.googleapis.com/token", data={
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+        "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+    }, timeout=30)
+    r.raise_for_status()
+    return r.json()["access_token"]
+
+
+def gsc_properties_for_token(token: str) -> set[str]:
+    """Property-lista et vilkårlig (bruker-)token ser — brukes av callback + sync."""
+    return _gsc_properties(token)
+
+
+def match_property(domain: str, props: set[str]) -> str | None:
+    return _match_gsc(domain, props)
+
+
+# --- Google Merchant Center (Shopping-tall) ----------------------------------
+# Merchant API v1 (v1beta ble avviklet 28.02.2026). Krav utenom nøkkelen:
+# SA-en må ha Standard-tilgang i Merchant Center, og GCP-prosjektet må være
+# registrert mot merchant-kontoen (developerRegistration:registerGcp — engangs).
+
+MERCHANT_API = "https://merchantapi.googleapis.com"
+
+
+def _gmc_token(sa: dict) -> str:
+    return _sa_token(sa, "https://www.googleapis.com/auth/content")
+
+
+def _gmc_accounts(token: str) -> list[str]:
+    r = httpx.get(f"{MERCHANT_API}/accounts/v1/accounts",
+                  headers={"Authorization": f"Bearer {token}"}, timeout=30)
+    r.raise_for_status()
+    return [a["name"] for a in r.json().get("accounts", [])]  # "accounts/123"
+
+
+def _gmc_homepage(token: str, account: str) -> str | None:
+    try:
+        r = httpx.get(f"{MERCHANT_API}/accounts/v1/{account}/homepage",
+                      headers={"Authorization": f"Bearer {token}"}, timeout=30)
+        r.raise_for_status()
+        return urlparse(r.json().get("uri", "")).netloc.lower().removeprefix("www.") or None
+    except Exception:
+        return None
+
+
+def _gmc_day(raw) -> str | None:
+    """Merchant API serialiserer dato som google.type.Date ({year,month,day})
+    eller ISO-streng avhengig av felt — tåler begge."""
+    if isinstance(raw, dict):
+        try:
+            return f"{int(raw['year']):04d}-{int(raw['month']):02d}-{int(raw['day']):02d}"
+        except Exception:
+            return None
+    s = str(raw or "")[:10]
+    return s if len(s) == 10 else None
+
+
+def _gmc_fetch(token: str, account: str, site_id: int, start: str, end: str) -> list[tuple]:
+    """Dagstotaler for produktvisninger/-klikk (free listings + Shopping samlet)."""
+    rows: list[tuple] = []
+    body = {"query": (
+        "SELECT date, clicks, impressions FROM product_performance_view "
+        f"WHERE date BETWEEN '{start}' AND '{end}'"
+    )}
+    page_token = None
+    while True:
+        if page_token:
+            body["pageToken"] = page_token
+        r = httpx.post(f"{MERCHANT_API}/reports/v1/{account}/reports:search",
+                       headers={"Authorization": f"Bearer {token}"}, json=body, timeout=60)
+        r.raise_for_status()
+        data = r.json()
+        for res in data.get("results", []):
+            v = res.get("productPerformanceView") or {}
+            day = _gmc_day(v.get("date"))
+            if day:
+                rows.append((site_id, day, "gmc", "total", "",
+                             int(v.get("clicks") or 0), int(v.get("impressions") or 0), None))
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            return rows
+
+
+def _gmc_account_map(token: str, domains: dict[str, int]) -> dict[str, int]:
+    """account-ressurs → site_id. Auto via homepage-URI; GMC_ACCOUNT_MAP
+    («123:merdata.no,456:annen.no») som manuell overstyring/fallback."""
+    out: dict[str, int] = {}
+    manual = {}
+    for pair in os.environ.get("GMC_ACCOUNT_MAP", "").split(","):
+        if ":" in pair:
+            acc_id, dom = pair.split(":", 1)
+            manual[acc_id.strip()] = dom.strip().lower()
+    try:
+        accounts = _gmc_accounts(token)
+    except Exception as e:
+        log.error("GMC accounts.list feilet: %s", e)
+        return out
+    for acc in accounts:
+        acc_id = acc.split("/")[-1]
+        dom = manual.get(acc_id) or _gmc_homepage(token, acc)
+        if dom and dom in domains:
+            out[acc] = domains[dom]
+    return out
+
+
 def sync(days: int = 30) -> str:
     """Synk alle sites mot GSC/Bing over et rullerende vindu. Returnerer CLI-oppsummering.
 
@@ -198,10 +336,12 @@ def sync(days: int = 30) -> str:
     hele vinduet og overskriver. Feil per site logges og stopper ikke resten.
     """
     sa, bing_key = _sa(), _bing_key()
-    if not sa and not bing_key:
-        return "ingen nøkler: sett GSC_SERVICE_ACCOUNT og/eller BING_WEBMASTER_API_KEY"
-
     store.ensure_search_schema()
+    has_connections = bool(store.search_connections_all())
+    if not sa and not bing_key and not has_connections:
+        return ("ingen kilder: sett GSC_SERVICE_ACCOUNT / BING_WEBMASTER_API_KEY, "
+                "eller koble en site til Search Console i UI-et")
+
     end = datetime.now(timezone.utc).date() - timedelta(days=1)  # GSC har sjelden data for i dag
     start = (end - timedelta(days=days - 1)).isoformat()
 
@@ -222,12 +362,41 @@ def sync(days: int = 30) -> str:
             log.error("Bing GetUserSites feilet: %s", e)
             bing_key = None
 
+    # OAuth-koblede sites synces med kundens eget token og har FORRANG over
+    # instans-SA-en (samme site skal aldri hentes dobbelt med ulik property).
+    connections = {c["site_id"]: c for c in store.search_connections_all()}
+
+    # GMC: kontoer mappes mot site-domener én gang per kjøring.
+    gmc_map: dict[str, int] = {}
+    gmc_token = ""
+    if sa:
+        try:
+            gmc_token = _gmc_token(_sa())
+            gmc_map = _gmc_account_map(
+                gmc_token, {s["domain"].lower(): s["id"] for s in store.seo_sites()})
+        except Exception as e:
+            log.info("GMC hoppes over: %s", e)
+
     lines = []
     total = 0
     for site in store.seo_sites():
         parts = []
         rows: list[tuple] = []
-        if sa:
+        conn = connections.get(site["id"])
+        if conn:
+            try:
+                utok = user_access_token(decrypt_token(conn["refresh_token"]))
+                prop = conn.get("gsc_property") or _match_gsc(
+                    site["domain"], _gsc_properties(utok))
+                if prop:
+                    got = _gsc_fetch(utok, prop, site["id"], start, end.isoformat())
+                    rows += got
+                    parts.append(f"gsc(kunde) {len(got)}")
+                else:
+                    parts.append("gsc(kunde) ingen property-match")
+            except Exception as e:
+                parts.append(f"gsc(kunde) FEIL ({e})")
+        elif sa:
             prop = _match_gsc(site["domain"], gsc_props)
             if prop:
                 try:
@@ -249,6 +418,14 @@ def sync(days: int = 30) -> str:
                     parts.append(f"bing FEIL ({e})")
             else:
                 parts.append("bing –")
+        acc = next((a for a, sid in gmc_map.items() if sid == site["id"]), None)
+        if acc:
+            try:
+                got = _gmc_fetch(gmc_token, acc, site["id"], start, end.isoformat())
+                rows += got
+                parts.append(f"gmc {len(got)}")
+            except Exception as e:
+                parts.append(f"gmc FEIL ({e})")
         if rows:
             try:
                 store.upsert_search_rows(rows)

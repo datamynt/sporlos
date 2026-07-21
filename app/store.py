@@ -1633,17 +1633,36 @@ _SEARCH_SCHEMA = """CREATE TABLE IF NOT EXISTS search_stats (
     PRIMARY KEY (site_id, day, source, dim, key)
 )"""
 
+# Per-site GSC-kobling via kundens egen Google-konto («Koble til Search
+# Console»-knappen). refresh_token lagres Fernet-kryptert (app/seo.py).
+_SEARCH_CONN_SCHEMA = """CREATE TABLE IF NOT EXISTS search_connections (
+    site_id       BIGINT PRIMARY KEY REFERENCES sites(id),
+    provider      TEXT NOT NULL DEFAULT 'google',
+    refresh_token TEXT NOT NULL,
+    gsc_property  TEXT,
+    connected_email TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)"""
+
+# IndexNow: hvilke sitemap-URL-er vi allerede har pinget (app/indexnow.py).
+_INDEXNOW_SCHEMA = """CREATE TABLE IF NOT EXISTS indexnow_seen (
+    url     TEXT PRIMARY KEY,
+    seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)"""
+
 _search_ready = False
 
 
 def ensure_search_schema() -> None:
-    """Selvhelende: deploy kjører ikke `manage init`, så tabellen opprettes lazily
+    """Selvhelende: deploy kjører ikke `manage init`, så tabellene opprettes lazily
     ved første lesning/synk i stedet for å 500-e dashbordet etter merge."""
     global _search_ready
     if _search_ready:
         return
     with _cursor() as cur:
         cur.execute(_SEARCH_SCHEMA)
+        cur.execute(_SEARCH_CONN_SCHEMA)
+        cur.execute(_INDEXNOW_SCHEMA)
     _search_ready = True
 
 
@@ -1684,6 +1703,61 @@ def upsert_search_rows(rows: list[tuple]) -> None:
         )
 
 
+def set_search_connection(site_id: int, refresh_token_enc: str,
+                          gsc_property: str | None, email: str | None) -> None:
+    """Lagre/erstatt OAuth-kobling for en site. Token er ferdig kryptert."""
+    ensure_search_schema()
+    with _cursor() as cur:
+        cur.execute(
+            f"""INSERT INTO search_connections (site_id, refresh_token, gsc_property, connected_email)
+                VALUES ({P}, {P}, {P}, {P})
+                ON CONFLICT (site_id) DO UPDATE SET
+                  refresh_token = excluded.refresh_token,
+                  gsc_property = excluded.gsc_property,
+                  connected_email = excluded.connected_email""",
+            (site_id, refresh_token_enc, gsc_property, email),
+        )
+
+
+def get_search_connection(site_id: int) -> dict | None:
+    ensure_search_schema()
+    with _cursor() as cur:
+        cur.execute(f"SELECT * FROM search_connections WHERE site_id = {P}", (site_id,))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def delete_search_connection(site_id: int) -> None:
+    """Tenant-sjekken gjøres av kalleren (site er alt resolvet mot innlogget tenant)."""
+    ensure_search_schema()
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM search_connections WHERE site_id = {P}", (site_id,))
+
+
+def search_connections_all() -> list[dict]:
+    ensure_search_schema()
+    with _cursor() as cur:
+        cur.execute("SELECT * FROM search_connections")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def indexnow_filter_new(urls: list[str]) -> list[str]:
+    """Returner URL-ene vi IKKE har pinget før, og marker dem som sett.
+    Kalles ETTER vellykket ping? Nei — vi markerer optimistisk her; en feilet
+    ping fanges av neste sitemap-endring. Enkelt > perfekt for dette formålet."""
+    if not urls:
+        return []
+    ensure_search_schema()
+    fresh = []
+    with _cursor() as cur:
+        for u in urls:
+            cur.execute(f"SELECT 1 FROM indexnow_seen WHERE url = {P}", (u,))
+            if cur.fetchone() is None:
+                fresh.append(u)
+                cur.execute(f"INSERT INTO indexnow_seen (url) VALUES ({P})", (u,))
+    return fresh
+
+
 def has_search(site_id: int) -> bool:
     """Har siten noen gang fått søkedata? Styrer om Søk-seksjonen vises (all-time,
     samme gate-filosofi som has_ecommerce)."""
@@ -1698,7 +1772,8 @@ def search_kpis(site_id: int, days: int = 7, offset: int = 0) -> dict:
     ensure_search_schema()
     start, end = _search_days(days, offset)
     out = {"google": {"clicks": 0, "impressions": 0, "position": None},
-           "bing": {"clicks": 0, "impressions": 0}}
+           "bing": {"clicks": 0, "impressions": 0},
+           "gmc": {"clicks": 0, "impressions": 0}}
     with _cursor() as cur:
         cur.execute(
             f"""SELECT source, SUM(clicks) AS c, SUM(impressions) AS i,

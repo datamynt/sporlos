@@ -67,6 +67,13 @@ Dashboard: `https://analytics.dittdomene.no/?site=DIN_PUBLIC_ID`
 3. Daglig cron (GSC publiserer nye tall utpå morgenen):
    `40 6 * * * cd ~/sporlos && docker compose -f docker-compose.b550.yml exec -T app python -m app.manage seo-sync >> /var/log/sporlos-seo.log 2>&1`
    ⚠️ b550-crontab er delt med andre tjenester — rediger via `crontab -l`-dump, aldri overskriv.
+4. Hosted-kunder («Koble til Search Console»-knappen): krever GOOGLE_CLIENT_ID/SECRET
+   (samme OAuth-app som «Logg inn med Google») + scope
+   `webmasters.readonly` godkjent på consent-skjermen i Google Cloud Console.
+   Refresh-tokens lagres Fernet-kryptert (nøkkel avledet av SPORLOS_SALT_SECRET).
+5. IndexNow (valgfritt): sett `INDEXNOW_KEY` (openssl rand -hex 16) og legg
+   `python -m app.manage indexnow-ping` i daglig cron — pinger Bing m.fl. om nye
+   sitemap-URL-er. Nøkkelfila serveres automatisk på `/<nøkkel>.txt`.
 
 ## Suverenitet — sjekkliste før kommune-salg
 - [ ] VPS hos norsk-eid leverandør (ikke AWS/GCP/Azure) → se hosting-leads
