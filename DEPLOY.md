@@ -56,6 +56,18 @@ Dashboard: `https://analytics.dittdomene.no/?site=DIN_PUBLIC_ID`
 - Oppdater: `git pull && docker compose -f docker-compose.prod.yml up -d --build`
 - Backup: `docker compose -f docker-compose.prod.yml exec db pg_dump -U sporlos sporlos > backup.sql`
 
+## Søkedata (valgfritt — «Søk og AI»-modulen)
+1. Lag en Google service account, legg JSON-nøkkelen i `./secrets/gsc-sa.json`
+   (gitignored; mountes read-only av compose) og gi kontoens e-postadresse
+   lesetilgang på hver property i Search Console. Bing: API-nøkkel fra
+   Webmaster Tools → Settings → API access. Begge settes i `.env`
+   (`GSC_SERVICE_ACCOUNT`, `BING_WEBMASTER_API_KEY`).
+2. Første synk (backfill, GSC husker ~16 mnd):
+   `docker compose -f docker-compose.b550.yml exec -T app python -m app.manage seo-sync 480`
+3. Daglig cron (GSC publiserer nye tall utpå morgenen):
+   `40 6 * * * cd ~/sporlos && docker compose -f docker-compose.b550.yml exec -T app python -m app.manage seo-sync >> /var/log/sporlos-seo.log 2>&1`
+   ⚠️ b550-crontab er delt med andre tjenester — rediger via `crontab -l`-dump, aldri overskriv.
+
 ## Suverenitet — sjekkliste før kommune-salg
 - [ ] VPS hos norsk-eid leverandør (ikke AWS/GCP/Azure) → se hosting-leads
 - [ ] Backup lagret i Norge/EØS, ikke US-sky

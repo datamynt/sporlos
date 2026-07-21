@@ -1,6 +1,7 @@
 # Interne dev-filer — ALDRI committet til (fremtidig) public AGPL-repo
 CLAUDE.md
 IN_FLIGHT.md
+IN_FLIGHT_ARKIV_2026-07-19.md
 .gemini/
 RUNBOOK*.md
 MIGRATE_*.md
@@ -15,6 +16,7 @@ __pycache__/
 .env
 *.db
 geoip/
+secrets/
 integrations/wordpress/*.zip
 design-system/
 LINKEDIN_KO.md
