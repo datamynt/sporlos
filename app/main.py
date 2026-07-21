@@ -167,6 +167,12 @@ STRIPE_PRICES = {
     "pro": _stripe_env("STRIPE_PRICE_PRO"),
 }
 _PLAN_LABELS = {"liten": "Liten · 99/mnd", "vekst": "Vekst · 249/mnd", "pro": "Pro · 599/mnd"}
+
+# Tak på hvor mange bekreftelses-e-poster /signup kan utløse. Romslig for ekte
+# bruk (mobilnett deler IP via CGNAT), stramt nok til å drepe en liste-bot som
+# tygger 2 adresser hver halvtime — se store.signup_attempts.
+SIGNUP_PER_IP_HOURLY = 5
+SIGNUP_GLOBAL_HOURLY = 40
 stripe = None
 if STRIPE_SECRET:
     import stripe as _stripe
@@ -1114,23 +1120,43 @@ async def signup(request):
         email = (f.get("email") or "").strip().lower()
         pw = f.get("password") or ""
         plan = f.get("plan") if f.get("plan") in _PLAN_LABELS else ""
+        # Honeypot: feltet er skjult for mennesker, men bots fyller alt de finner.
+        # Vi later som det gikk bra — da merker ikke boten at den er stoppet.
+        if (f.get("website") or "").strip():
+            log.warning("signup: honeypot utløst (email=%s)", email)
+            return _shell(
+                "Sjekk e-posten",
+                "<h1>Sjekk e-posten din</h1><p class=muted>Vi har sendt deg en "
+                "bekreftelseslenke.</p>",
+            )
         if not company or "@" not in email or len(pw) < 8:
             err = "Fyll inn firma, gyldig e-post og passord (min. 8 tegn)."
         elif store.get_user_by_email(email):
             err = "Det finnes allerede en konto med denne e-posten."
         else:
-            try:
-                tid, uid = store.create_account(company, email, hash_password(pw))
-                request.session["uid"], request.session["tid"] = uid, tid
-                try:
-                    notify.send_verification(uid, email)
-                except Exception:
-                    pass
-                return RedirectResponse(
-                    f"/betal?plan={plan}" if plan else "/app", status_code=302
+            # Struping per IP + globalt. Teller kun forsøk som faktisk ville sendt
+            # e-post, så en ekte bruker som skriver feil passordlengde ikke straffes.
+            ip = client_ip(dict(request.headers), fallback=request.client.host if request.client else "")
+            used, total = store.signup_attempts(ip)
+            if used >= SIGNUP_PER_IP_HOURLY or total >= SIGNUP_GLOBAL_HOURLY:
+                log.warning(
+                    "signup: strupet (ip=%s used=%d total=%d email=%s)", ip, used, total, email
                 )
-            except Exception:
-                err = "Kunne ikke opprette konto. Prøv igjen."
+                err = "For mange registreringer herfra akkurat nå. Prøv igjen om en time."
+            else:
+                try:
+                    tid, uid = store.create_account(company, email, hash_password(pw))
+                    request.session["uid"], request.session["tid"] = uid, tid
+                    store.signup_bump(ip)
+                    try:
+                        notify.send_verification(uid, email)
+                    except Exception:
+                        pass
+                    return RedirectResponse(
+                        f"/betal?plan={plan}" if plan else "/app", status_code=302
+                    )
+                except Exception:
+                    err = "Kunne ikke opprette konto. Prøv igjen."
     chosen = (
         f'<p class=muted>Du har valgt <b>{escape(_PLAN_LABELS[plan])}</b> — betaling rett '
         "etter registrering. Du kan også ombestemme deg og prøve gratis først.</p>"
@@ -1146,6 +1172,8 @@ async def signup(request):
   <label>Firma</label><input name=company required>
   <label>E-post</label><input name=email type=email required>
   <label>Passord</label><input name=password type=password required minlength=8>
+  <div style="position:absolute;left:-9999px" aria-hidden=true>
+    <label>Nettsted</label><input name=website tabindex=-1 autocomplete=off></div>
   <button>{"Fortsett til betaling" if plan else "Start gratis prøve"}</button>
 </form>
 {_sso_buttons()}

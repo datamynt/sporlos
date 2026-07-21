@@ -1620,6 +1620,58 @@ def assist_bump(visitor: str) -> None:
         )
 
 
+# /signup sender bekreftelses-e-post til hvilken som helst adresse innsenderen
+# oppgir. Uten tak er ruta en gratis e-postkanon mot fremmede — misbrukt 20.–21.07.2026
+# (12 bounces fra Workspace-relayet, ukjent antall levert). Lazy skjema som resten:
+# deploy kjører ikke `manage init`.
+_SIGNUP_THROTTLE_SCHEMA = """CREATE TABLE IF NOT EXISTS signup_throttle (
+    hour TEXT NOT NULL,
+    ip   TEXT NOT NULL,
+    n    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (hour, ip)
+)"""
+
+_signup_throttle_ready = False
+
+
+def _signup_hour() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
+
+
+def _ensure_signup_throttle() -> None:
+    global _signup_throttle_ready
+    if _signup_throttle_ready:
+        return
+    with _cursor() as cur:
+        cur.execute(_SIGNUP_THROTTLE_SCHEMA)
+    _signup_throttle_ready = True
+
+
+def signup_attempts(ip: str) -> tuple[int, int]:
+    """(e-poster utløst fra denne IP-en denne timen, totalt denne timen). Rydder gamle timer."""
+    _ensure_signup_throttle()
+    hour = _signup_hour()
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM signup_throttle WHERE hour < {P}", (hour,))
+        cur.execute(f"SELECT n FROM signup_throttle WHERE hour = {P} AND ip = {P}", (hour, ip))
+        r = cur.fetchone()
+        used = r["n"] if r else 0
+        cur.execute(f"SELECT COALESCE(SUM(n), 0) AS t FROM signup_throttle WHERE hour = {P}", (hour,))
+        total = int(cur.fetchone()["t"])
+    return used, total
+
+
+def signup_bump(ip: str) -> None:
+    _ensure_signup_throttle()
+    hour = _signup_hour()
+    with _cursor() as cur:
+        cur.execute(
+            f"INSERT INTO signup_throttle (hour, ip, n) VALUES ({P}, {P}, 1) "
+            f"ON CONFLICT (hour, ip) DO UPDATE SET n = signup_throttle.n + 1",
+            (hour, ip),
+        )
+
+
 def sites_by_domains(domains: list[str]) -> list[dict]:
     """id+domene for et sett domener — brukes av forsidens «måler allerede»-chips."""
     if not domains:
