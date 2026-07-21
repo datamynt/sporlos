@@ -91,6 +91,14 @@ def main(argv: list[str]) -> int:
         print(seo.sync(days))
         return 0
 
+    if cmd == "indexnow-ping":
+        from app import indexnow
+        domain = os.environ.get("SPORLOS_DOMAIN")
+        default = f"https://{domain}" if domain and "FYLL" not in domain else "http://localhost:8000"
+        base = argv[1] if len(argv) > 1 else default
+        print(indexnow.ping(base))
+        return 0
+
     if cmd == "assist-ingest":
         from app import assist
         domain = os.environ.get("SPORLOS_DOMAIN")

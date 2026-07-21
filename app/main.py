@@ -112,6 +112,19 @@ if _HAS_GOOGLE or _HAS_INNLOGG:
             server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
             client_kwargs={"scope": "openid email profile"},
         )
+        # «Koble til Search Console»-knappen: samme OAuth-app, ekstra scope +
+        # offline access (refresh-token). prompt=consent tvinger frem refresh-
+        # token også ved re-kobling (Google utelater det ellers ved re-samtykke).
+        oauth.register(
+            name="gscconn",
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret=GOOGLE_CLIENT_SECRET,
+            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+            client_kwargs={
+                "scope": "openid email https://www.googleapis.com/auth/webmasters.readonly"
+            },
+            authorize_params={"access_type": "offline", "prompt": "consent"},
+        )
     if _HAS_INNLOGG:
         oauth.register(
             name="innlogg",
@@ -1324,6 +1337,61 @@ async def _oidc_callback(request, provider: str, sentinel: str):
 
 async def google_callback(request):
     return await _oidc_callback(request, "google", "!google-oauth")
+
+
+async def gsc_connect(request):
+    """«Koble til Search Console»: kunden godkjenner med egen Google-konto,
+    vi henter refresh-token og auto-matcher property mot sitens domene."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    public_id = request.query_params.get("site") or ""
+    site = store.resolve_site(public_id)
+    if not (_HAS_GOOGLE and oauth) or not site or site["tenant_id"] != user["tid"]:
+        return RedirectResponse("/app", status_code=302)
+    request.session["gscconn_site"] = public_id
+    return await oauth.gscconn.authorize_redirect(request, f"{PUBLIC_BASE}/app/seo/callback")
+
+
+async def gsc_callback(request):
+    from app import seo as seo_mod
+
+    user = _user(request)
+    public_id = request.session.pop("gscconn_site", "")
+    site = store.resolve_site(public_id) if public_id else None
+    if not user or not site or site["tenant_id"] != user["tid"]:
+        return RedirectResponse("/app", status_code=302)
+    back = f"/app?site={public_id}"
+    try:
+        token = await oauth.gscconn.authorize_access_token(request)
+    except Exception:
+        return RedirectResponse(f"{back}&gsc=avbrutt", status_code=302)
+    refresh = token.get("refresh_token")
+    if not refresh:
+        # prompt=consent skal alltid gi refresh-token; mangler det, si det ærlig
+        # fremfor å lagre en kobling som dør når access-tokenet utløper.
+        return RedirectResponse(f"{back}&gsc=feil", status_code=302)
+    email = ((token.get("userinfo") or {}).get("email") or "").strip().lower()
+    prop = None
+    try:
+        props = seo_mod.gsc_properties_for_token(token["access_token"])
+        prop = seo_mod.match_property(site["domain"], props)
+    except Exception:
+        pass  # property kan matches ved neste synk — koblingen er det viktige
+    store.set_search_connection(site["id"], seo_mod.encrypt_token(refresh), prop, email)
+    return RedirectResponse(f"{back}&gsc={'ok' if prop else 'delvis'}#sok", status_code=302)
+
+
+async def gsc_disconnect(request):
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    form = await request.form()
+    public_id = str(form.get("site") or "")
+    site = store.resolve_site(public_id)
+    if site and site["tenant_id"] == user["tid"]:
+        store.delete_search_connection(site["id"])
+    return RedirectResponse(f"/app?site={public_id}#sok", status_code=302)
 
 
 async def innlogg_callback(request):
@@ -3818,6 +3886,32 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
     # deltaene sammenligner like fulle vinduer; AI-besøk måles live av oss selv.
     sok_html = ""
     ai = store.ai_referrals(site["id"], days)
+    sok_conn = store.get_search_connection(site["id"])
+    sok_flash = {
+        "ok": '<p style="background:var(--ok-bg);color:var(--ok-ink);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Search Console er koblet til — tallene hentes ved neste synk (i natt, eller kjør synk manuelt).</p>',
+        "delvis": '<p style="background:var(--warn-bg);color:var(--warn);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Koblet til Google, men fant ingen Search Console-property som matcher domenet — sjekk at kontoen din har tilgang til property-en.</p>',
+        "avbrutt": '<p style="background:var(--info-bg);color:var(--info);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Tilkoblingen ble avbrutt — ingenting er lagret.</p>',
+        "feil": '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Google ga oss ikke varig tilgang — prøv igjen (fjern ev. Sporløs under myaccount.google.com → Sikkerhet → tredjepartstilgang først).</p>',
+    }.get(request.query_params.get("gsc") or "", "")
+    if sok_conn:
+        sok_conn_html = (
+            '<p class=fine style="margin:.6rem 0 0">Koblet til Search Console'
+            + (f' som {escape(sok_conn["connected_email"])}' if sok_conn.get("connected_email") else "")
+            + (f' <code>{escape(sok_conn["gsc_property"])}</code>' if sok_conn.get("gsc_property") else "")
+            + ' · <form method=post action="/app/seo/disconnect" style="display:inline">'
+            f'<input type=hidden name=site value="{escape(public_id)}">'
+            '<button style="background:none;border:0;padding:0;color:var(--err);cursor:pointer;'
+            'font-size:inherit;text-decoration:underline">Koble fra</button></form></p>'
+        )
+    elif _HAS_GOOGLE:
+        sok_conn_html = (
+            f'<p style="margin:.6rem 0 0"><a class=btn href="/app/seo/connect?site={escape(public_id)}" '
+            'style="font-size:.9rem;padding:.45rem .9rem">Koble til Google Search Console</a> '
+            '<span class=fine>— godkjenn med Google-kontoen som eier nettstedet, så henter vi '
+            'søkeord, klikk og posisjoner automatisk.</span></p>'
+        )
+    else:
+        sok_conn_html = ""
     if store.has_search(site["id"]) or ai["visitors"]:
         sk = store.search_kpis(site["id"], days)
         skp = store.search_kpis(site["id"], days, offset=1)
@@ -3867,6 +3961,11 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
                 f"Bing: <b>{_fmt_n(sk['bing']['clicks'])}</b> klikk · "
                 f"{_fmt_n(sk['bing']['impressions'])} visninger."
             )
+        if sk["gmc"]["clicks"] or sk["gmc"]["impressions"]:
+            extras.append(
+                f"Google Shopping: <b>{_fmt_n(sk['gmc']['clicks'])}</b> klikk · "
+                f"{_fmt_n(sk['gmc']['impressions'])} visninger."
+            )
         ai_src = store.ai_referral_sources(site["id"], days)
         if ai_src:
             extras.append("AI-assistenter: " + " · ".join(
@@ -3881,10 +3980,19 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
             '<h3 id=sok>Søk og AI</h3>'
             "<p class=hint>Hvordan folk finner deg: Google/Bing-søk (Search Console-tall) "
             "og henvisninger fra AI-assistenter målt av Sporløs selv.</p>"
-            + sok_stat + sok_tables + sok_extra
+            + sok_flash + sok_stat + sok_tables + sok_extra + sok_conn_html
             + '<p style="color:var(--muted);font-size:.78rem;margin:.6rem 0 0">Søketall synkes '
             "daglig og har 1–2 døgns forsinkelse — perioden slutter derfor i forgårs. "
             "AI-besøk telles live.</p>"
+        )
+    elif sok_conn_html or sok_flash:
+        # Ingen søkedata enda, men tilkobling er mulig/gjort — vis seksjonen som
+        # onboarding i stedet for å gjemme featuren til første synk.
+        sok_html = (
+            '<h3 id=sok>Søk og AI</h3>'
+            "<p class=hint>Se hvilke søkeord folk finner deg på i Google, og hvor mange "
+            "besøk AI-assistenter sender deg — rett i Sporløs.</p>"
+            + sok_flash + sok_conn_html
         )
 
     blocks = "".join(
@@ -4105,6 +4213,9 @@ routes = [
     Route("/webhooks/shopify/compliance", shopify_compliance, methods=["POST"]),
     Route("/app", dashboard),
     Route("/app/seo", seo_page),
+    Route("/app/seo/connect", gsc_connect),
+    Route("/app/seo/callback", gsc_callback),
+    Route("/app/seo/disconnect", gsc_disconnect, methods=["POST"]),
     Route("/app/export", export_csv),
     Route("/app/api-keys", api_key_create, methods=["POST"]),
     Route("/app/api-keys/revoke", api_key_revoke, methods=["POST"]),
@@ -4129,6 +4240,18 @@ routes = [
     Route("/app/goals/delete", goal_delete, methods=["POST"]),
     Route("/app/funnels", funnel_create, methods=["POST"]),
     Route("/app/funnels/delete", funnel_delete, methods=["POST"]),
+]
+
+# IndexNow-nøkkelfila (/<nøkkel>.txt) — kun når INDEXNOW_KEY er satt.
+from app import indexnow as _indexnow  # noqa: E402  (etter routes-lista med vilje)
+
+_INDEXNOW_KEY = _indexnow.key()
+if _INDEXNOW_KEY:
+    async def _indexnow_keyfile(request):
+        return PlainTextResponse(_INDEXNOW_KEY)
+
+    routes += [
+        Route(f"/{_INDEXNOW_KEY}.txt", _indexnow_keyfile),
 ]
 
 # Ingestion må ta imot cross-origin beacons fra ethvert kunde-domene.
