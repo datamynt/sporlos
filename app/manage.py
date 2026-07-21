@@ -2,6 +2,7 @@
 
     python -m app.manage init
     python -m app.manage create-site "Datamynt" merdata.no
+    python -m app.manage seo-sync [dager]      # GSC/Bing → search_stats (cron: daglig)
 """
 
 from __future__ import annotations
@@ -82,6 +83,12 @@ def main(argv: list[str]) -> int:
     if cmd == "vipps-charges":
         from app import vipps
         print(vipps.sweep())
+        return 0
+
+    if cmd == "seo-sync":
+        from app import seo
+        days = int(argv[1]) if len(argv) > 1 else 30
+        print(seo.sync(days))
         return 0
 
     if cmd == "assist-ingest":

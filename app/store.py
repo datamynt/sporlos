@@ -157,6 +157,17 @@ CREATE TABLE IF NOT EXISTS assist_usage (
     n INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, visitor)
 );
+CREATE TABLE IF NOT EXISTS search_stats (
+    site_id INTEGER NOT NULL REFERENCES sites(id),
+    day DATE NOT NULL,
+    source TEXT NOT NULL,
+    dim TEXT NOT NULL,
+    key TEXT NOT NULL DEFAULT '',
+    clicks INTEGER NOT NULL DEFAULT 0,
+    impressions INTEGER NOT NULL DEFAULT 0,
+    position REAL,
+    PRIMARY KEY (site_id, day, source, dim, key)
+);
 """
 
 
@@ -1590,3 +1601,235 @@ def sites_by_domains(domains: list[str]) -> list[dict]:
     with _cursor() as cur:
         cur.execute(f"SELECT id, domain FROM sites WHERE domain IN ({ph})", tuple(domains))
         return [dict(r) for r in cur.fetchall()]
+
+
+# --- Søk (SEO/GEO): GSC/Bing-aggregater + AI-henvisninger --------------------
+
+# GSC leverer tall 1–2 døgn på etterskudd — søke-vinduer slutter derfor i
+# forgårs, ellers blir «siste 7 dager» systematisk 2 tomme dager kortere enn
+# forrige vindu og hver delta lyver.
+SEARCH_LAG_DAYS = 2
+
+# AI-assistenter som sender henvisningstrafikk (GEO-signalet). referrer_src er
+# normalisert til ren host ved ingest; www-varianter genereres i _ai_hosts().
+AI_SOURCES = (
+    "chatgpt.com", "chat.openai.com", "perplexity.ai", "claude.ai",
+    "gemini.google.com", "bard.google.com", "copilot.microsoft.com",
+    "you.com", "poe.com", "phind.com", "chat.mistral.ai", "grok.com",
+    "chat.deepseek.com",
+)
+
+# Én DDL for begge backends: BIGINT/DATE/REAL har riktig affinity i SQLite,
+# og composite PK + REFERENCES er felles dialekt.
+_SEARCH_SCHEMA = """CREATE TABLE IF NOT EXISTS search_stats (
+    site_id     BIGINT NOT NULL REFERENCES sites(id),
+    day         DATE NOT NULL,
+    source      TEXT NOT NULL,
+    dim         TEXT NOT NULL,
+    key         TEXT NOT NULL DEFAULT '',
+    clicks      BIGINT NOT NULL DEFAULT 0,
+    impressions BIGINT NOT NULL DEFAULT 0,
+    position    REAL,
+    PRIMARY KEY (site_id, day, source, dim, key)
+)"""
+
+_search_ready = False
+
+
+def ensure_search_schema() -> None:
+    """Selvhelende: deploy kjører ikke `manage init`, så tabellen opprettes lazily
+    ved første lesning/synk i stedet for å 500-e dashbordet etter merge."""
+    global _search_ready
+    if _search_ready:
+        return
+    with _cursor() as cur:
+        cur.execute(_SEARCH_SCHEMA)
+    _search_ready = True
+
+
+def _search_days(days: int, offset: int = 0) -> tuple[str, str]:
+    """Inklusivt [start, end]-vindu av hele dager, forskjøvet SEARCH_LAG_DAYS bakover."""
+    end = datetime.now(timezone.utc).date() - timedelta(days=SEARCH_LAG_DAYS + days * offset)
+    start = end - timedelta(days=days - 1)
+    return start.isoformat(), end.isoformat()
+
+
+def _ai_hosts() -> tuple[str, ...]:
+    return AI_SOURCES + tuple("www." + s for s in AI_SOURCES)
+
+
+def seo_sites() -> list[dict]:
+    """Alle sites i instansen for seo-sync — GSC/Bing-nøklene er instans-globale
+    (self-host-modellen; se merknad i app/seo.py)."""
+    with _cursor() as cur:
+        cur.execute("SELECT id, domain FROM sites ORDER BY domain")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def upsert_search_rows(rows: list[tuple]) -> None:
+    """Rader: (site_id, day, source, dim, key, clicks, impressions, position).
+    Idempotent — GSC etterjusterer ferske dager, så synk overskriver alltid."""
+    if not rows:
+        return
+    ensure_search_schema()
+    with _cursor() as cur:
+        cur.executemany(
+            f"""INSERT INTO search_stats
+                  (site_id, day, source, dim, key, clicks, impressions, position)
+                VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P}, {P})
+                ON CONFLICT (site_id, day, source, dim, key) DO UPDATE SET
+                  clicks = excluded.clicks, impressions = excluded.impressions,
+                  position = excluded.position""",
+            rows,
+        )
+
+
+def has_search(site_id: int) -> bool:
+    """Har siten noen gang fått søkedata? Styrer om Søk-seksjonen vises (all-time,
+    samme gate-filosofi som has_ecommerce)."""
+    ensure_search_schema()
+    with _cursor() as cur:
+        cur.execute(f"SELECT 1 FROM search_stats WHERE site_id = {P} LIMIT 1", (site_id,))
+        return cur.fetchone() is not None
+
+
+def search_kpis(site_id: int, days: int = 7, offset: int = 0) -> dict:
+    """Sum per kilde over lag-justert vindu. position = visnings-vektet snitt (google)."""
+    ensure_search_schema()
+    start, end = _search_days(days, offset)
+    out = {"google": {"clicks": 0, "impressions": 0, "position": None},
+           "bing": {"clicks": 0, "impressions": 0}}
+    with _cursor() as cur:
+        cur.execute(
+            f"""SELECT source, SUM(clicks) AS c, SUM(impressions) AS i,
+                       SUM(position * impressions) AS pw
+                FROM search_stats
+                WHERE site_id = {P} AND dim = 'total' AND day >= {P} AND day <= {P}
+                GROUP BY source""",
+            (site_id, start, end),
+        )
+        for r in cur.fetchall():
+            s = out.get(r["source"])
+            if s is None:
+                continue
+            s["clicks"], s["impressions"] = int(r["c"] or 0), int(r["i"] or 0)
+            if r["source"] == "google" and s["impressions"] and r["pw"]:
+                s["position"] = round(float(r["pw"]) / s["impressions"], 1)
+    return out
+
+
+def search_top(site_id: int, days: int, dim: str, limit: int = 10) -> list[dict]:
+    """Topp søkeord ('query') eller sider ('page') fra Google over lag-justert vindu."""
+    ensure_search_schema()
+    start, end = _search_days(days)
+    with _cursor() as cur:
+        cur.execute(
+            f"""SELECT key AS k, SUM(clicks) AS c, SUM(impressions) AS i,
+                       SUM(position * impressions) AS pw
+                FROM search_stats
+                WHERE site_id = {P} AND source = 'google' AND dim = {P}
+                  AND day >= {P} AND day <= {P}
+                GROUP BY key ORDER BY c DESC, i DESC LIMIT {int(limit)}""",
+            (site_id, dim, start, end),
+        )
+        rows = []
+        for r in cur.fetchall():
+            imp = int(r["i"] or 0)
+            rows.append({
+                "k": r["k"], "clicks": int(r["c"] or 0), "impressions": imp,
+                "position": round(float(r["pw"]) / imp, 1) if imp and r["pw"] else None,
+            })
+        return rows
+
+
+def ai_referrals(site_id: int, days: int = 7, offset: int = 0) -> dict:
+    """Besøk henvist fra AI-assistenter — live events-vindu (ingen GSC-lag her)."""
+    start, end = _period_window(days, offset)
+    hosts = _ai_hosts()
+    ph = ",".join([P] * len(hosts))
+    with _cursor() as cur:
+        cur.execute(
+            f"""SELECT COUNT(DISTINCT visitor_hash) AS u, COUNT(*) AS n
+                FROM events
+                WHERE site_id = {P} AND ts >= {P} AND ts < {P}
+                  AND name = 'pageview' AND referrer_src IN ({ph})""",
+            (site_id, start, end, *hosts),
+        )
+        r = cur.fetchone()
+        return {"visitors": int(r["u"] or 0), "views": int(r["n"] or 0)}
+
+
+def ai_referral_sources(site_id: int, days: int = 7, limit: int = 8) -> list[dict]:
+    """Hvilke AI-assistenter som sender trafikken — for Søk-seksjonen på site-siden."""
+    start, end = _period_window(days)
+    hosts = _ai_hosts()
+    ph = ",".join([P] * len(hosts))
+    with _cursor() as cur:
+        cur.execute(
+            f"""SELECT referrer_src AS k, COUNT(DISTINCT visitor_hash) AS u, COUNT(*) AS n
+                FROM events
+                WHERE site_id = {P} AND ts >= {P} AND ts < {P}
+                  AND name = 'pageview' AND referrer_src IN ({ph})
+                GROUP BY referrer_src ORDER BY u DESC, n DESC LIMIT {int(limit)}""",
+            (site_id, start, end, *hosts),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def seo_overview(tenant_id: int, days: int = 7) -> list[dict]:
+    """Én rad per site for flåtesiden /app/seo: Google-klikk (m/ forrige vindu for
+    delta), visninger, vektet posisjon, Bing-klikk og AI-besøk. Grupperte spørringer
+    uavhengig av antall sites, samme filosofi som overview_stats()."""
+    ensure_search_schema()
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, public_id, domain FROM sites WHERE tenant_id = {P} ORDER BY domain",
+            (tenant_id,),
+        )
+        sites = {
+            r["id"]: {**dict(r), "clicks": 0, "impressions": 0, "position": None,
+                      "prev_clicks": 0, "bing_clicks": 0, "ai": 0, "prev_ai": 0}
+            for r in cur.fetchall()
+        }
+        if not sites:
+            return []
+        ids = tuple(sites)
+        idph = ",".join([P] * len(ids))
+        for off, ckey in ((0, "clicks"), (1, "prev_clicks")):
+            start, end = _search_days(days, off)
+            cur.execute(
+                f"""SELECT site_id, source, SUM(clicks) AS c, SUM(impressions) AS i,
+                           SUM(position * impressions) AS pw
+                    FROM search_stats
+                    WHERE site_id IN ({idph}) AND dim = 'total'
+                      AND day >= {P} AND day <= {P}
+                    GROUP BY site_id, source""",
+                (*ids, start, end),
+            )
+            for r in cur.fetchall():
+                s = sites[r["site_id"]]
+                if r["source"] == "google":
+                    s[ckey] = int(r["c"] or 0)
+                    if off == 0:
+                        s["impressions"] = int(r["i"] or 0)
+                        if s["impressions"] and r["pw"]:
+                            s["position"] = round(float(r["pw"]) / s["impressions"], 1)
+                elif off == 0 and r["source"] == "bing":
+                    s["bing_clicks"] = int(r["c"] or 0)
+        hosts = _ai_hosts()
+        hph = ",".join([P] * len(hosts))
+        for off, akey in ((0, "ai"), (1, "prev_ai")):
+            start, end = _period_window(days, off)
+            cur.execute(
+                f"""SELECT site_id, COUNT(DISTINCT visitor_hash) AS u
+                    FROM events
+                    WHERE site_id IN ({idph}) AND ts >= {P} AND ts < {P}
+                      AND name = 'pageview' AND referrer_src IN ({hph})
+                    GROUP BY site_id""",
+                (*ids, start, end, *hosts),
+            )
+            for r in cur.fetchall():
+                sites[r["site_id"]][akey] = int(r["u"] or 0)
+    out = list(sites.values())
+    out.sort(key=lambda s: (-s["clicks"], -s["ai"], s["domain"]))
+    return out

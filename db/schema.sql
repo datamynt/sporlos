@@ -154,6 +154,21 @@ CREATE TABLE IF NOT EXISTS assist_usage (
     PRIMARY KEY (day, visitor)
 );
 
+-- Søkedata fra Google Search Console / Bing Webmaster (app/seo.py).
+-- dim: 'total' (key='') | 'query' | 'page'. Én rad per site/dag/kilde/dim/nøkkel.
+-- Opprettes også lazily av store.ensure_search_schema() (deploy kjører ikke init).
+CREATE TABLE IF NOT EXISTS search_stats (
+    site_id     BIGINT NOT NULL REFERENCES sites(id),
+    day         DATE NOT NULL,
+    source      TEXT NOT NULL,
+    dim         TEXT NOT NULL,
+    key         TEXT NOT NULL DEFAULT '',
+    clicks      BIGINT NOT NULL DEFAULT 0,
+    impressions BIGINT NOT NULL DEFAULT 0,
+    position    REAL,
+    PRIMARY KEY (site_id, day, source, dim, key)
+);
+
 -- BSV-anchre av rollups. Beviser at tallene ikke er etterjustert.
 CREATE TABLE IF NOT EXISTS anchors (
     id          BIGSERIAL PRIMARY KEY,

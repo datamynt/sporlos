@@ -40,6 +40,8 @@ services:
       - "127.0.0.1:${SPORLOS_PORT:-8080}:8000"
     volumes:
       - ./geoip:/data:ro
+      # SEO-modulen: GSC service account-JSON (gitignored) — GSC_SERVICE_ACCOUNT=/secrets/gsc-sa.json
+      - ./secrets:/secrets:ro
     depends_on:
       db:
         condition: service_healthy

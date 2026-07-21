@@ -2499,6 +2499,16 @@ async def sitemap(request):
 
 _PERIODS = {"1": ("i dag", 1), "7": ("7 dager", 7), "30": ("30 dager", 30), "90": ("90 dager", 90)}
 
+# Visningsnavn for AI-assistent-referrers (store.AI_SOURCES) — host uten www.
+_AI_NAMES = {
+    "chatgpt.com": "ChatGPT", "chat.openai.com": "ChatGPT",
+    "perplexity.ai": "Perplexity", "claude.ai": "Claude",
+    "gemini.google.com": "Gemini", "bard.google.com": "Gemini",
+    "copilot.microsoft.com": "Copilot", "you.com": "You.com", "poe.com": "Poe",
+    "phind.com": "Phind", "chat.mistral.ai": "Le Chat", "grok.com": "Grok",
+    "chat.deepseek.com": "DeepSeek",
+}
+
 # Plan-grenser bor i store (delt med notify). Lokale alias beholdes.
 _PLAN_LIMITS = store.PLAN_LIMITS
 
@@ -3504,7 +3514,7 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 {limit_msg}
 {vipps_flash}
 <h2 class=sec>Nettsteder <span style="float:right;text-transform:none;letter-spacing:0;font-weight:400">{escape(ov_label)}</span></h2>
-<div class=ovtabs>{ov_tabs}</div>
+<div class=ovtabs>{ov_tabs}<a href="/app/seo" style="margin-left:auto">Søk og AI →</a></div>
 <div class=card>
 <table class=ov><tr><th>Nettsted</th><th>Trend</th><th>Unike</th><th>Visn.</th></tr>
 {rows or '<tr><td>ingen nettsteder enda — legg til det første under</td><td></td><td></td><td></td></tr>'}</table>
@@ -3802,9 +3812,84 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
             + body
         )
 
+    # Søk (SEO/GEO) — vises når siten noen gang har fått søkedata (all-time, samme
+    # gate-filosofi som e-handel) eller har AI-henvisninger i perioden. Søketall
+    # leses fra lag-justerte vinduer (GSC leverer 1–2 døgn på etterskudd) så
+    # deltaene sammenligner like fulle vinduer; AI-besøk måles live av oss selv.
+    sok_html = ""
+    ai = store.ai_referrals(site["id"], days)
+    if store.has_search(site["id"]) or ai["visitors"]:
+        sk = store.search_kpis(site["id"], days)
+        skp = store.search_kpis(site["id"], days, offset=1)
+        aip = store.ai_referrals(site["id"], days, offset=1)
+        g, gp = sk["google"], skp["google"]
+        pos_delta = (
+            _delta(g["position"], gp["position"], invert=True)
+            if g["position"] and gp["position"] else ""
+        )
+        sok_stat = (
+            '<div style="display:flex;gap:1.8rem;flex-wrap:wrap;margin:.4rem 0 1rem">'
+            f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_n(g["clicks"])}</div>'
+            f'<small style="color:var(--muted)">klikk fra Google</small> {_delta(g["clicks"], gp["clicks"])}</div>'
+            f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_n(g["impressions"])}</div>'
+            f'<small style="color:var(--muted)">visninger i søk</small> {_delta(g["impressions"], gp["impressions"])}</div>'
+            f'<div><div style="font-size:1.45rem;font-weight:700">{g["position"] if g["position"] is not None else "–"}</div>'
+            f'<small style="color:var(--muted)">snittposisjon</small> {pos_delta}</div>'
+            f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_n(ai["visitors"])}</div>'
+            f'<small style="color:var(--muted)">besøk fra AI-assistenter</small> {_delta(ai["visitors"], aip["visitors"])}</div>'
+            "</div>"
+        )
+        q_rows = "".join(
+            f"<tr><td title=\"{escape(q['k'])}\">{escape(q['k'])}</td>"
+            f"<td style='text-align:right'>{_fmt_n(q['clicks'])}</td>"
+            f"<td style='text-align:right;color:var(--muted)'>{_fmt_n(q['impressions'])}</td>"
+            f"<td style='text-align:right;color:var(--muted)'>{q['position'] if q['position'] is not None else ''}</td></tr>"
+            for q in store.search_top(site["id"], days, "query")
+        )
+        p_rows = "".join(
+            f"<tr><td title=\"{escape(p['k'])}\">{escape(p['k'])}</td>"
+            f"<td style='text-align:right'>{_fmt_n(p['clicks'])}</td>"
+            f"<td style='text-align:right;color:var(--muted)'>{_fmt_n(p['impressions'])}</td></tr>"
+            for p in store.search_top(site["id"], days, "page")
+        )
+        sok_tables = (
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem">'
+            "<div><table><tr><th>Søkeord</th><th style='text-align:right'>Klikk</th>"
+            "<th style='text-align:right'>Visn.</th><th style='text-align:right'>Pos.</th></tr>"
+            f"{q_rows or '<tr><td>ingen søkeord i perioden</td><td></td><td></td><td></td></tr>'}</table></div>"
+            "<div><table><tr><th>Sider fra søk</th><th style='text-align:right'>Klikk</th>"
+            "<th style='text-align:right'>Visn.</th></tr>"
+            f"{p_rows or '<tr><td>ingen sider i perioden</td><td></td><td></td></tr>'}</table></div></div>"
+        )
+        extras = []
+        if sk["bing"]["clicks"] or sk["bing"]["impressions"]:
+            extras.append(
+                f"Bing: <b>{_fmt_n(sk['bing']['clicks'])}</b> klikk · "
+                f"{_fmt_n(sk['bing']['impressions'])} visninger."
+            )
+        ai_src = store.ai_referral_sources(site["id"], days)
+        if ai_src:
+            extras.append("AI-assistenter: " + " · ".join(
+                f"{escape(_AI_NAMES.get(a['k'].removeprefix('www.'), a['k']))} <b>{a['u']}</b>"
+                for a in ai_src
+            ) + ".")
+        sok_extra = (
+            f'<p style="font-size:.9rem;margin:.7rem 0 0">{" &nbsp; ".join(extras)}</p>'
+            if extras else ""
+        )
+        sok_html = (
+            '<h3 id=sok>Søk og AI</h3>'
+            "<p class=hint>Hvordan folk finner deg: Google/Bing-søk (Search Console-tall) "
+            "og henvisninger fra AI-assistenter målt av Sporløs selv.</p>"
+            + sok_stat + sok_tables + sok_extra
+            + '<p style="color:var(--muted);font-size:.78rem;margin:.6rem 0 0">Søketall synkes '
+            "daglig og har 1–2 døgns forsinkelse — perioden slutter derfor i forgårs. "
+            "AI-besøk telles live.</p>"
+        )
+
     blocks = "".join(
         f'<div class="card block">{b}</div>'
-        for b in (ecom_html, campaigns_html, goals_html, funnels_html, nav_html, events_html, verify_html)
+        for b in (ecom_html, sok_html, campaigns_html, goals_html, funnels_html, nav_html, events_html, verify_html)
         if b
     )
 
@@ -3878,6 +3963,94 @@ Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
     )
 
 
+async def seo_page(request):
+    """Flåteside: søk (Google/Bing) + AI-henvisninger på tvers av alle nettsteder.
+    Samler det GSC/Bing-UI-ene ikke kan: alle properties i ÉN tabell, koblet mot
+    trafikken vi selv måler (AI-henvisninger = GEO-signalet)."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+
+    period = request.query_params.get("period", "7")
+    if period not in _PERIODS or period == "1":
+        period = "7"  # «i dag» er meningsløst med GSC-forsinkelsen
+    label, days = _PERIODS[period]
+    rows_data = store.seo_overview(user["tid"], days)
+    any_search = any(s["clicks"] or s["impressions"] or s["bing_clicks"] for s in rows_data)
+
+    tabs = " ".join(
+        f'<a href="/app/seo?period={k}" class="{"on" if k == period else ""}">{escape(v[0])}</a>'
+        for k, v in _PERIODS.items()
+        if k != "1"
+    )
+    trows = "".join(
+        f'<tr><td><a href="/app?site={escape(s["public_id"])}&period={period}#sok">{escape(s["domain"])}</a></td>'
+        f'<td class=num><b>{_fmt_n(s["clicks"])}</b>{_delta(s["clicks"], s["prev_clicks"])}</td>'
+        f'<td class=num><b>{_fmt_n(s["impressions"])}</b></td>'
+        f'<td class=num><b>{s["position"] if s["position"] is not None else "–"}</b></td>'
+        f'<td class=num><b>{_fmt_n(s["bing_clicks"])}</b></td>'
+        f'<td class=num><b>{_fmt_n(s["ai"])}</b>{_delta(s["ai"], s["prev_ai"])}</td></tr>'
+        for s in rows_data
+    )
+    setup = ""
+    if not any_search:
+        setup = (
+            '<div class=card><b>Kom i gang med søkedata</b>'
+            '<p class=fine style="margin:.4rem 0 0">Sporløs henter tallene fra Google Search '
+            "Console og Bing Webmaster Tools og matcher automatisk mot nettstedene dine — "
+            "ingen oppsett per nettsted.</p>"
+            '<ol class=fine style="margin:.5rem 0 0;padding-left:1.2rem">'
+            "<li>Sett <code>GSC_SERVICE_ACCOUNT</code> (service account-JSON) og/eller "
+            "<code>BING_WEBMASTER_API_KEY</code> i miljøet.</li>"
+            "<li>Gi service-kontoens e-postadresse lesetilgang på hver property i Search Console.</li>"
+            "<li>Kjør <code>python -m app.manage seo-sync</code> (og legg den i daglig cron).</li></ol></div>"
+        )
+
+    return HTMLResponse(
+        f"""<!doctype html><html lang=no><meta charset=utf-8>
+<title>Sporløs — søk og AI på tvers</title>
+<meta name=viewport content="width=device-width, initial-scale=1">
+{_BRAND_HEAD}
+<style>{_BRAND_CSS}{_DARK_CSS}
+.wrap{{max-width:760px;margin:0 auto;padding:0 1.2rem 4rem}}
+nav{{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}}
+nav a.ut{{color:var(--muted);text-decoration:none;font-size:.9rem;margin-left:.9rem}}
+h1{{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 .3rem}}
+.card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem;margin:.9rem 0}}
+table{{border-collapse:collapse;width:100%;table-layout:fixed}}
+th,td{{border-bottom:1px solid var(--line);padding:.55rem .2rem;text-align:left;font-size:.95rem;
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+th{{color:var(--muted);font-weight:600;font-size:.8rem}}
+th:not(:first-child),td:not(:first-child){{text-align:right;width:4.6rem;color:var(--muted)}}
+tr:last-child td{{border-bottom:0}}
+td a{{color:var(--ink);text-decoration:none;font-weight:600}}td a:hover{{color:var(--accent-deep)}}
+td.num{{white-space:normal;line-height:1.15;vertical-align:middle}}
+td.num b{{display:block;color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}}
+.d{{display:block;font-size:.68rem;font-weight:600;margin-top:.05rem}}
+.dg{{color:var(--ok)}}.dr{{color:var(--err)}}.d0{{color:var(--muted)}}
+.fine{{color:var(--muted);font-size:.8rem}}
+.tema{{background:none;border:1px solid var(--line);border-radius:99px;width:30px;height:30px;cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;padding:0;margin-right:.6rem}}
+.tema:hover{{color:var(--ink);border-color:var(--muted)}}
+.ovtabs{{display:flex;flex-wrap:wrap;gap:.3rem;margin:.1rem 0 .8rem}}
+.ovtabs a{{padding:.3rem .75rem;border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--muted);font-size:.82rem;background:var(--card)}}
+.ovtabs a.on{{background:var(--ink);color:var(--bg);border-color:var(--ink)}}</style>
+{_THEME_HEAD}
+<div class=wrap>
+<nav>{_WORDMARK}<span>{_THEME_BTN}<a class=ut href="/app">Mine nettsteder</a><a class=ut href="/logout">Logg ut</a></span></nav>
+<h1>Søk og AI på tvers</h1>
+<p class=fine style="margin:0 0 .8rem">Google/Bing-søk og AI-henvisninger for alle nettstedene dine i én tabell — {escape(label)}.</p>
+<div class=ovtabs>{tabs}</div>
+{setup}
+<div class=card>
+<table><tr><th>Nettsted</th><th>G-klikk</th><th>Visn.</th><th>Pos.</th><th>Bing</th><th>AI-besøk</th></tr>
+{trows or '<tr><td>ingen nettsteder enda</td><td></td><td></td><td></td><td></td><td></td></tr>'}</table>
+</div>
+<p class=fine>Klikk/visninger/posisjon: Google Search Console (1–2 døgns forsinkelse — perioden slutter i forgårs).
+Bing: Bing Webmaster Tools. AI-besøk: unike besøkende henvist fra AI-assistenter, målt live av Sporløs.</p>
+</div>"""
+    )
+
+
 routes = [
     Route("/healthz", healthz),
     Route("/healthz/db", healthz_db),
@@ -3931,6 +4104,7 @@ routes = [
     Route("/webhooks/stripe", stripe_webhook, methods=["POST"]),
     Route("/webhooks/shopify/compliance", shopify_compliance, methods=["POST"]),
     Route("/app", dashboard),
+    Route("/app/seo", seo_page),
     Route("/app/export", export_csv),
     Route("/app/api-keys", api_key_create, methods=["POST"]),
     Route("/app/api-keys/revoke", api_key_revoke, methods=["POST"]),
