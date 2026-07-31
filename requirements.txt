@@ -5,8 +5,8 @@ psycopg2-binary==2.9.10
 redis==5.2.1
 maxminddb==2.6.2
 itsdangerous==2.2.0
-python-multipart==0.0.20
-Authlib==1.6.5
+python-multipart==0.0.32
+Authlib==1.6.12
 httpx==0.28.1
 stripe
 bsv-sdk>=2.1.3
