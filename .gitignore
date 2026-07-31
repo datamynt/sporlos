@@ -22,3 +22,10 @@ design-system/
 LINKEDIN_KO.md
 wp-svn/
 SPEC_INTERN.md
+
+# --- interne agent-/dev-filer: aldri i git (public repo) ---
+AGENTS.md
+ORCHESTRATION.md
+*.privat.md
+.geminirules
+.claude/
