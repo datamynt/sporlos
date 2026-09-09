@@ -33,6 +33,10 @@ services:
     volumes:
       # Lokal geo-DB (DB-IP Lite City, CC-BY). Mangler den → geo degraderer pent.
       - ./geoip:/data:ro
+      # scripts/purge_bot_signups.py --apply writes its pre-delete backup here
+      # so it survives a rebuild (the app dir is baked into the image, not
+      # bind-mounted otherwise).
+      - ./backups:/app/backups
     depends_on:
       db:
         condition: service_healthy

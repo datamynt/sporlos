@@ -42,6 +42,11 @@ services:
       - ./geoip:/data:ro
       # SEO-modulen: GSC service account-JSON (gitignored) — GSC_SERVICE_ACCOUNT=/secrets/gsc-sa.json
       - ./secrets:/secrets:ro
+      # scripts/purge_bot_signups.py --apply writes its pre-delete backup here.
+      # Without this the app dir is baked into the image (not bind-mounted) and
+      # the backup would vanish on the next `compose up --build` — a backup you
+      # can't retrieve isn't a backup.
+      - ./backups:/app/backups
     depends_on:
       db:
         condition: service_healthy
