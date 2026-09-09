@@ -173,6 +173,15 @@ _PLAN_LABELS = {"liten": "Liten · 99/mnd", "vekst": "Vekst · 249/mnd", "pro": 
 # tygger 2 adresser hver halvtime — se store.signup_attempts.
 SIGNUP_PER_IP_HOURLY = 5
 SIGNUP_GLOBAL_HOURLY = 40
+
+# Tak på /forgot — samme misbruksmønster som /signup (se over), pluss et
+# per-mål-tak: uten det kan en angriper spamme ÉN ekte innboks med
+# tilbakestillings-e-post uendelig, selv fra mange IP-er. 3/time/e-post er
+# romslig for en ekte bruker som roter med passordet, stramt nok til at
+# trakassering av ett offer ikke skalerer — se store.forgot_attempts.
+FORGOT_PER_IP_HOURLY = 5
+FORGOT_PER_EMAIL_HOURLY = 3
+FORGOT_GLOBAL_HOURLY = 40
 stripe = None
 if STRIPE_SECRET:
     import stripe as _stripe
@@ -1265,18 +1274,41 @@ async def forgot(request):
     if request.method == "POST":
         f = await request.form()
         email = (f.get("email") or "").strip().lower()
-        u = store.get_user_by_email(email) if email else None
-        # «!»-prefiks = SSO-sentinel (Google/innlogg) — passordet styres hos leverandøren
-        if u and not str(u["password_hash"]).startswith("!"):
-            token = store.create_reset_token(email)
-            link = f"{PUBLIC_BASE}/reset?token={token}"
-            mailer.send(
-                email,
-                "Tilbakestill passordet ditt – Sporløs",
-                f"Hei,\n\nKlikk for å velge nytt passord (gyldig i 1 time):\n{link}\n\n"
-                "Ba du ikke om dette, kan du se bort fra e-posten.\n\nSporløs",
+        # Honeypot: samme skjulte felt som /signup. Et menneske ser det aldri;
+        # en bot som fyller alt den finner får det vanlige "sjekk e-posten"-svaret
+        # og merker aldri at den ble stoppet.
+        if (f.get("website") or "").strip():
+            log.warning("forgot: honeypot utløst")
+        elif email:
+            # Struping per IP + per mål-e-post + globalt. Teller kun forsøk som
+            # faktisk ville sendt e-post (ekte, ikke-SSO konto), så en bruker
+            # som roter med adressen sin ikke straffes for andres forsøk.
+            ip = client_ip(dict(request.headers), fallback=request.client.host if request.client else "")
+            used_ip, used_email, total = store.forgot_attempts(ip, email)
+            throttled = (
+                used_ip >= FORGOT_PER_IP_HOURLY
+                or used_email >= FORGOT_PER_EMAIL_HOURLY
+                or total >= FORGOT_GLOBAL_HOURLY
             )
-        # alltid samme svar (ingen e-post-enumerering)
+            if throttled:
+                log.warning(
+                    "forgot: strupet (ip=%s used_ip=%d used_email=%d total=%d email_hash=%s)",
+                    ip, used_ip, used_email, total, store.forgot_email_hash(email)[:16],
+                )
+            else:
+                u = store.get_user_by_email(email)
+                # «!»-prefiks = SSO-sentinel (Google/innlogg) — passordet styres hos leverandøren
+                if u and not str(u["password_hash"]).startswith("!"):
+                    store.forgot_bump(ip, email)
+                    token = store.create_reset_token(email)
+                    link = f"{PUBLIC_BASE}/reset?token={token}"
+                    mailer.send(
+                        email,
+                        "Tilbakestill passordet ditt – Sporløs",
+                        f"Hei,\n\nKlikk for å velge nytt passord (gyldig i 1 time):\n{link}\n\n"
+                        "Ba du ikke om dette, kan du se bort fra e-posten.\n\nSporløs",
+                    )
+        # alltid samme svar (ingen e-post-enumerering, heller ikke ved struping/honeypot)
         return _shell(
             "Sjekk e-posten",
             "<h1>Sjekk e-posten din</h1><p class=muted>Hvis det finnes en konto på adressen, "
@@ -1289,6 +1321,8 @@ async def forgot(request):
 <p class=muted>Skriv inn e-posten din, så sender vi en lenke for å velge nytt passord.</p>
 <form method=post>
   <label>E-post</label><input name=email type=email required>
+  <div style="position:absolute;left:-9999px" aria-hidden=true>
+    <label>Nettsted</label><input name=website tabindex=-1 autocomplete=off></div>
   <button>Send lenke</button>
 </form>
 <p class=muted><a href="/login">Tilbake</a></p>""",

@@ -1672,6 +1672,85 @@ def signup_bump(ip: str) -> None:
         )
 
 
+# /forgot svarer likt uansett om kontoen finnes (ingen e-post-enumerering), men
+# uten tak kan ruta brukes til å spamme en vilkårlig ekte innboks med
+# tilbakestillings-e-poster, eller som samme type gratis utgående kanal mot
+# Workspace-relayet som /signup ble misbrukt til 20.–21.07.2026. Egen tabell
+# (ikke gjenbruk av signup_throttle): /forgot trenger i tillegg et
+# per-mål-e-post-tak, som signup ikke har bruk for — `kind` skiller
+# IP-bøtta fra e-post-bøtta i samme lille tabell. Lazy skjema som resten.
+_FORGOT_THROTTLE_SCHEMA = """CREATE TABLE IF NOT EXISTS forgot_throttle (
+    hour TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    key  TEXT NOT NULL,
+    n    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (hour, kind, key)
+)"""
+
+_forgot_throttle_ready = False
+
+
+def _forgot_hour() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
+
+
+def _ensure_forgot_throttle() -> None:
+    global _forgot_throttle_ready
+    if _forgot_throttle_ready:
+        return
+    with _cursor() as cur:
+        cur.execute(_FORGOT_THROTTLE_SCHEMA)
+    _forgot_throttle_ready = True
+
+
+def forgot_email_hash(email: str) -> str:
+    """sha256 av mål-e-posten — aldri lagre eller logge den rå, samme idiom som api_keys."""
+    return hashlib.sha256(email.strip().lower().encode()).hexdigest()
+
+
+def forgot_attempts(ip: str, email: str) -> tuple[int, int, int]:
+    """(forsøk fra denne IP-en, forsøk mot denne e-posten, totalt) denne timen.
+
+    Rydder gamle timer. Rent lesende — teller bumpes separat i forgot_bump,
+    kun for forsøk som faktisk sender en e-post (se kaller i main.forgot)."""
+    _ensure_forgot_throttle()
+    hour = _forgot_hour()
+    email_key = forgot_email_hash(email)
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM forgot_throttle WHERE hour < {P}", (hour,))
+        cur.execute(
+            f"SELECT n FROM forgot_throttle WHERE hour = {P} AND kind = 'ip' AND key = {P}",
+            (hour, ip),
+        )
+        r = cur.fetchone()
+        used_ip = r["n"] if r else 0
+        cur.execute(
+            f"SELECT n FROM forgot_throttle WHERE hour = {P} AND kind = 'email' AND key = {P}",
+            (hour, email_key),
+        )
+        r = cur.fetchone()
+        used_email = r["n"] if r else 0
+        cur.execute(
+            f"SELECT COALESCE(SUM(n), 0) AS t FROM forgot_throttle WHERE hour = {P} AND kind = 'ip'",
+            (hour,),
+        )
+        total = int(cur.fetchone()["t"])
+    return used_ip, used_email, total
+
+
+def forgot_bump(ip: str, email: str) -> None:
+    _ensure_forgot_throttle()
+    hour = _forgot_hour()
+    email_key = forgot_email_hash(email)
+    with _cursor() as cur:
+        for kind, key in (("ip", ip), ("email", email_key)):
+            cur.execute(
+                f"INSERT INTO forgot_throttle (hour, kind, key, n) VALUES ({P}, {P}, {P}, 1) "
+                f"ON CONFLICT (hour, kind, key) DO UPDATE SET n = forgot_throttle.n + 1",
+                (hour, kind, key),
+            )
+
+
 def sites_by_domains(domains: list[str]) -> list[dict]:
     """id+domene for et sett domener — brukes av forsidens «måler allerede»-chips."""
     if not domains:
