@@ -2515,6 +2515,11 @@ async def blogg_index(request):
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name="description" content="{escape(_BLOGG_LEDE)}">
 <link rel="canonical" href="https://sporlos.no/blogg">
+<meta property="og:title" content="Blogg — Sporløs">
+<meta property="og:description" content="{escape(_BLOGG_LEDE)}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://sporlos.no/blogg">
+<meta property="og:locale" content="nb_NO">
 {_BRAND_HEAD}{_OG_META}{_BLOGG_RSS_LINK}
 <style>{_BRAND_CSS}{_CHROME_CSS}
 .content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
