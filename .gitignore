@@ -17,6 +17,8 @@ __pycache__/
 *.db
 geoip/
 secrets/
+# scripts/purge_bot_signups.py --apply backups — contain personal data, never commit.
+/backups/
 integrations/wordpress/*.zip
 design-system/
 LINKEDIN_KO.md
