@@ -11,11 +11,16 @@ Designvalg:
 
 from __future__ import annotations
 
+import json
+
 from starlette.responses import JSONResponse
 
 from app import store
 
 _PERIOD_DAYS = {"1": 1, "7": 7, "30": 30}
+
+# Tak på body — domenet er en kort streng; alt større er søppel eller misbruk.
+_MAX_BODY = 8192
 
 
 def _err(msg: str, status: int) -> JSONResponse:
@@ -51,6 +56,63 @@ async def sites(request):
         for s in store.list_sites(key["tenant_id"])
     ]
     return JSONResponse({"sites": out})
+
+
+async def create_site(request):
+    """Opprett (eller hent) ett nettsted for nøkkelens tenant — idempotent.
+
+    Samme domene to ganger gir samme public_id (200 fra andre kall), så en
+    bygger som publiserer en side om gangen kan kalle dette fritt uten å
+    etterlate duplikater. Krever Bearer-nøkkel (samme som resten av API-et);
+    nøkkelen er tenant-scopet, så en kaller kan aldri røre andres sites.
+
+    Status: 201 ny, 200 fantes, 400 ugyldig domene/kropp, 401 ugyldig nøkkel,
+    403 planens nettsted-grense nådd.
+    """
+    key = _auth(request)
+    if not key:
+        return _err("ugyldig eller manglende API-nøkkel", 401)
+    body = await request.body()
+    if len(body) > _MAX_BODY:
+        return _err("for stor forespørsel", 400)
+    try:
+        data = json.loads(body or b"{}")
+    except ValueError:
+        return _err('ugyldig JSON — send {"domain": "dittdomene.no"}', 400)
+    domain = store.normalize_domain(data.get("domain")) if isinstance(data, dict) else ""
+    if not domain:
+        return _err("domain må være et gyldig domenenavn (maks 253 tegn)", 400)
+    tenant_id = key["tenant_id"]
+    existing = store.get_site_by_domain(tenant_id, domain)
+    if existing:
+        # Allerede registrert under denne kontoen — returner den, ikke en kopi.
+        return JSONResponse(
+            {"public_id": existing["public_id"], "domain": existing["domain"], "created": False}
+        )
+    tenant = store.get_tenant(tenant_id) or {}
+    _, site_lim = store.plan_limits(tenant.get("plan") or "trial")
+    if site_lim is not None and store.monthly_usage(tenant_id)["sites"] >= site_lim:
+        # Samme grense og samme norske ordlyd som dashbordet (/app?limit=sites).
+        return _err(
+            f"Planen din har plass til {site_lim} nettsted"
+            f"{'er' if site_lim != 1 else ''} — oppgrader for å legge til flere.",
+            403,
+        )
+    try:
+        site = store.create_site(tenant_id, domain)
+    except Exception:
+        # Tapt kappløp (to samtidige kall med samme domene): raden finnes nå —
+        # hent den i stedet for å svare 500 på noe som faktisk lyktes.
+        raced = store.get_site_by_domain(tenant_id, domain)
+        if raced:
+            return JSONResponse(
+                {"public_id": raced["public_id"], "domain": raced["domain"], "created": False}
+            )
+        raise
+    return JSONResponse(
+        {"public_id": site["public_id"], "domain": site["domain"], "created": True},
+        status_code=201,
+    )
 
 
 async def stats(request):
