@@ -16,6 +16,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -192,6 +193,39 @@ def plan_limits(plan: str) -> tuple[int | None, int | None]:
     return PLAN_LIMITS.get(plan or "trial", PLAN_LIMITS["trial"])
 
 
+# Lengste lovlige vertsnavn+DNS-navn (RFC 1035). Domenet er en visningsetikett
+# uten teknisk grensesnitt, men vi vil ikke ha søppel inn i sites.domain.
+MAX_DOMAIN_LEN = 253
+
+
+def normalize_domain(raw: object) -> str:
+    """Rens et brukerangitt domene til det vi lagrer i sites.domain.
+
+    Speiler normaliseringen i dashbordets /app/sites (main.create_site_post):
+    trim + lowercase, dropp scheme (http/https) og eventuell sti/query, og
+    dropp innledende «www.». Verten beholdes — den er alltid sikker å slå opp
+    i, og for en fler-leietaker-installasjon (bygger) ville vi aldri vist den.
+
+    Speiler den IKKE på én detalj: dashbordet kaster stien (split('/')[0]),
+    bevisst — der er ikke stien et gyldig domene. Her er den det: flere sites
+    kan dele vert og skilles på stien (f.eks. «bygger.no/s/kunde»), derfor
+    returneres «host/path». Dashbordet kaller denne og kaster stien selv, så
+    scheme/lowercase/www-reglene finnes på ett sted.
+
+    Avvises med "" når den er tom eller lengre enn MAX_DOMAIN_LEN.
+    """
+    if not isinstance(raw, str):
+        return ""
+    d = raw.strip().lower()
+    d = re.sub(r"^https?://", "", d)
+    d = d.split("?", 1)[0].strip("/")
+    if d.startswith("www."):
+        d = d[4:]
+    if not d or len(d) > MAX_DOMAIN_LEN:
+        return ""
+    return d
+
+
 @contextlib.contextmanager
 def _cursor():
     """Uniform markør for begge backends. Committer ved exit, ruller tilbake ved feil.
@@ -318,6 +352,20 @@ def create_site(tenant_id: int, domain: str) -> dict:
             cur.execute(sql, (tenant_id, domain, public_id))
             site_id = cur.lastrowid
     return {"id": site_id, "domain": domain, "public_id": public_id}
+
+
+def get_site_by_domain(tenant_id: int, domain: str) -> dict | None:
+    """Slå opp ÉN site på (tenant_id, domain) — samme unikhetsnøkkel som
+    create_site håndhever. Brukes for idempotent oppretting (API/import):
+    samme domene skal gi samme public_id, ikke en duplikat-rad."""
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, tenant_id, domain, public_id FROM sites "
+            f"WHERE tenant_id = {P} AND domain = {P}",
+            (tenant_id, domain),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 
 def list_sites(tenant_id: int) -> list[dict]:

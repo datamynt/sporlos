@@ -1674,12 +1674,12 @@ async def create_site_post(request):
     if site_lim is not None and store.monthly_usage(user["tid"])["sites"] >= site_lim:
         return RedirectResponse("/app?limit=sites", status_code=302)
     f = await request.form()
-    domain = (f.get("domain") or "").strip().lower()
     # Normaliser: dropp scheme/www/sti — domenet er kun visningsetikett, men stygt
-    # input forvirrer (og duplikat skal ikke svelges stille).
-    domain = re.sub(r"^https?://", "", domain).split("/")[0].strip()
-    if domain.startswith("www."):
-        domain = domain[4:]
+    # input forvirrer (og duplikat skal ikke svelges stille). Selve scheme/lowercase/
+    # www-regelen bor i store (delt med POST /api/v1/sites); stien kastes her, siden
+    # dashbordet registrerer ett domene — API-et tar imot «host/sti» for byggere som
+    # skiller kunder på sti.
+    domain = store.normalize_domain(f.get("domain") or "").split("/")[0].strip()
     if not domain:
         return RedirectResponse("/app?err=domain", status_code=302)
     try:
@@ -1828,6 +1828,7 @@ eller hent alle med <code>/api/v1/sites</code>). <code>period</code> er 1, 7 ell
 <h2>Endepunkter</h2>
 <table>
 <tr><td><code>GET /api/v1/sites</code></td><td>nettstedene dine (domene + site-ID)</td></tr>
+<tr><td><code>POST /api/v1/sites</code></td><td>opprett ett nettsted — <code>{{"domain": "dittdomene.no"}}</code>. Idempotent: samme domene gir samme site-ID (200) i stedet for en duplikat (201 = ny)</td></tr>
 <tr><td><code>GET /api/v1/stats</code></td><td>KPI-er (unike, visninger, økter, fluktrate) + topplister, med forrige periode til sammenligning</td></tr>
 <tr><td><code>GET /api/v1/timeseries</code></td><td>per dag (per time når period=1)</td></tr>
 <tr><td><code>GET /api/v1/breakdown</code></td><td>full liste per dimensjon: <code>prop=pages|sources|countries|regions|devices|browsers|os</code> (+ <code>limit</code>, maks 1000)</td></tr>
@@ -1837,7 +1838,9 @@ eller hent alle med <code>/api/v1/sites</code>). <code>period</code> er 1, 7 ell
 <tr><td><code>GET /api/v1/anchors</code></td><td>forseglede dags-aggregater: sha256-hash + blokkjede-txid — bevis på at historiske tall ikke er endret i etterkant</td></tr>
 </table>
 <p class=muted>Alle svar er JSON. Land returneres som ISO-koder. Feil gir
-<code>{{"error": "..."}}</code> med 400/401/404. Nøkler kan trekkes tilbake når som helst i dashbordet.</p>
+<code>{{"error": "..."}}</code> med 400/401/403/404. <code>POST /api/v1/sites</code> er det eneste
+skrivende kallet — det oppretter kun et tomt nettsted under din egen konto, og endrer
+aldri måledata. Nøkler kan trekkes tilbake når som helst i dashbordet.</p>
 
 <h2>E-handel: send kjøp</h2>
 <p>Kall <code>sporlos('purchase', …)</code> fra ordrebekreftelsen, så får du omsetning,
@@ -4328,6 +4331,7 @@ routes = [
     Route("/blogg/rss.xml", blogg_rss),  # må stå FØR {slug}-ruta
     Route("/blogg/{slug}", blogg_post),
     Route("/api/v1/sites", api.sites),
+    Route("/api/v1/sites", api.create_site, methods=["POST"]),
     Route("/api/v1/stats", api.stats),
     Route("/api/v1/timeseries", api.timeseries),
     Route("/api/v1/breakdown", api.breakdown),
