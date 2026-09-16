@@ -25,6 +25,7 @@ from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -4358,9 +4359,39 @@ if _INDEXNOW_KEY:
         Route(f"/{_INDEXNOW_KEY}.txt", _indexnow_keyfile),
 ]
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Baseline security headers (Observatory baseline round, 2026-09-16).
+
+    No enforcing Content-Security-Policy yet — Stripe/Vipps checkout, GSC
+    OAuth and the Shopify pixel beacon haven't been audited for a CSP
+    allowlist, and a wrong CSP can silently break payment.
+
+    X-Frame-Options: DENY. Checked whether anything served by this app is
+    meant to be framed: the Shopify integration's "Fase 1" pixel (/shopify)
+    is a copy-paste install guide, a normal top-level page, not an iframe.
+    The "Fase 2" embedded Shopify app (integrations/shopify/app/
+    shopify.app.toml has embedded=true, application_url=sporlos.no) is
+    scaffolded only — [auth].redirect_urls is empty and app/main.py has no
+    OAuth/embedded-UI route, so nothing on sporlos.no is actually loaded in
+    a Shopify admin iframe today. If Fase 2 ships, give its route(s) a
+    scoped `Content-Security-Policy: frame-ancestors https://admin.shopify.com
+    https://*.myshopify.com` (or drop X-Frame-Options there) before wiring up
+    the OAuth callback — don't just remove this header globally.
+    """
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
 # Ingestion må ta imot cross-origin beacons fra ethvert kunde-domene.
 # Trygt her fordi vi aldri bruker cookies/credentials (cookieløst by design).
 middleware = [
+    Middleware(SecurityHeadersMiddleware),
     Middleware(
         CORSMiddleware,
         allow_origins=["*"],
