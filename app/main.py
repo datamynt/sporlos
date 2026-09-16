@@ -735,7 +735,7 @@ _SITE_FOOTER = (
     "Maridalsveien 163, 0461 Oslo · post@sporlos.no"
     '<hr style="border:0;border-top:1px solid rgba(255,255,255,.13);margin:22px 0 16px">'
     '<div style="text-align:center">'
-    '<span style="display:block;font-size:10px;letter-spacing:.16em;text-transform:uppercase;opacity:.55;margin-bottom:7px">En del av</span>'
+    '<span style="display:block;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#909caf;margin-bottom:7px">En del av</span>'
     '<a href="https://datamynt.no" aria-label="En del av Datamynt" style="display:inline-block">'
     '<img src="/static/datamynt-logo.svg" alt="Datamynt" height="24"></a>'
     '</div>'
