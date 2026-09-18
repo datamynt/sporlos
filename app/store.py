@@ -1825,6 +1825,19 @@ AI_SOURCES = (
     "chat.deepseek.com",
 )
 
+# The assistants tag outbound links with utm_source and often send NO referrer
+# (native apps, rel=noreferrer) — measured 2026-09-18: ~2/3 of AI visits arrived
+# that way and showed up only under Campaigns. utm_source is matched against the
+# hosts above plus these short forms, mapped to the canonical host for display.
+AI_UTM_ALIASES = {
+    "chatgpt": "chatgpt.com", "openai": "chatgpt.com",
+    "perplexity": "perplexity.ai", "claude": "claude.ai",
+    "gemini": "gemini.google.com", "copilot": "copilot.microsoft.com",
+    "copilot.com": "copilot.microsoft.com", "grok": "grok.com",
+    "deepseek": "chat.deepseek.com", "mistral": "chat.mistral.ai",
+    "phind": "phind.com", "poe": "poe.com",
+}
+
 # Én DDL for begge backends: BIGINT/DATE/REAL har riktig affinity i SQLite,
 # og composite PK + REFERENCES er felles dialekt.
 _SEARCH_SCHEMA = """CREATE TABLE IF NOT EXISTS search_stats (
@@ -2023,18 +2036,37 @@ def search_top(site_id: int, days: int, dim: str, limit: int = 10) -> list[dict]
         return rows
 
 
+def _ai_where() -> tuple[str, tuple]:
+    """SQL predicate + params for «this pageview came from an AI assistant»:
+    referrer host OR utm_source (see AI_UTM_ALIASES for why both)."""
+    hosts = _ai_hosts()
+    utms = hosts + tuple(AI_UTM_ALIASES)
+    return (
+        f"(referrer_src IN ({','.join([P] * len(hosts))})"
+        f" OR LOWER(utm_source) IN ({','.join([P] * len(utms))}))",
+        hosts + utms,
+    )
+
+
+def _ai_key(referrer_src: str | None, utm_source: str | None) -> str:
+    """Canonical AI host (no www.) for display. Referrer wins over utm_source."""
+    if referrer_src and referrer_src in _ai_hosts():
+        return referrer_src.removeprefix("www.")
+    utm = (utm_source or "").lower().removeprefix("www.")
+    return AI_UTM_ALIASES.get(utm, utm)
+
+
 def ai_referrals(site_id: int, days: int = 7, offset: int = 0) -> dict:
     """Besøk henvist fra AI-assistenter — live events-vindu (ingen GSC-lag her)."""
     start, end = _period_window(days, offset)
-    hosts = _ai_hosts()
-    ph = ",".join([P] * len(hosts))
+    pred, params = _ai_where()
     with _cursor() as cur:
         cur.execute(
             f"""SELECT COUNT(DISTINCT visitor_hash) AS u, COUNT(*) AS n
                 FROM events
                 WHERE site_id = {P} AND ts >= {P} AND ts < {P}
-                  AND name = 'pageview' AND referrer_src IN ({ph})""",
-            (site_id, start, end, *hosts),
+                  AND name = 'pageview' AND {pred}""",
+            (site_id, start, end, *params),
         )
         r = cur.fetchone()
         return {"visitors": int(r["u"] or 0), "views": int(r["n"] or 0)}
@@ -2043,18 +2075,28 @@ def ai_referrals(site_id: int, days: int = 7, offset: int = 0) -> dict:
 def ai_referral_sources(site_id: int, days: int = 7, limit: int = 8) -> list[dict]:
     """Hvilke AI-assistenter som sender trafikken — for Søk-seksjonen på site-siden."""
     start, end = _period_window(days)
-    hosts = _ai_hosts()
-    ph = ",".join([P] * len(hosts))
+    pred, params = _ai_where()
     with _cursor() as cur:
         cur.execute(
-            f"""SELECT referrer_src AS k, COUNT(DISTINCT visitor_hash) AS u, COUNT(*) AS n
+            f"""SELECT referrer_src AS r, LOWER(utm_source) AS s, visitor_hash AS v,
+                       COUNT(*) AS n
                 FROM events
                 WHERE site_id = {P} AND ts >= {P} AND ts < {P}
-                  AND name = 'pageview' AND referrer_src IN ({ph})
-                GROUP BY referrer_src ORDER BY u DESC, n DESC LIMIT {int(limit)}""",
-            (site_id, start, end, *hosts),
+                  AND name = 'pageview' AND {pred}
+                GROUP BY referrer_src, LOWER(utm_source), visitor_hash""",
+            (site_id, start, end, *params),
         )
-        return [dict(r) for r in cur.fetchall()]
+        # Referrer and utm spellings of one assistant fold into one row; merged here
+        # (not in SQL) so a visitor seen under both is still counted once.
+        seen: dict[str, set] = {}
+        views: dict[str, int] = {}
+        for row in cur.fetchall():
+            k = _ai_key(row["r"], row["s"])
+            seen.setdefault(k, set()).add(row["v"])
+            views[k] = views.get(k, 0) + int(row["n"] or 0)
+    out = [{"k": k, "u": len(v), "n": views[k]} for k, v in seen.items()]
+    out.sort(key=lambda a: (-a["u"], -a["n"], a["k"]))
+    return out[: int(limit)]
 
 
 def seo_overview(tenant_id: int, days: int = 7) -> list[dict]:
@@ -2097,17 +2139,16 @@ def seo_overview(tenant_id: int, days: int = 7) -> list[dict]:
                             s["position"] = round(float(r["pw"]) / s["impressions"], 1)
                 elif off == 0 and r["source"] == "bing":
                     s["bing_clicks"] = int(r["c"] or 0)
-        hosts = _ai_hosts()
-        hph = ",".join([P] * len(hosts))
+        ai_pred, ai_params = _ai_where()
         for off, akey in ((0, "ai"), (1, "prev_ai")):
             start, end = _period_window(days, off)
             cur.execute(
                 f"""SELECT site_id, COUNT(DISTINCT visitor_hash) AS u
                     FROM events
                     WHERE site_id IN ({idph}) AND ts >= {P} AND ts < {P}
-                      AND name = 'pageview' AND referrer_src IN ({hph})
+                      AND name = 'pageview' AND {ai_pred}
                     GROUP BY site_id""",
-                (*ids, start, end, *hosts),
+                (*ids, start, end, *ai_params),
             )
             for r in cur.fetchall():
                 sites[r["site_id"]][akey] = int(r["u"] or 0)
