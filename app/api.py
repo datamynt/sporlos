@@ -47,7 +47,7 @@ def _site_and_days(request, key) -> tuple[dict | None, int, JSONResponse | None]
     return site, _PERIOD_DAYS[period], None
 
 
-async def sites(request):
+def sites(request):
     key = _auth(request)
     if not key:
         return _err("ugyldig eller manglende API-nøkkel", 401)
@@ -115,7 +115,7 @@ async def create_site(request):
     )
 
 
-async def stats(request):
+def stats(request):
     """KPI-er + topp-lister for perioden, med forrige periode til sammenligning."""
     key = _auth(request)
     if not key:
@@ -131,7 +131,7 @@ async def stats(request):
     )
 
 
-async def timeseries(request):
+def timeseries(request):
     key = _auth(request)
     if not key:
         return _err("ugyldig eller manglende API-nøkkel", 401)
@@ -144,7 +144,7 @@ async def timeseries(request):
     )
 
 
-async def breakdown(request):
+def breakdown(request):
     key = _auth(request)
     if not key:
         return _err("ugyldig eller manglende API-nøkkel", 401)
@@ -164,7 +164,7 @@ async def breakdown(request):
     )
 
 
-async def goals(request):
+def goals(request):
     key = _auth(request)
     if not key:
         return _err("ugyldig eller manglende API-nøkkel", 401)
@@ -177,7 +177,7 @@ async def goals(request):
     )
 
 
-async def events(request):
+def events(request):
     """Egendefinerte hendelser (alt som ikke er pageview)."""
     key = _auth(request)
     if not key:
@@ -194,7 +194,7 @@ async def events(request):
     )
 
 
-async def ecommerce(request):
+def ecommerce(request):
     """E-handel: ordrer/omsetning per valuta + toppprodukter + kilde + betalingsmåte.
 
     Beløp i øre (heltall). products/sources/payment_methods gjelder dominerende valuta
@@ -221,7 +221,7 @@ async def ecommerce(request):
     )
 
 
-async def anchors(request):
+def anchors(request):
     """Dags-aggregater m/ sha256 + ev. BSV-txid — bevis på at tallene ikke er etterjustert."""
     key = _auth(request)
     if not key:

@@ -18,6 +18,8 @@ import json
 import os
 import re
 import secrets
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -31,6 +33,7 @@ P = "%s" if _USE_PG else "?"
 if _USE_PG:
     import psycopg2
     import psycopg2.extras
+    import psycopg2.pool
 else:
     import sqlite3
 
@@ -226,6 +229,50 @@ def normalize_domain(raw: object) -> str:
     return d
 
 
+# Postgres connections are pooled. Opening one per query (TCP + auth + backend
+# fork) cost more than most of the queries themselves, and ingest paid it twice
+# per pageview. Threaded, because page handlers run in Starlette's threadpool.
+_POOL_MAX = int(os.environ.get("SPORLOS_DB_POOL_MAX", "20"))
+_pool = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool():
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                _pool = psycopg2.pool.ThreadedConnectionPool(1, _POOL_MAX, _DSN)
+    return _pool
+
+
+def _checkout():
+    """A live connection as (conn, pooled).
+
+    `SET TIME ZONE` doubles as the liveness check: a pooled connection that died
+    while idle (Postgres restarted, which b550 does after every reboot) fails
+    here, is thrown away, and the next one is tried. Without this, every
+    connection in the pool would fail one request each after a restart.
+    Pool exhausted => a one-off connection, never an error."""
+    pool = _get_pool()
+    for _ in range(_POOL_MAX + 1):
+        try:
+            conn = pool.getconn()
+        except psycopg2.pool.PoolError:
+            break
+        try:
+            with conn.cursor() as cur:
+                # Naive UTC-strenger tolkes som UTC => dag-grenser blir riktige.
+                cur.execute("SET TIME ZONE 'UTC'")
+            return conn, True
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            pool.putconn(conn, close=True)
+    conn = psycopg2.connect(_DSN)
+    with conn.cursor() as cur:
+        cur.execute("SET TIME ZONE 'UTC'")
+    return conn, False
+
+
 @contextlib.contextmanager
 def _cursor():
     """Uniform markør for begge backends. Committer ved exit, ruller tilbake ved feil.
@@ -233,15 +280,20 @@ def _cursor():
     Gir dict-aktige rader (dict(row) virker for både sqlite3.Row og RealDictRow).
     """
     if _USE_PG:
-        conn = psycopg2.connect(_DSN)
+        conn, pooled = _checkout()
+        broken = False
         try:
             with conn:
-                # Naive UTC-strenger tolkes som UTC => dag-grenser blir riktige.
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    cur.execute("SET TIME ZONE 'UTC'")
                     yield cur
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            broken = True  # do not hand a dead connection back to the pool
+            raise
         finally:
-            conn.close()
+            if pooled:
+                _get_pool().putconn(conn, close=broken)
+            else:
+                conn.close()
     else:
         conn = sqlite3.connect(_DB_PATH)
         conn.row_factory = sqlite3.Row
@@ -1310,6 +1362,29 @@ def resolve_site(public_id: str) -> dict | None:
         )
         row = cur.fetchone()
         return dict(row) if row else None
+
+
+# Ingest resolves the same handful of public ids on every single pageview.
+# Short TTL, so a new site starts counting within a minute of being created.
+# Unknown ids are cached too (a stale snippet on a busy page would otherwise
+# query per hit); the size cap keeps random ids from growing the dict.
+# NOT for authorization: ownership checks keep using resolve_site, which always
+# reads the row (reassign_site changes tenant_id).
+_SITE_CACHE_TTL = 60.0
+_SITE_CACHE_MAX = 5000
+_site_cache: dict[str, tuple[float, dict | None]] = {}
+
+
+def resolve_site_cached(public_id: str) -> dict | None:
+    now = time.monotonic()
+    hit = _site_cache.get(public_id)
+    if hit and now - hit[0] < _SITE_CACHE_TTL:
+        return hit[1]
+    site = resolve_site(public_id)
+    if len(_site_cache) >= _SITE_CACHE_MAX:
+        _site_cache.clear()
+    _site_cache[public_id] = (now, site)
+    return site
 
 
 def get_public_site(public_id: str) -> dict | None:
