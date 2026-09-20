@@ -132,5 +132,13 @@ class SelfReferralTest(IngestTestCase):
         self.assertEqual(pages, 4)
 
 
+class CsvExportTest(unittest.TestCase):
+    def test_formula_cells_are_neutralised(self):
+        for bad in ("=HYPERLINK(\"http://x\")", "+1+1", "-2+3", "@SUM(A1)", "\tx"):
+            self.assertEqual(main._csv_cell(bad), "'" + bad)
+        for ok in ("/priser", "www.google.com", "direkte", 42, None):
+            self.assertEqual(main._csv_cell(ok), ok)
+
+
 if __name__ == "__main__":
     unittest.main()

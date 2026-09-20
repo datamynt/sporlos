@@ -3470,6 +3470,16 @@ async def site_public_toggle(request):
     return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
 
 
+def _csv_cell(v):
+    """Neutralise spreadsheet formulas. Paths and sources originate from a public
+    endpoint; a cell starting with = + - @ (or tab/CR) is executed by Excel when
+    the customer opens the export. New paths always start with "/", but rows
+    stored before that rule can hold anything."""
+    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + v
+    return v
+
+
 def export_csv(request):
     """CSV-eksport for regneark. Semikolon + UTF-8 BOM = norsk Excel åpner den riktig."""
     user = _user(request)
@@ -3499,7 +3509,7 @@ def export_csv(request):
         w.writerow([what[:-1] if what != "land" else "land", "sidevisninger", "unike besøkende"])
         for r in store.export_breakdown(site["id"], days, what):
             k = country_no(r["k"]) if what == "land" else r["k"]
-            w.writerow([k, r["n"], r["u"]])
+            w.writerow([_csv_cell(k), r["n"], r["u"]])
     else:
         return PlainTextResponse("ukjent eksport", status_code=400)
 
