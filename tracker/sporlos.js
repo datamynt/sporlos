@@ -19,13 +19,25 @@
     });
   } catch (e) { /* eldre nettlesere: dropp kampanjedata, mål resten */ }
 
+  // Automated browsers (headless test runs, scrapers driving a real Chrome) pass
+  // the server's user-agent filter. They are not visitors.
+  if (navigator.webdriver) return;
+
+  // Referrer for the NEXT pageview. The first one is the real document.referrer.
+  // After an in-page navigation it is the page we came from on this site, which
+  // is what a full page load would have reported. Without this, every pushState
+  // pageview in a single-page app repeated the external referrer, so one visit
+  // from Google counted as many.
+  var ref = document.referrer || null;
+  var lastPath = null;
+
   function send(name, extra) {
     try {
       var b = {
         s: site,
         n: name,
         p: location.pathname,        // ingen query-string => ingen utilsiktet PII
-        r: document.referrer || null,
+        r: ref,
         us: utm.source || null,
         um: utm.medium || null,
         uc: utm.campaign || null,
@@ -41,15 +53,34 @@
     } catch (e) { /* analytics skal aldri knekke siden */ }
   }
 
-  send("pageview");
+  function pageview(force) {
+    // pushState with only the query string or hash changed (filters, tabs, sort
+    // order) is the same page. It used to count as a new pageview every time.
+    if (!force && lastPath === location.pathname) return;
+    if (lastPath !== null) ref = location.origin + lastPath;
+    lastPath = location.pathname;
+    send("pageview");
+  }
+
+  // A prerendered page (Chrome speculation rules, "instant" navigation) runs
+  // scripts before anyone looks at it, and may never be shown at all. Count it
+  // when it is activated, not when it is prepared.
+  if (document.prerendering) {
+    document.addEventListener("prerenderingchange", function () { pageview(); }, { once: true });
+  } else {
+    pageview();
+  }
 
   // SPA-støtte: re-send ved history-navigasjon
   var push = history.pushState;
   history.pushState = function () {
     push.apply(this, arguments);
-    send("pageview");
+    pageview();
   };
-  addEventListener("popstate", function () { send("pageview"); });
+  addEventListener("popstate", function () { pageview(); });
+  // Back/forward restored from the browser's page cache: no script runs again,
+  // but the visitor is looking at the page again.
+  addEventListener("pageshow", function (e) { if (e.persisted) pageview(true); });
 
   // E-handel: beløp i KRONER inn, øre (heltall) over ledningen. Kun beløp og
   // produktnavn — det finnes ikke felt for ordre-ID eller kundedata, og du skal

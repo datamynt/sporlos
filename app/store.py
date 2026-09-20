@@ -1298,6 +1298,17 @@ def resolve_api_key(raw: str) -> dict | None:
         return key
 
 
+# A click from one page to the next on the same site arrives with the site's own
+# host as referrer. That is navigation, not a traffic source: it used to put the
+# customer's own domain in their "top sources" (sporlos.no showed up as a source
+# of sporlos.no on the public demo). Applied when reading, so stored history is
+# corrected too. Pageview totals are never filtered, only the source breakdowns.
+_NOT_SELF_REFERRAL = (
+    " AND (referrer_src IS NULL OR referrer_src NOT IN ("
+    "SELECT domain FROM sites WHERE id = events.site_id "
+    "UNION ALL SELECT 'www.' || domain FROM sites WHERE id = events.site_id))"
+)
+
 # Breakdowns API-et kan be om — hvitlistet dimensjon → SQL-uttrykk.
 _API_DIMS = {
     "pages": "path",
@@ -1317,7 +1328,8 @@ def api_breakdown(site_id: int, days: int, prop: str, limit: int = 100) -> list[
     with _cursor() as cur:
         cur.execute(
             f"SELECT {dim} AS k, COUNT(*) AS n, COUNT(DISTINCT visitor_hash) AS u "
-            f"FROM events WHERE site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview' "
+            f"FROM events WHERE site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview'"
+            f"{_NOT_SELF_REFERRAL if prop == 'sources' else ''} "
             f"GROUP BY k ORDER BY n DESC LIMIT {int(limit)}",
             (site_id, start, end),
         )
@@ -1573,7 +1585,7 @@ def stats(site_id: int, days: int = 7) -> dict:
         top_paths = [dict(r) for r in cur.fetchall()]
         cur.execute(
             f"SELECT COALESCE(referrer_src, 'direkte') AS src, COUNT(*) AS n "
-            f"FROM events WHERE {where} GROUP BY src ORDER BY n DESC LIMIT 10",
+            f"FROM events WHERE {where}{_NOT_SELF_REFERRAL} GROUP BY src ORDER BY n DESC LIMIT 10",
             args,
         )
         top_src = [dict(r) for r in cur.fetchall()]
@@ -1641,7 +1653,8 @@ def export_breakdown(site_id: int, days: int, what: str) -> list[dict]:
     with _cursor() as cur:
         cur.execute(
             f"SELECT {dim} AS k, COUNT(*) AS n, COUNT(DISTINCT visitor_hash) AS u "
-            f"FROM events WHERE site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview' "
+            f"FROM events WHERE site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview'"
+            f"{_NOT_SELF_REFERRAL if what == 'kilder' else ''} "
             "GROUP BY k ORDER BY n DESC",
             (site_id, start, end),
         )
