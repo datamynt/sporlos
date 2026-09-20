@@ -45,6 +45,15 @@ def main(argv: list[str]) -> int:
         day = argv[1] if len(argv) > 1 else None
         n, d = store.rollup_all(day)
         print(f"rollup kjørt for {n} sites, dag {d}")
+        # Normally the first event after midnight has already done this.
+        print(f"salts: {store.purge_old_salts()} old row(s) deleted")
+        return 0
+
+    if cmd == "blind-hashes":
+        # One-off after the switch to random daily salts. Dry run without --apply.
+        res = store.blind_legacy_hashes(apply="--apply" in argv[1:])
+        verb = "blinded" if res["applied"] else "would blind (dry run, pass --apply)"
+        print(f"blind-hashes: {verb} {res['events']} events across {res['days']} days")
         return 0
 
     if cmd == "retention":
