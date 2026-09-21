@@ -69,17 +69,22 @@ er ekte. Fingerprinting eller vedvarende identifikatorer ville endret bildet.)
 
 ## Hvor lagres dataene?
 
-> _Bekreftet: den hostede tjenesten driftes på europeisk-eid infrastruktur
-> med servere i Stavanger, Norge._
+> _Bekreftet 21.09.2026: den hostede tjenesten driftes på Datamynts egen server i Oslo.
+> Det finnes ingen ekstern hostingleverandør._
 
-Sporløs lagrer aggregert statistikk på **norsk/EØS-eid infrastruktur** — ikke på amerikansk-eid sky.
-Dette er bevisst: norsk lov og praksis (Datatilsynet, EDPB, KS' standardavtale for kommuner) slår fast
-at en EØS-*region* hos en US-eid skyleverandør **ikke** er tilstrekkelig for ekte datasuverenitet,
-fordi amerikansk lovgivning (FISA 702 / CLOUD Act) kan kreve innsyn uavhengig av hvor dataene fysisk ligger.
+Sporløs lagrer og behandler statistikken på **norsk-eid maskinvare i Norge**. All innsamling, all
+behandling og hele den levende databasen ligger der.
+
+**Ett unntak, og vi sier det rett ut:** en nattlig sikkerhetskopi av databasen lastes opp til Google Cloud
+Storage. Google er amerikansk-eid, og norsk praksis (Datatilsynet, EDPB, KS' standardavtale for kommuner)
+regner ikke en EØS-*region* hos en US-eid skyleverandør som full datasuverenitet, fordi amerikansk lovgivning
+(FISA 702 / CLOUD Act) kan kreve innsyn uavhengig av hvor dataene fysisk ligger. Kopien inneholder det samme
+som databasen: aggregert statistikk og hasher som ikke kan føres tilbake til en person, pluss
+kontoopplysningene til den som har registrert seg.
 
 For kommuner og offentlig sektor er dette spesielt viktig: KS' standard databehandleravtale har som
-**hovedregel** at personopplysninger ikke føres ut av Norge og at servere står i Norge. Sporløs er bygget
-for å kunne oppfylle dette ut av boksen.
+**hovedregel** at personopplysninger ikke føres ut av Norge og at servere står i Norge. Serveren står i
+Norge i dag; sikkerhetskopien over er det som gjenstår før vi kan si at hele kjeden gjør det.
 
 ---
 

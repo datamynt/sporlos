@@ -23,7 +23,7 @@ enkeltpersoner.
 | Del | Beskrivelse |
 |---|---|
 | `app/` | Starlette-app: ingestion, dashbord, multi-tenant konto, betaling, API |
-| `tracker/sporlos.js` | Sporingsscriptet (~1,5 kB) — også publisert som [datamynt/sporlos-tracker](https://github.com/datamynt/sporlos-tracker) (MIT) |
+| `tracker/sporlos.js` | Sporingsscriptet (~1 kB) — også publisert som [datamynt/sporlos-tracker](https://github.com/datamynt/sporlos-tracker) (MIT) |
 | `app/privacy.py` | Kjernen i samtykke-friheten: daglig-saltet enveis-hash, IP forkastes |
 | `app/merkle.py` + `app/anchor.py` | «Verifiserbare tall»: dagstall forsegles med hash og forankres i en offentlig logg (BSV) — valgfritt, alt virker uten |
 | `integrations/wordpress/` | [WordPress-pluginen](https://wordpress.org/plugins/sporlos-analytics/) |

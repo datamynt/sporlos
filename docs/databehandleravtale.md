@@ -109,14 +109,14 @@ Norsk rett. Verneting er [Oslo tingrett].
 - Geo begrenses bevisst til land/fylke (ikke by) for å unngå re-identifisering
 - All trafikk over TLS (HTTPS)
 - Tilgangsstyring; database ikke eksponert mot internett
-- Drift på norsk-eid/EU-eid infrastruktur i Norge
+- Drift på Datamynts egen server i Oslo (ingen ekstern hostingleverandør)
 - Åpen kildekode muliggjør uavhengig verifikasjon
 
 ## Bilag C — Godkjente underleverandører
 
 | Underleverandør | Tjeneste | Lokasjon | Eierskap |
 |---|---|---|---|
-| UpCloud Ltd | Hosting (server/database) | Stavanger, Norge | Finsk (EU) — utenfor US CLOUD Act |
+| Google Cloud (Google Ireland Ltd) | Nattlig sikkerhetskopi av databasen | Google Cloud Storage | Amerikansk-eid — omfattet av US CLOUD Act |
 
 Datamynt varsler Kunden ved endringer i denne listen.
 
