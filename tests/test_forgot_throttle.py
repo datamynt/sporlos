@@ -26,6 +26,12 @@ os.environ.pop("DATABASE_URL", None)
 from app import store  # noqa: E402  (must follow the env setup above)
 
 
+def setUpModule():
+    # The throttle keys are hashed with the daily salt, and seeding that salt reads
+    # `events`. Create the full schema so this file also passes when run on its own.
+    store.init_db()
+
+
 class ForgotThrottleTest(unittest.TestCase):
     def setUp(self):
         # Fresh table per test so counts don't leak across tests in this hour bucket.
