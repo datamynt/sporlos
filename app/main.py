@@ -222,7 +222,7 @@ async def healthz(request):
     return PlainTextResponse("ok")
 
 
-async def healthz_db(request):
+def healthz_db(request):
     """Hele kjeden inkl. database — målet for «Datainnsamling»-monitoren.
     Forsiden trenger ikke DB, så uten denne kan innsamlingen dø «usynlig»."""
     if store.ping():
@@ -249,7 +249,7 @@ _MND = ["", "januar", "februar", "mars", "april", "mai", "juni", "juli",
 _HERO_MIN_WEEK_VISITORS = 100
 
 
-async def hero_stats(request):
+def hero_stats(request):
     """Ekte tall til forsidens hero — sporlos.no målt med Sporløs. Ingen pynt:
     rullende vindu (ikke «i dag», som blir 0 på stille dager), samme kilde som /demo.
     7-dagers vindu m/ fluktfrekvens ved nok trafikk; ellers 30 dager m/ sidevisninger
@@ -459,9 +459,18 @@ async def ingest(request):
     except Exception:
         return JSONResponse({"error": "bad json"}, status_code=400)
 
+    # The rest is blocking work (database, geo lookup). Off the event loop, so a
+    # slow query never makes other visitors' beacons wait in line.
+    return await asyncio.to_thread(
+        _ingest_store, payload, dict(request.headers),
+        request.client.host if request.client else "",
+    )
+
+
+def _ingest_store(payload: dict, headers: dict, client_host: str):
     public_id = payload.get("s")
     try:
-        site = store.resolve_site(public_id) if public_id else None
+        site = store.resolve_site_cached(public_id) if public_id else None
     except Exception:
         # DB nede e.l. — ikke la beaconen få 500; vi kan uansett ikke lagre nå.
         log.exception("ingest: resolve_site feilet")
@@ -469,12 +478,12 @@ async def ingest(request):
     if not site:
         return JSONResponse({"error": "unknown site"}, status_code=404)
 
-    ua = request.headers.get("user-agent", "")
+    ua = headers.get("user-agent", "")
     # Bots/scripts telles ikke — aksepter stille (204) men lagre ingenting.
     if is_bot(ua):
         return PlainTextResponse("", status_code=204)
 
-    ip = client_ip(dict(request.headers), fallback=request.client.host or "")
+    ip = client_ip(headers, fallback=client_host)
     # Datasenter-trafikk (crawlere m/ vanlig UA) telles heller ikke.
     if is_datacenter(ip):
         return PlainTextResponse("", status_code=204)
@@ -1220,7 +1229,7 @@ async def login(request):
     )
 
 
-async def unsubscribe(request):
+def unsubscribe(request):
     tid = request.query_params.get("tid") or ""
     token = request.query_params.get("t") or ""
     if tid and check_token("unsub", tid, token):
@@ -1240,7 +1249,7 @@ async def unsubscribe(request):
     )
 
 
-async def verify_email(request):
+def verify_email(request):
     uid = request.query_params.get("uid") or ""
     token = request.query_params.get("t") or ""
     if uid and check_token("verify", uid, token):
@@ -1258,7 +1267,7 @@ async def verify_email(request):
     )
 
 
-async def resend_verify(request):
+def resend_verify(request):
     u = _user(request)
     if not u:
         return RedirectResponse("/login", status_code=302)
@@ -1475,7 +1484,7 @@ async def innlogg_callback(request):
     return await _oidc_callback(request, "innlogg", "!innlogg-oidc")
 
 
-async def billing_checkout(request):
+def billing_checkout(request):
     """Start Stripe Checkout (abonnement) for valgt plan."""
     user = _user(request)
     if not user:
@@ -1551,7 +1560,7 @@ async def stripe_webhook(request):
     return PlainTextResponse("ok", status_code=200)
 
 
-async def billing_portal(request):
+def billing_portal(request):
     """Redirect til Stripe Customer Portal (administrer/si opp abonnement)."""
     user = _user(request)
     if not user:
@@ -1567,7 +1576,7 @@ async def billing_portal(request):
     return RedirectResponse(sess.url, status_code=303)
 
 
-async def vipps_start(request):
+def vipps_start(request):
     """Start Vipps-abonnement: opprett avtale (m/ første måned) og send bruker til Vipps."""
     user = _user(request)
     if not user:
@@ -1612,7 +1621,7 @@ async def vipps_return(request):
     return RedirectResponse("/app?vipps=venter", status_code=302)
 
 
-async def vipps_cancel(request):
+def vipps_cancel(request):
     """Stopp Vipps-avtalen. Planen beholdes ut betalt periode — nattlig sweep
     setter cancelled når forfallet passeres."""
     user = _user(request)
@@ -3248,7 +3257,7 @@ Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
     )
 
 
-async def proof(request):
+def proof(request):
     """GET /proof?site=<public_id>&day=YYYY-MM-DD — nedlastbart verifiserings-bevis.
 
     Selvstendig JSON: dagens tall (kanonisk payload), segl-hash, Merkle-sti, rot og
@@ -3322,7 +3331,7 @@ async def proof(request):
     )
 
 
-async def demo(request):
+def demo(request):
     """Offentlig live-demo: ekte tall for sporlos.no selv — produktet i drift som bevis."""
     site = store.resolve_site(os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7"))
     if not site:
@@ -3341,7 +3350,7 @@ async def demo(request):
     )
 
 
-async def public_dash(request):
+def public_dash(request):
     """Opt-in offentlig dashboard per site — deles med lenke, ingen innlogging."""
     pid = request.path_params["public_id"]
     site = store.get_public_site(pid)
@@ -3366,7 +3375,7 @@ async def site_public_toggle(request):
     return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
 
 
-async def export_csv(request):
+def export_csv(request):
     """CSV-eksport for regneark. Semikolon + UTF-8 BOM = norsk Excel åpner den riktig."""
     user = _user(request)
     if not user:
@@ -3407,7 +3416,7 @@ async def export_csv(request):
     )
 
 
-async def dashboard(request):
+def dashboard(request):
     """Dashboard m/ periodevelger, trendgraf og breakdowns. Styling: midlertidig (design-runde senere)."""
     user = _user(request)
     if not user:
@@ -4175,7 +4184,7 @@ Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
     )
 
 
-async def seo_page(request):
+def seo_page(request):
     """Flåteside: søk (Google/Bing) + AI-henvisninger på tvers av alle nettsteder.
     Samler det GSC/Bing-UI-ene ikke kan: alle properties i ÉN tabell, koblet mot
     trafikken vi selv måler (AI-henvisninger = GEO-signalet)."""
