@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from html import escape
@@ -191,7 +192,27 @@ if STRIPE_SECRET:
     stripe = _stripe
 
 # Tracker-scriptet leses én gang ved oppstart og serveres på /sporlos.js.
-_TRACKER = (Path(__file__).resolve().parent.parent / "tracker" / "sporlos.js").read_text()
+_TRACKER_SRC = (Path(__file__).resolve().parent.parent / "tracker" / "sporlos.js").read_text()
+
+
+def _load_tracker() -> str:
+    """The minified build, but only while it was built from the source on disk.
+    scripts/build_tracker.py stamps a short sha256 of the source into the first
+    line; on a mismatch (someone edited sporlos.js and forgot to rebuild) the
+    readable source is served instead, so stale tracking logic never ships."""
+    path = Path(__file__).resolve().parent.parent / "tracker" / "sporlos.min.js"
+    try:
+        built = path.read_text()
+    except OSError:
+        return _TRACKER_SRC
+    want = "src:" + hashlib.sha256(_TRACKER_SRC.encode()).hexdigest()[:16]
+    if want in built.split("\n", 1)[0]:
+        return built
+    log.warning("tracker/sporlos.min.js is stale — serving the unminified source")
+    return _TRACKER_SRC
+
+
+_TRACKER = _load_tracker()
 # Assistent-widgeten — samme mønster (egen fil, ikke inline-JS).
 _ASSIST_JS = (Path(__file__).resolve().parent.parent / "assist" / "widget.js").read_text()
 # Shopify Custom Pixel (Fase 1) — leses én gang, vises på /shopify til kopiering.
@@ -233,6 +254,15 @@ def healthz_db(request):
 async def tracker(request):
     return Response(
         _TRACKER,
+        media_type="application/javascript",
+        headers={"cache-control": "public, max-age=86400"},
+    )
+
+
+async def tracker_source(request):
+    """The readable source of what /sporlos.js runs — «etterprøv selv»."""
+    return Response(
+        _TRACKER_SRC,
         media_type="application/javascript",
         headers={"cache-control": "public, max-age=86400"},
     )
@@ -454,9 +484,18 @@ async def assist_api(request):
 
 async def ingest(request):
     """POST /api/event — fra tracker-snippet. Beregner cookieløs hash, lagrer."""
+    # A real beacon is a few hundred bytes; the largest legitimate one (25 product
+    # lines) is about 5 kB. Nothing reads an unbounded body into memory.
     try:
-        payload = await request.json()
+        if int(request.headers.get("content-length") or 0) > _MAX_EVENT_BYTES:
+            return JSONResponse({"error": "too large"}, status_code=413)
+        raw = await request.body()
+        if len(raw) > _MAX_EVENT_BYTES:
+            return JSONResponse({"error": "too large"}, status_code=413)
+        payload = json.loads(raw)
     except Exception:
+        return JSONResponse({"error": "bad json"}, status_code=400)
+    if not isinstance(payload, dict):
         return JSONResponse({"error": "bad json"}, status_code=400)
 
     # The rest is blocking work (database, geo lookup). Off the event loop, so a
@@ -467,8 +506,58 @@ async def ingest(request):
     )
 
 
+_MAX_EVENT_BYTES = 16_384
+_MAX_EVENTS_PER_MINUTE = 120  # per visitor hash; far beyond a person clicking around
+_rate_lock = threading.Lock()
+_rate_minute = 0
+_rate_counts: dict[str, int] = {}
+
+
+def _over_rate(vhash: str) -> bool:
+    """Fixed one-minute window per visitor hash, in memory. A script stuck in a
+    loop (or someone replaying a beacon) must not be able to burn through a
+    customer's monthly pageview quota. The table is dropped every minute, so it
+    holds nothing that outlives the window."""
+    global _rate_minute
+    minute = int(time.time() // 60)
+    with _rate_lock:
+        if minute != _rate_minute:
+            _rate_minute = minute
+            _rate_counts.clear()
+        n = _rate_counts.get(vhash, 0) + 1
+        _rate_counts[vhash] = n
+    return n > _MAX_EVENTS_PER_MINUTE
+
+
+def _clean_name(v) -> str:
+    """Event name: a short string, or it is a pageview."""
+    if not isinstance(v, str) or not v.strip():
+        return "pageview"
+    return v.strip()[:64]
+
+
+def _clean_path(v) -> str:
+    """Path only. The tracker never sends a query string, but the endpoint is
+    public and other senders (plugins, custom code) may pass a full URL. Query
+    strings and fragments are where e-mail addresses and tokens hide, so they
+    are cut here, on the server, where the promise can actually be enforced."""
+    if not isinstance(v, str):
+        return "/"
+    v = v.strip()
+    if "://" in v[:10]:
+        from urllib.parse import urlparse
+
+        v = urlparse(v).path
+    v = v.split("?", 1)[0].split("#", 1)[0]
+    if not v.startswith("/"):
+        return "/"
+    return v[:512]
+
+
 def _ingest_store(payload: dict, headers: dict, client_host: str):
     public_id = payload.get("s")
+    if not isinstance(public_id, str) or len(public_id) > 64:
+        return JSONResponse({"error": "unknown site"}, status_code=404)
     try:
         site = store.resolve_site_cached(public_id) if public_id else None
     except Exception:
@@ -492,7 +581,10 @@ def _ingest_store(payload: dict, headers: dict, client_host: str):
     country, region = geo_lookup(ip)  # land + fylke, by-nivå brukes aldri
     # ip og ua brukes KUN her (hash + kategorisering + geo) — aldri lagret.
 
-    name = payload.get("n", "pageview")
+    if _over_rate(vhash):
+        return PlainTextResponse("", status_code=204)
+
+    name = _clean_name(payload.get("n"))
     # E-handel: valgfri ordresum/produktlinjer på egendefinerte hendelser (aldri pageview).
     revenue, currency, items, payment = None, None, [], None
     if name != "pageview":
@@ -519,7 +611,7 @@ def _ingest_store(payload: dict, headers: dict, client_host: str):
             site["id"],
             {
                 "name": name,
-                "path": payload.get("p", "/"),
+                "path": _clean_path(payload.get("p", "/")),
                 "referrer_src": _normalize_referrer(payload.get("r")),
                 "utm_source": _clean_utm(payload.get("us")),
                 "utm_medium": _clean_utm(payload.get("um")),
@@ -624,7 +716,10 @@ def _normalize_referrer(ref: str | None) -> str | None:
     try:
         from urllib.parse import urlparse
 
-        return urlparse(ref).netloc or None
+        if not isinstance(ref, str):
+            return None
+        # hostname, not netloc: netloc keeps "user:password@" and the port.
+        return (urlparse(ref[:2048]).hostname or "")[:253] or None
     except Exception:
         return None
 
@@ -3375,6 +3470,16 @@ async def site_public_toggle(request):
     return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
 
 
+def _csv_cell(v):
+    """Neutralise spreadsheet formulas. Paths and sources originate from a public
+    endpoint; a cell starting with = + - @ (or tab/CR) is executed by Excel when
+    the customer opens the export. New paths always start with "/", but rows
+    stored before that rule can hold anything."""
+    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + v
+    return v
+
+
 def export_csv(request):
     """CSV-eksport for regneark. Semikolon + UTF-8 BOM = norsk Excel åpner den riktig."""
     user = _user(request)
@@ -3404,7 +3509,7 @@ def export_csv(request):
         w.writerow([what[:-1] if what != "land" else "land", "sidevisninger", "unike besøkende"])
         for r in store.export_breakdown(site["id"], days, what):
             k = country_no(r["k"]) if what == "land" else r["k"]
-            w.writerow([k, r["n"], r["u"]])
+            w.writerow([_csv_cell(k), r["n"], r["u"]])
     else:
         return PlainTextResponse("ukjent eksport", status_code=400)
 
@@ -4276,6 +4381,7 @@ routes = [
     Route("/healthz", healthz),
     Route("/healthz/db", healthz_db),
     Route("/sporlos.js", tracker),
+    Route("/sporlos.src.js", tracker_source),
     Route("/api/event", ingest, methods=["POST"]),
     Route("/", landing),
     Route("/vilkar", vilkar),
