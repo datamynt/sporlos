@@ -760,8 +760,28 @@ _BRAND_HEAD = (
     '<link rel="icon" type="image/png" sizes="96x96" href="/static/brand/favicon-96.png">'
     '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
     '<link rel="manifest" href="/site.webmanifest">'
-    '<meta name=theme-color content="#faf9f6">'
+    '<meta name=theme-color content="#faf9f6" media="(prefers-color-scheme: light)">'
+    '<meta name=theme-color content="#121a2b" media="(prefers-color-scheme: dark)">'
+    # Read-only: the key is only ever written by the theme button in the dashboard.
+    # Public pages have no button and follow the system unless that choice exists.
+    "<script>try{var t=localStorage.getItem('sporlosTema');"
+    "if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>"
 )
+
+# Dark tokens live next to the light ones, so EVERY page that loads _BRAND_CSS follows
+# the theme — the public site used to stay light while the dashboard went dark.
+_DARK_VARS = (
+    "--bg:#121a2b;--card:#19233a;--line:#283450;--ink:#e9edf6;--muted:#9aa6bf;"
+    "--accent:#7da2ff;--accent-deep:#8fb0ff;--ok:#4ade80;"
+    "--bar:#22335a;--ok-bg:#10302a;--ok-ink:#6ee7a8;--err:#f58a8a;--err-bg:#371b21;"
+    "--info:#aebcff;--info-bg:#1b2843;--warn:#e3b341;--warn-bg:#33280f;"
+    "--btn-bg:#2f6fed;--btn-bg-h:#1d4ed8;--footer:#0c1220;color-scheme:dark"
+)
+# Manuell overstyring (data-theme) + auto (systeminnstilling, med mindre manuelt lyst).
+_DARK_CSS = f"""
+:root[data-theme="dark"]{{{_DARK_VARS}}}
+@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{{_DARK_VARS}}}}}
+"""
 
 _BRAND_CSS = """
 @font-face{font-family:'Schibsted Grotesk';font-style:normal;font-weight:400 900;
@@ -770,7 +790,7 @@ font-display:swap;src:url(/static/schibsted-grotesk.woff2) format('woff2')}
 --line:#e8e6e0;--card:#ffffff;--ok:#15803d;
 --bar:#e9effd;--ok-bg:#ecfdf5;--ok-ink:#065f46;--err:#b91c1c;--err-bg:#fef2f2;
 --info:#3730a3;--info-bg:#eef2ff;--warn:#a16207;--warn-bg:#fff7ed;
---btn-bg:#17263e;--btn-bg-h:#0e1a2e;--accent-fill:#2f6fed;--accent-fill-h:#1d4ed8;
+--btn-bg:#17263e;--btn-bg-h:#0e1a2e;--accent-fill:#2f6fed;--accent-fill-h:#1d4ed8;color-scheme:light;
 font:17px/1.65 'Schibsted Grotesk',system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
 html{overflow-y:scroll}
 body{margin:0;background:var(--bg);-webkit-font-smoothing:antialiased}
@@ -787,7 +807,7 @@ transition:background .15s,transform .15s,box-shadow .15s}
 .btn-accent{background:var(--accent-fill);box-shadow:0 8px 20px -10px rgba(47,111,237,.55)}
 .btn-accent:hover{background:var(--accent-fill-h)}
 .muted{color:var(--muted)}
-"""
+""" + _DARK_CSS
 
 # Sporløs måler sporlos.no med Sporløs — definert ÉN gang, brukt i alle templates.
 _SELF_SNIPPET = (
@@ -810,11 +830,30 @@ nav.site .links a:hover{color:var(--ink)}
 nav.site .links a.btn{color:#fff;padding:.5rem 1rem}
 /* Footer = blekk-panel i BEGGE moduser, så --footer holdes mørk og flipper IKKE
    slik --ink gjør i mørk modus (ellers lys-på-lys = usynlig, jf. knapp-fellen). */
-footer.site{background:var(--footer);color:#aeb9cb;font-size:.85rem;line-height:1.9;margin-top:4rem}
-footer.site .wrap{padding-top:2.6rem;padding-bottom:3rem}
-footer.site a{color:#cdd6e4}
-footer.site .brand{color:#fff;margin-bottom:.6rem}
-footer.site .brand svg{color:var(--accent);--mark-gap:var(--footer)}
+/* Short pages: body fills the window and the sticky footer is pushed to its bottom edge,
+   instead of floating halfway up the screen. */
+body{min-height:100vh;min-height:100dvh}
+footer.site{background:var(--footer);color:#aeb9cb;font-size:.9rem;line-height:1.6;margin-top:4rem;
+border-top:1px solid rgba(255,255,255,.07);position:sticky;top:100vh}
+footer.site .wrap{padding-top:3.2rem;padding-bottom:1.6rem}
+footer.site a{color:#cdd6e4;text-decoration:none}
+footer.site a:hover{color:#fff;text-decoration:underline}
+footer.site .brand{color:#fff;margin-bottom:.7rem}
+footer.site .brand svg{color:var(--accent-fill);--mark-gap:var(--footer)}
+.foot-top{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:2.4rem}
+.foot-brand p{margin:0;max-width:24em}
+.foot-brand .foot-company{margin-top:1.3rem;font-size:.82rem;line-height:1.8}
+.foot-company span{display:block;font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#909caf}
+footer.site .foot-company a{color:#fff;font-weight:700;font-size:.92rem}
+footer.site h3{margin:0 0 .8rem;font-size:.7rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#909caf}
+.foot-duo{display:grid;gap:1.6rem;align-content:start}
+.foot-link{display:block;padding:.22rem 0}
+.foot-bottom{display:flex;justify-content:space-between;align-items:center;gap:1rem 2rem;flex-wrap:wrap;
+margin-top:2.6rem;padding-top:1.3rem;border-top:1px solid rgba(255,255,255,.13);font-size:.8rem;color:#909caf}
+.foot-bottom .foot-dm{display:inline-flex;align-items:center;gap:.6rem;color:#909caf}
+.foot-bottom .foot-dm:hover{text-decoration:none;color:#cdd6e4}
+@media(max-width:820px){.foot-top{grid-template-columns:1fr 1fr;gap:2rem 1.6rem}.foot-brand{grid-column:1/-1}
+.foot-duo{display:contents}}
 @media(max-width:640px){
 nav.site{flex-wrap:wrap;row-gap:.6rem;padding:1.1rem 0}
 nav.site .links{width:100%;justify-content:flex-start;gap:.55rem 1.1rem;font-size:.9rem}
@@ -832,25 +871,37 @@ _SITE_NAV = (
     '<a class="btn btn-accent" href="/signup">Prøv gratis</a></div></nav>'
 )
 
+# Same structure as heltenig.no's footer, the fleet's reference: brand + who is
+# behind it, link columns, legal line. Every link here is a page that exists.
 _SITE_FOOTER = (
-    "<footer class=site><div class=wrap>" + _WORDMARK + "<br>"
-    "Personvernvennlig webanalyse, bygget i Norge.<br><br>"
-    '<a href="/demo">Live demo</a> · '
-    '<a href="/google-analytics-alternativ">Sporløs mot Google Analytics</a> · '
-    '<a href="/integrasjoner">Integrasjoner</a> · '
-    '<a href="/sporsmal">Spørsmål og svar</a> · '
-    '<a href="/blogg">Blogg</a> · '
-    '<a href="https://status.sporlos.no">Status</a> · '
-    '<a href="/vilkar">Salgsbetingelser</a> · <a href="/personvern">Personvern</a><br>'
-    '<a href="https://datamynt.no">Datamynt AS</a> · org.nr 936 017 207 · '
-    "Maridalsveien 163, 0461 Oslo · post@sporlos.no"
-    '<hr style="border:0;border-top:1px solid rgba(255,255,255,.13);margin:22px 0 16px">'
-    '<div style="text-align:center">'
-    '<span style="display:block;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#909caf;margin-bottom:7px">En del av</span>'
-    '<a href="https://datamynt.no" aria-label="En del av Datamynt" style="display:inline-block">'
-    '<img src="/static/datamynt-logo.svg" alt="Datamynt" height="24"></a>'
-    '</div>'
-    "</div></footer>"
+    "<footer class=site><div class=wrap><div class=foot-top>"
+    "<div class=foot-brand>" + _WORDMARK +
+    "<p>Webanalyse uten cookies, uten samtykkebanner og uten persondata. Bygget og driftet i Norge.</p>"
+    '<p class=foot-company><span>En tjeneste fra</span>'
+    '<a href="https://datamynt.no" rel=noopener>Datamynt AS</a><br>'
+    "Org.nr: 936 017 207<br>Maridalsveien 163, 0461 Oslo</p></div>"
+    "<div><h3>Produkt</h3>"
+    '<a class=foot-link href="/demo">Live demo</a>'
+    '<a class=foot-link href="/#priser">Priser</a>'
+    '<a class=foot-link href="/google-analytics-alternativ">Sporløs mot Google Analytics</a>'
+    '<a class=foot-link href="/integrasjoner">Integrasjoner</a>'
+    '<a class=foot-link href="/utviklere">API for utviklere</a></div>'
+    "<div><h3>Ressurser</h3>"
+    '<a class=foot-link href="/sporsmal">Spørsmål og svar</a>'
+    '<a class=foot-link href="/blogg">Blogg</a>'
+    '<a class=foot-link href="https://status.sporlos.no" rel=noopener>Driftsstatus ↗</a>'
+    '<a class=foot-link href="https://github.com/datamynt/sporlos-tracker" rel=noopener>Åpen kildekode ↗</a></div>'
+    "<div class=foot-duo><div><h3>Kontakt</h3>"
+    '<a class=foot-link href="mailto:post@sporlos.no">post@sporlos.no</a>'
+    '<a class=foot-link href="https://datamynt.no" rel=noopener>datamynt.no</a></div>'
+    "<div><h3>Juridisk</h3>"
+    '<a class=foot-link href="/personvern">Personvern</a>'
+    '<a class=foot-link href="/vilkar">Salgsbetingelser</a></div></div>'
+    "</div><div class=foot-bottom>"
+    f"<span>© {date.today().year} Sporløs – en tjeneste fra Datamynt AS (org.nr 936 017 207)</span>"
+    '<a class=foot-dm href="https://datamynt.no" rel=noopener aria-label="En del av Datamynt">'
+    'En del av <img src="/static/datamynt-logo.svg" alt="Datamynt" height="20"></a>'
+    "</div></div></footer>"
 )
 
 
@@ -1011,8 +1062,8 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 .plan .velg{display:block;text-align:center;margin-top:1rem;padding:.5rem;border-radius:8px;
 border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9rem;font-weight:600}
 .plan .velg:hover{border-color:var(--accent);color:var(--accent-deep)}
-.plan .velg-hl{background:var(--accent);border-color:var(--accent);color:#fff}
-.plan .velg-hl:hover{background:var(--accent-deep);color:#fff}
+.plan .velg-hl{background:var(--accent-fill);border-color:var(--accent-fill);color:#fff}
+.plan .velg-hl:hover{background:var(--accent-fill-h);border-color:var(--accent-fill-h);color:#fff}
 </style>
 """
         + _SELF_SNIPPET
@@ -1212,7 +1263,7 @@ label{{display:block;margin:.8rem 0 .2rem;font-size:.9rem;color:var(--muted)}}
 input{{width:100%;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:1rem;
 box-sizing:border-box;background:var(--card);font:inherit}}
 form .btn{{margin-top:1.2rem;width:100%}}
-button{{margin-top:1.2rem;width:100%;background:var(--ink);color:#fff;border:0;padding:.7rem;
+button{{margin-top:1.2rem;width:100%;background:var(--btn-bg);color:#fff;border:0;padding:.7rem;
 border-radius:8px;font-size:1rem;cursor:pointer;font:inherit;font-weight:600}}
 .err{{background:#fee;color:#900;padding:.6rem;border-radius:8px;font-size:.9rem;margin:.5rem 0}}
 .muted{{margin-top:1.2rem;font-size:.85rem}}</style>
@@ -2452,7 +2503,7 @@ table{border-collapse:collapse;width:100%;font-size:.95rem;margin:1rem 0}
 td,th{padding:.5rem .6rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 th{font-size:.85rem;color:var(--muted);font-weight:600}
 .ja{color:#15803d}.nei{color:#b91c1c}.delvis{color:#a16207}
-.cta{display:inline-block;background:var(--ink);color:#fff;text-decoration:none;padding:.7rem 1.3rem;border-radius:8px;margin-top:1rem}
+.cta{display:inline-block;background:var(--btn-bg);color:#fff;text-decoration:none;padding:.7rem 1.3rem;border-radius:8px;margin-top:1rem}
 .fine{font-size:.85rem;color:var(--muted)}
 </style>
 """
@@ -2900,19 +2951,6 @@ pre{background:var(--bg);padding:.8rem;border-radius:8px;overflow:auto;font-size
 # «Midnattsblekk». NB knapp-fyll: i mørk modus flipper --ink til nesten-hvitt, så
 # .btn med hvit tekst MÅ ha egne --btn-bg-var (ellers hvit-på-lyst = usynlig).
 # Sekundærknapp = dempet blå-grå flate; primær (.btn-accent) holder saturert blå.
-_DARK_VARS = (
-    "--bg:#121a2b;--card:#19233a;--line:#283450;--ink:#e9edf6;--muted:#9aa6bf;"
-    "--accent:#7da2ff;--accent-deep:#8fb0ff;--ok:#4ade80;"
-    "--bar:#22335a;--ok-bg:#10302a;--ok-ink:#6ee7a8;--err:#f58a8a;--err-bg:#371b21;"
-    "--info:#aebcff;--info-bg:#1b2843;--warn:#e3b341;--warn-bg:#33280f;"
-    "--btn-bg:#2f6fed;--btn-bg-h:#1d4ed8"
-)
-# Manuell overstyring (data-theme) + auto (systeminnstilling, med mindre manuelt lyst).
-_DARK_CSS = f"""
-:root[data-theme="dark"]{{{_DARK_VARS}}}
-@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{{_DARK_VARS}}}}}
-"""
-
 # Tema-toggle: tidlig inline-script setter lagret tema FØR render (unngår blink),
 # og window.byttTema veksler lyst↔mørkt og husker valget. Knapp i dashbord-nav.
 _THEME_HEAD = (
@@ -3308,7 +3346,7 @@ def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, ti
 <meta name=description content="{escape(description)}">
 <link rel="canonical" href="{escape(canonical)}">
 {_BRAND_HEAD}{_OG_META}
-<style>{_BRAND_CSS}{_DARK_CSS}{_CHROME_CSS}{_DASH_CSS}
+<style>{_BRAND_CSS}{_CHROME_CSS}{_DASH_CSS}
 .demobar{{background:var(--info-bg);border:1px solid var(--line);color:var(--info);border-radius:10px;
 padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
 </head><body>
@@ -3748,7 +3786,7 @@ def dashboard(request):
 <title>Sporløs — mine nettsteder</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}{_DARK_CSS}
+<style>{_BRAND_CSS}
 .wrap{{max-width:640px;margin:0 auto;padding:0 1.2rem 4rem}}
 nav{{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}}
 nav a.ut{{color:var(--muted);text-decoration:none;font-size:.9rem}}
@@ -4256,7 +4294,7 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 <title>Sporløs — {escape(site['domain'])}</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}{_DARK_CSS}{_DASH_CSS}</style>
+<style>{_BRAND_CSS}{_DASH_CSS}</style>
 {_THEME_HEAD}
 <div class=wrap>
 <nav>{_WORDMARK}<div class=links>{_THEME_BTN}<a href="/app">Mine sites</a><a href="/logout">Logg ut</a></div></nav>
@@ -4344,7 +4382,7 @@ def seo_page(request):
 <title>Sporløs — søk og AI på tvers</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}{_DARK_CSS}
+<style>{_BRAND_CSS}
 .wrap{{max-width:760px;margin:0 auto;padding:0 1.2rem 4rem}}
 nav{{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}}
 nav a.ut{{color:var(--muted);text-decoration:none;font-size:.9rem;margin-left:.9rem}}
