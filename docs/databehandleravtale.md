@@ -116,7 +116,7 @@ Norsk rett. Verneting er [Oslo tingrett].
 
 | Underleverandør | Tjeneste | Lokasjon | Eierskap |
 |---|---|---|---|
-| Google Cloud (Google Ireland Ltd) | Nattlig sikkerhetskopi av databasen | Google Cloud Storage | Amerikansk-eid — omfattet av US CLOUD Act |
+| Google Cloud (Google Ireland Ltd) | Nattlig sikkerhetskopi av databasen | Google Cloud Storage, region europe-west1 (Belgia, EU) | Amerikansk-eid — omfattet av US CLOUD Act |
 
 Datamynt varsler Kunden ved endringer i denne listen.
 

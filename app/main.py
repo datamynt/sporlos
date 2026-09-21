@@ -2402,7 +2402,7 @@ art. 6 nr. 1 b) og for support. Vi sender ikke markedsføring uten samtykke.</p>
 <h2>4. Databehandlere og lagring</h2>
 <table>
 <tr><td><b>Datamynt AS</b></td><td>Drift — egen server i Oslo, Norge. Ingen ekstern hostingleverandør.</td></tr>
-<tr><td><b>Google Cloud Storage</b></td><td>Nattlig sikkerhetskopi av databasen</td></tr>
+<tr><td><b>Google Cloud Storage</b></td><td>Nattlig sikkerhetskopi av databasen — lagres i Belgia (EU)</td></tr>
 <tr><td><b>Stripe / Vipps</b></td><td>Betaling</td></tr>
 <tr><td><b>Google Workspace</b></td><td>E-post (support og transaksjonsmeldinger til kunder)</td></tr>
 </table>

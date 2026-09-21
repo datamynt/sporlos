@@ -76,7 +76,7 @@ Sporløs lagrer og behandler statistikken på **norsk-eid maskinvare i Norge**. 
 behandling og hele den levende databasen ligger der.
 
 **Ett unntak, og vi sier det rett ut:** en nattlig sikkerhetskopi av databasen lastes opp til Google Cloud
-Storage. Google er amerikansk-eid, og norsk praksis (Datatilsynet, EDPB, KS' standardavtale for kommuner)
+Storage i Belgia (region europe-west1). Google er amerikansk-eid, og norsk praksis (Datatilsynet, EDPB, KS' standardavtale for kommuner)
 regner ikke en EØS-*region* hos en US-eid skyleverandør som full datasuverenitet, fordi amerikansk lovgivning
 (FISA 702 / CLOUD Act) kan kreve innsyn uavhengig av hvor dataene fysisk ligger. Kopien inneholder det samme
 som databasen: aggregert statistikk og hasher som ikke kan føres tilbake til en person, pluss
