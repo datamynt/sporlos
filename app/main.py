@@ -1080,11 +1080,11 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
     ikke bare de som trykker «godta». Tallene blir mer riktige enn med GA, ikke mindre.</p></div>
     <div class="card reveal"><h3>Mål, funnels og kampanjer</h3><p>Egendefinerte hendelser, konverteringsrate,
     funnels med drop-off og UTM-kampanjer. Uten at noen blir identifisert.</p></div>
-    <div class="card reveal"><h3>Data i Norge</h3><p>Norsk-eid drift på servere i Stavanger, utenfor
-    rekkevidden til US CLOUD Act. Sporingsscriptet er
+    <div class="card reveal"><h3>Data i Norge</h3><p>Norsk-eid drift på vår egen server i Oslo.
+    Sporingsscriptet er
     <a href="https://github.com/datamynt/sporlos-tracker">åpen kildekode</a> — etterprøv selv.</p></div>
-    <div class="card reveal"><h3>Lett som en fjær</h3><p>Sporingsscriptet er ~1,5 kB komprimert — rundt en
-    sekstidel av Google Analytics. Siden din merker det ikke.</p></div>
+    <div class="card reveal"><h3>Lett som en fjær</h3><p>Sporingsscriptet er ~1 kB komprimert — rundt en
+    nittidel av Google Analytics. Siden din merker det ikke.</p></div>
     <div class="card reveal"><h3>Inngang, utgang og stier</h3><p>Hvor folk lander, hvor de forsvinner og
     hvordan de beveger seg — som aggregat, aldri som enkeltpersoner.</p></div>
     <div class="card reveal"><h3>Verifiserbare tall</h3><p>Dagstallene forsegles i en uavhengig offentlig
@@ -2401,7 +2401,8 @@ art. 6 nr. 1 b) og for support. Vi sender ikke markedsføring uten samtykke.</p>
 
 <h2>4. Databehandlere og lagring</h2>
 <table>
-<tr><td><b>UpCloud</b></td><td>Hosting — servere i Stavanger, Norge (EU-eid)</td></tr>
+<tr><td><b>Datamynt AS</b></td><td>Drift — egen server i Oslo, Norge. Ingen ekstern hostingleverandør.</td></tr>
+<tr><td><b>Google Cloud Storage</b></td><td>Nattlig sikkerhetskopi av databasen</td></tr>
 <tr><td><b>Stripe / Vipps</b></td><td>Betaling</td></tr>
 <tr><td><b>Google Workspace</b></td><td>E-post (support og transaksjonsmeldinger til kunder)</td></tr>
 </table>
@@ -2522,7 +2523,7 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
     <tr><th></th><th>Google Analytics</th><th>Sporløs</th></tr>
     <tr><td>Cookie-banner nødvendig</td><td class=nei>Ja</td><td class=ja>Nei</td></tr>
     <tr><td>Måler besøkende uten samtykke</td><td class=delvis>Delvis (modellert)</td><td class=ja>Alle, faktiske tall</td></tr>
-    <tr><td>Scriptvekt</td><td class=nei>~90 kB+</td><td class=ja>~1,5 kB komprimert</td></tr>
+    <tr><td>Scriptvekt</td><td class=nei>~90 kB+</td><td class=ja>~1 kB komprimert</td></tr>
     <tr><td>Datalagring</td><td class=nei>Google (USA-tilknyttet)</td><td class=ja>Norge, norsk-eid drift</td></tr>
     <tr><td>Google Ads-integrasjon</td><td class=ja>Ja</td><td class=nei>Nei</td></tr>
     <tr><td>Bruker-/segmentanalyse, BigQuery</td><td class=ja>Ja</td><td class=nei>Nei (kun aggregater)</td></tr>
