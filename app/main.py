@@ -476,7 +476,7 @@ async def assist_api(request):
     history = data.get("history") if isinstance(data.get("history"), list) else []
     ip = client_ip(request.headers, request.client.host if request.client else "")
     ua = request.headers.get("user-agent", "")
-    visitor = visitor_hash(ip, ua, "assist", secret=SECRET)
+    visitor = visitor_hash(ip, ua, "assist", secret=SECRET, day_salt=store.daily_salt())
     # LLM-kallet tar sekunder — av tråden så event-loopen ikke blokkerer ingest.
     ans, status = await asyncio.to_thread(assist.answer, str(data.get("q", "")), history, visitor)
     return JSONResponse({"a": ans}, status_code=status)
@@ -576,7 +576,13 @@ def _ingest_store(payload: dict, headers: dict, client_host: str):
     # Datasenter-trafikk (crawlere m/ vanlig UA) telles heller ikke.
     if is_datacenter(ip):
         return PlainTextResponse("", status_code=204)
-    vhash = visitor_hash(ip, ua, str(site["id"]), secret=SECRET)
+    try:
+        day_salt = store.daily_salt()
+    except Exception:
+        # Same reasoning as resolve_site above: no salt means no storable event.
+        log.exception("ingest: daily_salt feilet")
+        return PlainTextResponse("", status_code=204)
+    vhash = visitor_hash(ip, ua, str(site["id"]), secret=SECRET, day_salt=day_salt)
     device, browser, os_ = parse_ua(ua)
     country, region = geo_lookup(ip)  # land + fylke, by-nivå brukes aldri
     # ip og ua brukes KUN her (hash + kategorisering + geo) — aldri lagret.

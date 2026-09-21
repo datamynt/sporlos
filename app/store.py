@@ -1756,6 +1756,140 @@ def assist_bump(visitor: str) -> None:
         )
 
 
+# The random part of the daily visitor salt (see app/privacy.py). One row per UTC
+# day; every row that is not today's is deleted the moment a new day's salt is
+# made, and again by the daily `rollup` job in case a quiet night delayed that.
+# Once the row is gone, that day's visitor hashes can no longer be recomputed by
+# anyone, including us. Lazy schema like the throttle tables below.
+_DAILY_SALTS_SCHEMA = """CREATE TABLE IF NOT EXISTS daily_salts (
+    day  TEXT PRIMARY KEY,
+    salt TEXT NOT NULL
+)"""
+
+_daily_salts_ready = False
+_salt_cache: dict[str, str] = {}
+
+
+def _ensure_daily_salts() -> None:
+    global _daily_salts_ready
+    if _daily_salts_ready:
+        return
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    with _cursor() as cur:
+        cur.execute(_DAILY_SALTS_SCHEMA)
+        cur.execute("SELECT COUNT(*) AS n FROM daily_salts")
+        if cur.fetchone()["n"] == 0:
+            # Day of the switch only: events already stored today were hashed with
+            # the legacy derived salt. Seeding today's row with the date string makes
+            # privacy._effective_salt return that same value, so today's visitors are
+            # not counted twice. The row is deleted tomorrow like any other.
+            cur.execute(
+                f"SELECT 1 AS x FROM events WHERE ts >= {P} LIMIT 1", (f"{today} 00:00:00",)
+            )
+            if cur.fetchone():
+                cur.execute(
+                    f"INSERT INTO daily_salts (day, salt) VALUES ({P}, {P}) "
+                    "ON CONFLICT (day) DO NOTHING",
+                    (today, today),
+                )
+    _daily_salts_ready = True
+
+
+def daily_salt(now: datetime | None = None) -> str:
+    """Today's random salt, created on first use. Cached per process, so the hot
+    path (ingest) touches the table once a day."""
+    day = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
+    cached = _salt_cache.get(day)
+    if cached:
+        return cached
+    _ensure_daily_salts()
+    with _cursor() as cur:
+        # Two workers racing at midnight: one insert wins, both read the same row.
+        cur.execute(
+            f"INSERT INTO daily_salts (day, salt) VALUES ({P}, {P}) ON CONFLICT (day) DO NOTHING",
+            (day, secrets.token_hex(32)),
+        )
+        cur.execute(f"SELECT salt FROM daily_salts WHERE day = {P}", (day,))
+        salt = cur.fetchone()["salt"]
+        cur.execute(f"DELETE FROM daily_salts WHERE day <> {P}", (day,))
+    _salt_cache.clear()  # yesterday's salt must not linger in memory either
+    _salt_cache[day] = salt
+    return salt
+
+
+def purge_old_salts() -> int:
+    """Delete every salt that is not today's. Returns rows deleted."""
+    _ensure_daily_salts()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM daily_salts WHERE day <> {P}", (today,))
+        n = cur.rowcount
+    for day in [d for d in _salt_cache if d != today]:
+        del _salt_cache[day]
+    return n
+
+
+def blind_legacy_hashes(apply: bool = False) -> dict:
+    """One-off: cut the link between stored visitor hashes and the legacy salt.
+
+    Hashes written before the random salt existed can still be recomputed from
+    SPORLOS_SALT_SECRET + the date. This replaces each of them with
+    sha256(throwaway_key + hash), one UTC day per transaction. The key lives only
+    in this call and is never stored, so the result cannot be recomputed from
+    anything. Equal hashes stay equal within a day, so visitor counts, sessions
+    and bounce rates read exactly as before; sealed rollups hold counts only and
+    are not touched.
+
+    Only days BEFORE today are processed: blinding half a day would split that
+    day's visitors in two. Dry run unless `apply`. Returns {days, events}."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    day_expr = "to_char(ts, 'YYYY-MM-DD')" if _USE_PG else "substr(ts, 1, 10)"
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT {day_expr} AS day, COUNT(*) AS n FROM events WHERE ts < {P} "
+            "GROUP BY 1 ORDER BY 1",
+            (f"{today} 00:00:00",),
+        )
+        days = [(r["day"], r["n"]) for r in cur.fetchall()]
+    total = sum(n for _, n in days)
+    if not apply:
+        return {"days": len(days), "events": total, "applied": False}
+    key = secrets.token_hex(32)
+    for day, _ in days:
+        d = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        start, end = f"{day} 00:00:00", (d + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
+        with _cursor() as cur:
+            if _USE_PG:
+                cur.execute(
+                    "UPDATE events SET visitor_hash = "
+                    "encode(sha256(convert_to(%s || visitor_hash, 'UTF8')), 'hex') "
+                    "WHERE ts >= %s AND ts < %s",
+                    (key, start, end),
+                )
+            else:
+                cur.execute(
+                    "SELECT DISTINCT visitor_hash FROM events WHERE ts >= ? AND ts < ?",
+                    (start, end),
+                )
+                for r in cur.fetchall():
+                    old = r["visitor_hash"]
+                    new = hashlib.sha256(f"{key}{old}".encode()).hexdigest()
+                    cur.execute(
+                        "UPDATE events SET visitor_hash = ? "
+                        "WHERE visitor_hash = ? AND ts >= ? AND ts < ?",
+                        (new, old, start, end),
+                    )
+    return {"days": len(days), "events": total, "applied": True}
+
+
+def _ip_key(ip: str) -> str:
+    """Throttle bucket key for an IP. The raw address is never written to the
+    database: "never stores IP addresses" has to hold for our own signup and
+    password-reset forms too, not only for customers' visitors."""
+    pepper = os.environ.get("SPORLOS_SALT_SECRET", "")
+    return hashlib.sha256(f"{daily_salt()}|{pepper}|throttle|{ip}".encode()).hexdigest()
+
+
 # /signup sender bekreftelses-e-post til hvilken som helst adresse innsenderen
 # oppgir. Uten tak er ruta en gratis e-postkanon mot fremmede — misbrukt 20.–21.07.2026
 # (12 bounces fra Workspace-relayet, ukjent antall levert). Lazy skjema som resten:
@@ -1780,6 +1914,8 @@ def _ensure_signup_throttle() -> None:
         return
     with _cursor() as cur:
         cur.execute(_SIGNUP_THROTTLE_SCHEMA)
+        # Rows written before keys were hashed hold raw addresses (a key is 64 hex chars).
+        cur.execute("DELETE FROM signup_throttle WHERE length(ip) < 64")
     _signup_throttle_ready = True
 
 
@@ -1787,6 +1923,7 @@ def signup_attempts(ip: str) -> tuple[int, int]:
     """(e-poster utløst fra denne IP-en denne timen, totalt denne timen). Rydder gamle timer."""
     _ensure_signup_throttle()
     hour = _signup_hour()
+    ip = _ip_key(ip)
     with _cursor() as cur:
         cur.execute(f"DELETE FROM signup_throttle WHERE hour < {P}", (hour,))
         cur.execute(f"SELECT n FROM signup_throttle WHERE hour = {P} AND ip = {P}", (hour, ip))
@@ -1800,6 +1937,7 @@ def signup_attempts(ip: str) -> tuple[int, int]:
 def signup_bump(ip: str) -> None:
     _ensure_signup_throttle()
     hour = _signup_hour()
+    ip = _ip_key(ip)
     with _cursor() as cur:
         cur.execute(
             f"INSERT INTO signup_throttle (hour, ip, n) VALUES ({P}, {P}, 1) "
@@ -1836,6 +1974,8 @@ def _ensure_forgot_throttle() -> None:
         return
     with _cursor() as cur:
         cur.execute(_FORGOT_THROTTLE_SCHEMA)
+        # Same cleanup as signup_throttle: raw addresses from before keys were hashed.
+        cur.execute("DELETE FROM forgot_throttle WHERE kind = 'ip' AND length(key) < 64")
     _forgot_throttle_ready = True
 
 
@@ -1851,6 +1991,7 @@ def forgot_attempts(ip: str, email: str) -> tuple[int, int, int]:
     kun for forsøk som faktisk sender en e-post (se kaller i main.forgot)."""
     _ensure_forgot_throttle()
     hour = _forgot_hour()
+    ip = _ip_key(ip)
     email_key = forgot_email_hash(email)
     with _cursor() as cur:
         cur.execute(f"DELETE FROM forgot_throttle WHERE hour < {P}", (hour,))
@@ -1877,6 +2018,7 @@ def forgot_attempts(ip: str, email: str) -> tuple[int, int, int]:
 def forgot_bump(ip: str, email: str) -> None:
     _ensure_forgot_throttle()
     hour = _forgot_hour()
+    ip = _ip_key(ip)
     email_key = forgot_email_hash(email)
     with _cursor() as cur:
         for kind, key in (("ip", ip), ("email", email_key)):
