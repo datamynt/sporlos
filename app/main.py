@@ -235,6 +235,8 @@ _WEBMANIFEST = json.dumps({
     "icons": [
         {"src": "/static/brand/icon-192.png", "sizes": "192x192", "type": "image/png"},
         {"src": "/static/brand/icon-512.png", "sizes": "512x512", "type": "image/png"},
+        {"src": "/static/brand/icon-maskable-512.png", "sizes": "512x512", "type": "image/png",
+         "purpose": "maskable"},
     ],
 }, ensure_ascii=False)
 
@@ -434,6 +436,8 @@ async def sporsmal(request):
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name="description" content="Trenger du cookie-banner? Er Google Analytics lovlig i Norge? Ærlige svar om cookieløs, samtykkefri webanalyse.">
 <link rel="canonical" href="https://sporlos.no/sporsmal">
+<meta property="og:title" content="Spørsmål og svar om cookieløs webanalyse | Sporløs">
+<meta property="og:description" content="Trenger du cookie-banner? Er Google Analytics lovlig i Norge? Ærlige svar om cookieløs, samtykkefri webanalyse.">
 {_BRAND_HEAD}{_OG_META}
 <script type="application/ld+json">{ld}</script>
 <style>{_BRAND_CSS}{_CHROME_CSS}
@@ -730,34 +734,38 @@ def _normalize_referrer(ref: str | None) -> str | None:
         return None
 
 
-# --- Brand: Sporløs designspråk (2026-06-10) ---------------------------------
-# Konsept: ø-en i «sporløs» = sirkel med strek = «ingen sporing»-merket.
+# --- Brand: Sporløs designspråk ------------------------------------------------
+# Merket kommer nå fra datamynt-ui/brand (kit blocks/sporlos, 2026-09-28): en mørk
+# blokk med en blå sirkel-og-strek («ingen sporing»). Ikonfiler: static/brand/.
 # Palett: varm papir-bakgrunn, marine blekk, én klar blå aksent. System-fonter
 # (ingen Google Fonts — et personvernprodukt lekker ikke besøk til tredjepart).
 
-# «Blekk»-merket (design-runde 2) overalt: solid disk m/ utstanset strek —
-# solide flater vinner over strek i små størrelser. Favicon = mini-app-ikon.
-_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<rect width="64" height="64" rx="14" fill="#17263e"/>
-<circle cx="32" cy="32" r="22" fill="#2f6fed"/>
-<line x1="18.5" y1="49" x2="45.5" y2="15" stroke="#17263e" stroke-width="7" stroke-linecap="round"/>
-</svg>"""
+# Favicon = kit-merket uten detalj (16–48 px). Kilde: brand/blocks/sporlos/favicon.svg.
+_FAVICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+    '<rect x="2" y="2" width="60" height="60" rx="8" fill="#24201b"/>'
+    '<circle cx="32" cy="32" r="11.5" fill="none" stroke="#5b8ff9" stroke-width="5" '
+    'stroke-linecap="square" stroke-linejoin="miter"/>'
+    '<path fill="none" stroke="#5b8ff9" stroke-width="5" stroke-linecap="square" '
+    'stroke-linejoin="miter" d="M21 45L43 19"/></svg>'
+)
 
-# Ordmerket: aksent-disk m/ strek i flatens farge — --mark-gap følger
-# konteksten (papir i nav, blekk i mørk footer = utstanset-effekt).
+# Ordmerket i header/dashboard-nav (lys bunn) og footer (blekk-panel, alltid mørk —
+# se footer.site under) bruker hvert sitt lockup-kit-bilde, ikke lenger inline-SVG.
 _WORDMARK = (
-    '<a class=brand href="/"><svg viewBox="0 0 64 64" aria-hidden=true>'
-    '<circle cx="32" cy="32" r="26" fill="currentColor"/>'
-    '<line x1="16" y1="52" x2="48" y2="12" stroke="var(--mark-gap,var(--bg))" stroke-width="8" stroke-linecap="round"/>'
-    "</svg>sporløs</a>"
+    '<a class=brand href="/"><img class=brand-mark src="/static/brand/lockup-light.svg" '
+    'alt="sporløs" height="28"></a>'
+)
+_WORDMARK_FOOTER = (
+    '<a class=brand href="/"><img class=brand-mark src="/static/brand/lockup-dark.svg" '
+    'alt="sporløs" height="24"></a>'
 )
 
 _BRAND_HEAD = (
-    # Modern: skarp SVG. Fallback: ICO (Google) + PNG (crawlere uten SVG). Apple + PWA.
-    '<link rel="icon" type="image/svg+xml" href="/favicon.svg">'
-    '<link rel="icon" href="/favicon.ico" sizes="48x48">'
-    '<link rel="icon" type="image/png" sizes="48x48" href="/static/brand/favicon-48.png">'
-    '<link rel="icon" type="image/png" sizes="96x96" href="/static/brand/favicon-96.png">'
+    # Kit: datamynt-ui/brand, blocks/sporlos (2026-09-28) — se head.html i kitet.
+    # Modern: skarp SVG. Fallback: ICO for eldre nettlesere/Google. Apple + PWA.
+    '<link rel="icon" href="/favicon.ico" sizes="32x32">'
+    '<link rel="icon" href="/favicon.svg" type="image/svg+xml">'
     '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
     '<link rel="manifest" href="/site.webmanifest">'
     '<meta name=theme-color content="#faf9f6" media="(prefers-color-scheme: light)">'
@@ -799,7 +807,8 @@ background:linear-gradient(90deg,var(--accent-deep),var(--accent) 45%,#8fb3ff)}
 a{color:var(--accent-deep)}
 .brand{display:inline-flex;align-items:center;gap:.45rem;font-weight:700;font-size:1.15rem;
 letter-spacing:-.02em;color:var(--ink);text-decoration:none}
-.brand svg{width:1.12em;height:1.12em;color:var(--accent);transform:translateY(-.02em)}
+.brand-mark{height:28px;width:auto;display:block}
+@media(max-width:640px){.brand-mark{height:24px}}
 .btn{display:inline-block;background:var(--btn-bg);color:#fff;text-decoration:none;
 padding:.7rem 1.4rem;border-radius:9px;font-weight:600;border:0;font-size:1rem;cursor:pointer;
 transition:background .15s,transform .15s,box-shadow .15s}
@@ -839,7 +848,7 @@ footer.site .wrap{padding-top:3.2rem;padding-bottom:1.6rem}
 footer.site a{color:#cdd6e4;text-decoration:none}
 footer.site a:hover{color:#fff;text-decoration:underline}
 footer.site .brand{color:#fff;margin-bottom:.7rem}
-footer.site .brand svg{color:var(--accent-fill);--mark-gap:var(--footer)}
+footer.site .brand-mark{height:24px}
 .foot-top{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:2.4rem}
 .foot-brand p{margin:0;max-width:24em}
 .foot-brand .foot-company{margin-top:1.3rem;font-size:.82rem;line-height:1.8}
@@ -875,7 +884,7 @@ _SITE_NAV = (
 # behind it, link columns, legal line. Every link here is a page that exists.
 _SITE_FOOTER = (
     "<footer class=site><div class=wrap><div class=foot-top>"
-    "<div class=foot-brand>" + _WORDMARK +
+    "<div class=foot-brand>" + _WORDMARK_FOOTER +
     "<p>Webanalyse uten cookies, uten samtykkebanner og uten persondata. Bygget og driftet i Norge.</p>"
     '<p class=foot-company><span>En tjeneste fra</span>'
     '<a href="https://datamynt.no" rel=noopener>Datamynt AS</a><br>'
@@ -2247,6 +2256,8 @@ def _render_guide(slug):
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name="description" content="Slik installerer du Sporløs cookieløs webanalyse på {escape(g['navn'])} — uten cookie-banner. {escape(g['krav'])}">
 <link rel="canonical" href="https://sporlos.no/integrasjoner/{slug}">
+<meta property="og:title" content="Sporløs på {escape(g['navn'])} — installasjonsguide">
+<meta property="og:description" content="Slik installerer du Sporløs cookieløs webanalyse på {escape(g['navn'])} — uten cookie-banner. {escape(g['krav'])}">
 {_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_CHROME_CSS}
 .content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
@@ -2299,6 +2310,8 @@ async def integrasjoner(request):
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name="description" content="Sporløs cookieløs webanalyse fungerer med WordPress, Shopify, Wix, Squarespace, Webflow, Framer, Ghost og Google Tag Manager — eller hvilken som helst side der du kan lime inn en kodesnutt.">
 <link rel="canonical" href="https://sporlos.no/integrasjoner">
+<meta property="og:title" content="Integrasjoner — Sporløs fungerer med plattformen din">
+<meta property="og:description" content="Sporløs cookieløs webanalyse fungerer med WordPress, Shopify, Wix, Squarespace, Webflow, Framer, Ghost og Google Tag Manager — eller hvilken som helst side der du kan lime inn en kodesnutt.">
 {_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_CHROME_CSS}
 .content{{max-width:760px;margin:0 auto;padding-bottom:1rem}}
@@ -3345,6 +3358,8 @@ def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, ti
 <meta name=viewport content="width=device-width, initial-scale=1">
 <meta name=description content="{escape(description)}">
 <link rel="canonical" href="{escape(canonical)}">
+<meta property="og:title" content="{escape(title)}">
+<meta property="og:description" content="{escape(description)}">
 {_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_CHROME_CSS}{_DASH_CSS}
 .demobar{{background:var(--info-bg);border:1px solid var(--line);color:var(--info);border-radius:10px;
