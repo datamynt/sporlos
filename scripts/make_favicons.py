@@ -1,5 +1,9 @@
 """Favicon-pakke fra «Blekk»-merket — alt Google og nettlesere leter etter.
 
+NB (2026-09-28): static/brand/-ikonene kommer nå fra datamynt-ui/brand
+(kit blocks/sporlos), ikke fra dette skriptet. Kjører du det på nytt, får
+du tilbake den gamle «Blekk»-varianten — ikke kit-merket.
+
 Reproduserer _FAVICON_SVG (rundet blekk-rute + aksentdisk r22 + strek sw7) i PIL.
 Lager:
   static/brand/favicon.ico        (16/32/48 — Google leter spesifikt etter denne)
