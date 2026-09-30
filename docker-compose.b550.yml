@@ -11,7 +11,7 @@
 services:
   db:
     image: postgres:16
-    restart: unless-stopped
+    restart: always
     environment:
       POSTGRES_USER: sporlos
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -26,7 +26,7 @@ services:
 
   app:
     build: .
-    restart: unless-stopped
+    restart: always
     # Hele .env injiseres (alle hemmeligheter). SPORLOS_DOMAIN=sporlos.no MÅ stå
     # slik at snippet + reset-lenker fortsatt peker på https://sporlos.no.
     env_file:
