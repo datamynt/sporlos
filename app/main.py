@@ -2778,7 +2778,7 @@ Annen plattform? Lim inn <a href="/utviklere">sporings-snippeten</a> rett i tema
 
 
 def _legal(request, title, inner, path="", desc="",
-           footer="Sist oppdatert 2026-06-10 · utkast, kvalitetssikres av jurist."):
+           footer="Sist oppdatert 2026-09-30."):
     canon = f'<link rel="canonical" href="https://sporlos.no{path}">' if path else ""
     meta_desc = f'<meta name="description" content="{escape(desc)}">' if desc else ""
     return HTMLResponse(

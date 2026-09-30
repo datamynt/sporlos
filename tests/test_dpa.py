@@ -40,6 +40,13 @@ class DpaTest(unittest.TestCase):
         self.assertIn('href="/databehandleravtale"', TestClient(main.app).get("/").text)
         self.assertIn("/databehandleravtale", TestClient(main.app).get("/sitemap.xml").text)
 
+    def test_no_legal_page_is_marked_as_a_draft(self):
+        c = TestClient(main.app)
+        for path in ("/vilkar", "/personvern", "/databehandleravtale"):
+            html = c.get(path).text.lower()
+            self.assertNotIn("utkast", html, path)
+            self.assertNotIn("kvalitetssikres av jurist", html, path)
+
     def test_signup_records_acceptance(self):
         c = TestClient(main.app)
         page = c.get("/signup").text
