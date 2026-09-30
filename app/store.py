@@ -2511,3 +2511,106 @@ def seo_overview(tenant_id: int, days: int = 7) -> list[dict]:
     out = list(sites.values())
     out.sort(key=lambda s: (-s["clicks"], -s["ai"], s["domain"]))
     return out
+
+
+# --- Self-serve deletion (a site, or the whole account) ------------------------
+
+# Every table that holds rows for one site, children before parents (event_items
+# points at events). search_stats and search_connections are created lazily and
+# `anchors` is unused schema that exists only in Postgres (see
+# scripts/purge_bot_signups.py), so tables missing from this database are skipped:
+# the list names everything that could ever hold a site's rows.
+# On-chain anchors hold only Merkle roots over many sites' daily rollup hashes, and
+# every rollup row stores its own inclusion proof (app/anchor.py), so deleting one
+# site's rollups breaks no other site's proof and leaves nothing on chain to delete.
+SITE_TABLES = (
+    "event_items",
+    "events",
+    "goals",
+    "funnels",
+    "daily_rollups",
+    "search_stats",
+    "search_connections",
+    "anchors",
+)
+
+
+def _table_exists(cur, name: str) -> bool:
+    if _USE_PG:
+        cur.execute("SELECT to_regclass(%s) IS NOT NULL AS x", (name,))
+        return bool(cur.fetchone()["x"])
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,))
+    return cur.fetchone() is not None
+
+
+def _delete_sites(cur, site_ids: list[int]) -> dict[str, int]:
+    """Delete these sites and all their rows on the caller's cursor (one transaction).
+    Returns rows deleted per table."""
+    counts: dict[str, int] = {}
+    if not site_ids:
+        return counts
+    ph = ",".join([P] * len(site_ids))
+    for table in SITE_TABLES:
+        if _table_exists(cur, table):
+            cur.execute(f"DELETE FROM {table} WHERE site_id IN ({ph})", tuple(site_ids))
+            counts[table] = cur.rowcount
+    cur.execute(f"DELETE FROM sites WHERE id IN ({ph})", tuple(site_ids))
+    counts["sites"] = cur.rowcount
+    return counts
+
+
+def delete_site(site_id: int, tenant_id: int) -> dict[str, int] | None:
+    """Delete one site and everything stored for it, in one transaction. The tenant
+    check is part of the same transaction, so another tenant's site is never
+    touched. None if the site isn't this tenant's; else rows deleted per table."""
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, public_id FROM sites WHERE id = {P} AND tenant_id = {P}",
+            (site_id, tenant_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        counts = _delete_sites(cur, [row["id"]])
+    _site_cache.pop(row["public_id"], None)  # ingest stops counting it right away
+    return counts
+
+
+def tenant_emails(tenant_id: int) -> list[str]:
+    with _cursor() as cur:
+        cur.execute(f"SELECT email FROM users WHERE tenant_id = {P} ORDER BY id", (tenant_id,))
+        return [r["email"] for r in cur.fetchall()]
+
+
+def delete_tenant(tenant_id: int) -> dict[str, int]:
+    """Delete a whole account in one transaction: every site with all its rows (as
+    delete_site), the API keys, the users with their Google/Microsoft logins and
+    outstanding reset links, and the tenant row. Returns rows deleted per table.
+
+    Nothing here touches Stripe or Vipps: the caller refuses while a paid
+    subscription runs, and invoices live with Stripe/Vipps/Fiken, not here."""
+    with _cursor() as cur:
+        cur.execute(f"SELECT id, public_id FROM sites WHERE tenant_id = {P}", (tenant_id,))
+        sites = [dict(r) for r in cur.fetchall()]
+        counts = _delete_sites(cur, [s["id"] for s in sites])
+        cur.execute(f"SELECT id, email FROM users WHERE tenant_id = {P}", (tenant_id,))
+        users = [dict(r) for r in cur.fetchall()]
+        uids = [u["id"] for u in users]
+        emails = [u["email"] for u in users]
+        if uids:
+            ph = ",".join([P] * len(uids))
+            # Explicit: SQLite runs without foreign_keys=ON, so ON DELETE CASCADE is not enforced there.
+            cur.execute(f"DELETE FROM user_identities WHERE user_id IN ({ph})", tuple(uids))
+            counts["user_identities"] = cur.rowcount
+            cur.execute(f"DELETE FROM reset_tokens WHERE email IN ({ph})", tuple(emails))
+            counts["reset_tokens"] = cur.rowcount
+        cur.execute(f"DELETE FROM api_keys WHERE tenant_id = {P}", (tenant_id,))
+        counts["api_keys"] = cur.rowcount
+        cur.execute(f"DELETE FROM users WHERE tenant_id = {P}", (tenant_id,))
+        counts["users"] = cur.rowcount
+        cur.execute(f"DELETE FROM tenants WHERE id = {P}", (tenant_id,))
+        counts["tenants"] = cur.rowcount
+    for s in sites:
+        _site_cache.pop(s["public_id"], None)
+    return counts
