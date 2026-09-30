@@ -96,7 +96,8 @@ class SsoTest(unittest.TestCase):
     def test_google_new_account_then_login_by_subject(self):
         c = TestClient(main.app)
         r = self._run(c, google("g-new", "ny@example.no"))
-        self.assertEqual(r.headers["location"], "/app")
+        self.assertEqual(r.headers["location"], "/app?ny=sso")  # a new account says so
+        self.assertIn("Det fantes ingen konto for ny@example.no", c.get("/app?ny=sso").text)
         self.assertTrue(self._in(c))
         u = store.get_user_by_email("ny@example.no")
         self.assertEqual(store.user_by_identity("idp-google", "g-new")["id"], u["id"])

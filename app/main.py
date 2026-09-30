@@ -184,9 +184,15 @@ _ACCEPT_TERMS = (
     '<p class=fine style="margin:.8rem 0 0;font-size:.8rem">Ved å opprette konto godtar du '
     '<a href="/vilkar">salgsbetingelsene</a> og <a href="/databehandleravtale">databehandleravtalen</a>.</p>'
 )
+# On /login the Google/Microsoft buttons create an account only the first time.
+_ACCEPT_TERMS_LOGIN = (
+    '<p class=fine style="margin:.8rem 0 0;font-size:.8rem">Første gang med Google eller Microsoft? '
+    'Da oppretter vi en konto, og du godtar <a href="/vilkar">salgsbetingelsene</a> og '
+    '<a href="/databehandleravtale">databehandleravtalen</a>.</p>'
+)
 
 
-def _sso_buttons(plan: str = "", accept_terms: bool = True) -> str:
+def _sso_buttons(plan: str = "", accept_terms: bool = True, on_login: bool = False) -> str:
     """«Fortsett med Google/Microsoft» — empty when Datamynt ID isn't configured."""
     providers = [p for p in ("google", "microsoft") if innlogg.enabled(p)]
     if not providers:
@@ -197,7 +203,7 @@ def _sso_buttons(plan: str = "", accept_terms: bool = True) -> str:
         f"<span>Fortsett med {innlogg.LABELS[p]}</span></a>"
         for p in providers
     )
-    terms = _ACCEPT_TERMS if accept_terms else ""
+    terms = (_ACCEPT_TERMS_LOGIN if on_login else _ACCEPT_TERMS) if accept_terms else ""
     return f'<div class=sso><div class=sso-or>eller</div>{links}{terms}</div>'
 
 
@@ -1454,7 +1460,13 @@ box-sizing:border-box;background:var(--card);color:var(--ink);font:inherit}}
 border-radius:8px;font-size:1rem;cursor:pointer;font:inherit;font-weight:600}}
 .auth .err{{background:var(--err-bg);color:var(--err);padding:.6rem;border-radius:8px;font-size:.9rem;margin:.5rem 0}}
 .auth .ok{{color:var(--ok);font-size:.9rem}}
-.auth .muted{{margin-top:1.2rem;font-size:.85rem}}{_SSO_CSS}</style>
+.auth .muted{{margin-top:1.2rem;font-size:.85rem}}{_SSO_CSS}
+.newhere{{margin-top:1.6rem;padding-top:1.2rem;border-top:1px solid var(--line);text-align:center}}
+.newhere b{{display:block;font-size:.95rem}}
+.newhere a.btn-sec{{display:block;margin:.6rem 0 .4rem;padding:.65rem;border:1.5px solid var(--accent);
+border-radius:8px;color:var(--accent);font-weight:600;text-decoration:none}}
+.newhere a.btn-sec:hover{{background:var(--accent);color:#fff}}
+.newhere span{{font-size:.8rem;color:var(--muted)}}</style>
 {_SELF_SNIPPET}
 <div class=wrap>{_site_nav(request)}
 <div class=auth>
@@ -1531,7 +1543,7 @@ async def signup(request):
                     except Exception:
                         pass
                     return RedirectResponse(
-                        f"/betal?plan={plan}" if plan else "/app", status_code=302
+                        f"/betal?plan={plan}" if plan else "/app?ny=1", status_code=302
                     )
                 except Exception:
                     err = "Kunne ikke opprette konto. Prøv igjen."
@@ -1592,11 +1604,15 @@ async def login(request):
         f"""<h1>Logg inn</h1>{eb}
 <form method=post>
   <label>E-post</label><input name=email type=email required autocomplete=email>
-  <label>Passord</label><input name=password type=password required autocomplete=current-password>
+  <label style="display:flex;justify-content:space-between">Passord
+    <a href="/forgot" style="font-size:.85rem">Glemt passord?</a></label>
+  <input name=password type=password required autocomplete=current-password>
   <button>Logg inn</button>
 </form>
-{_sso_buttons()}
-<p class=muted>Ny her? <a href="/signup">Opprett konto</a> · <a href="/forgot">Glemt passord?</a></p>""",
+{_sso_buttons(on_login=True)}
+<div class=newhere><b>Ny hos Sporløs?</b>
+  <a class=btn-sec href="/signup">Prøv gratis i 30 dager</a>
+  <span>Uten kort. Ingen cookies å be om lov til.</span></div>""",
     )
 
 
@@ -1852,7 +1868,8 @@ def _sso_done(request, uid: int, tid: int, plan: str = "", new: bool = False):
     _login(request, uid, tid)
     if new and plan:
         return RedirectResponse(f"/betal?plan={plan}", status_code=302)
-    return RedirectResponse("/app", status_code=302)
+    # A brand-new account says so: logging in with Google on /login creates one silently.
+    return RedirectResponse("/app?ny=sso" if new else "/app", status_code=302)
 
 
 async def sso_callback(request):
@@ -2236,6 +2253,12 @@ Kort og Vipps trekkes månedlig, og du kan si opp når som helst.</p>
 Sendes på e-post eller EHF, 14 dagers betalingsfrist.</p>
 <p class=muted style="margin-top:1rem"><a href="/app">Eller start 30 dagers gratis prøve først →</a></p>""",
     )
+
+
+def _no_date(v) -> str:
+    """2026-10-30 (or a datetime/str starting with it) -> 30.10.2026."""
+    d = str(v or "")[:10]
+    return f"{d[8:10]}.{d[5:7]}.{d[0:4]}" if re.fullmatch(r"\d{4}-\d{2}-\d{2}", d) else escape(d)
 
 
 def _valid_org_nr(v: str) -> bool:
@@ -4695,7 +4718,7 @@ def dashboard(request):
         elif plan == "trial" and tenant.get("trial_ends_at"):
             trial = (
                 '<p style="background:var(--info-bg);color:var(--info);padding:.5rem .8rem;border-radius:7px;'
-                f'font-size:.9rem">Prøveperiode — utløper {escape(str(tenant["trial_ends_at"])[:10])}.</p>'
+                f'font-size:.9rem">Prøveperioden varer til {_no_date(tenant["trial_ends_at"])}, gratis og uten kort.</p>'
             )
 
         # Forbruk mot plan (skjules for ubegrensede planer)
@@ -4736,32 +4759,24 @@ def dashboard(request):
             )
         upgrade = ""
         if tenant.get("plan") in ("trial", "cancelled", None):
-            btns = ""
-            if stripe:
-                btns = "".join(
-                    f'<a href="/billing/checkout?plan={k}" style="display:inline-block;'
-                    "margin:.2rem .4rem .2rem 0;padding:.4rem .7rem;border:1px solid var(--info);"
-                    'border-radius:7px;text-decoration:none;color:var(--info);font-size:.9rem">'
-                    f"{escape(_PLAN_LABELS[k])}</a>"
-                    for k in ("liten", "vekst", "pro")
-                    if STRIPE_PRICES.get(k)
-                )
-            vbtns = ""
-            if vipps.configured():
-                vbtns = "".join(
-                    f'<a href="/billing/vipps/start?plan={k}" style="display:inline-block;'
-                    "margin:.2rem .4rem .2rem 0;padding:.4rem .7rem;border:1px solid #ff5b24;"
-                    'border-radius:7px;text-decoration:none;color:#ff5b24;font-size:.9rem">'
-                    f"{escape(_PLAN_LABELS[k])} med Vipps</a>"
-                    for k in ("liten", "vekst", "pro")
-                )
-            if btns or vbtns:
-                sep = "<br>" if (btns and vbtns) else ""
-                upgrade = (
-                    f'<div style="margin:1rem 0"><b>Oppgrader:</b><br>{btns}{sep}{vbtns}<br>'
-                    '<span style="color:var(--muted);font-size:.8rem">Faktura/EHF for byrå/kommune? '
-                    '<a href="/vilkar">Kontakt oss</a></span></div>'
-                )
+            # One card per plan; the payment method (card, Vipps, annual invoice) is chosen
+            # on /betal, so the account page never shows a grid of plan × method buttons.
+            cards = "".join(
+                f'<a class="pp{" hl" if k == "vekst" else ""}" href="/betal?plan={k}">'
+                f"<b>{pricing.PLAN_NAMES[k]}</b><span>{pricing.kr(pricing.PLAN_ORE[k])} kr/mnd</span>"
+                f"<small>{pricing.kr(pricing.incl(pricing.PLAN_ORE[k]))} kr inkl. mva · {what}</small></a>"
+                for k, what in (("liten", "10 000 visninger, 1 nettsted"),
+                                ("vekst", "100 000 visninger, 10 nettsteder"),
+                                ("pro", "1 mill. visninger, 15 nettsteder"))
+            )
+            upgrade = (
+                '<div class=card><b>Velg plan</b>'
+                '<p class=fine style="margin:.2rem 0 .7rem">Priser eks. mva. Du velger kort, Vipps '
+                "eller årlig faktura (2 måneder gratis) på neste side.</p>"
+                f"<div class=planpick>{cards}</div>"
+                '<p class=fine style="margin:.7rem 0 0">Byrå eller over 25 nettsteder? '
+                '<a href="mailto:post@sporlos.no?subject=Byr%C3%A5-avtale">Ta kontakt</a>.</p></div>'
+            )
         # API-tilgang: read-only nøkler for AI-verktøy/integrasjoner
         keys = store.list_api_keys(user["tid"])
         new_key = request.session.pop("new_api_key", None)
@@ -4899,6 +4914,42 @@ def dashboard(request):
             "feil": '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Noe gikk galt mot Vipps — prøv igjen, eller bruk kort.</p>',
             "stoppet": '<p style="background:var(--info-bg);color:var(--info);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-avtalen er stoppet. Planen gjelder ut betalt periode.</p>',
         }.get(request.query_params.get("vipps") or "", "")
+        add_form = (
+            '<form class=add method=post action="/app/sites">'
+            '<input name=domain placeholder="dittdomene.no" required>'
+            "<button class=btn>Legg til nettsted</button></form>"
+        )
+        if rows:
+            sites_block = (
+                "<div class=card><table class=ov><tr><th>Nettsted</th><th>Trend</th><th>Unike</th>"
+                f"<th>Visn.</th></tr>{rows}</table></div>{add_form}"
+            )
+        else:
+            sites_block = (
+                '<div class="card onboard"><b>Kom i gang på tre minutter</b>'
+                "<ol><li><b>Legg til nettstedet ditt</b> her under.</li>"
+                "<li><b>Lim inn én linje kode</b> på siden. Vi viser deg hvordan for WordPress, "
+                'Shopify, Wix og resten (<a href="/integrasjoner">guider</a>).</li>'
+                "<li><b>Se tallene komme inn</b>, ofte i løpet av sekunder.</li></ol>"
+                f"{add_form}</div>"
+            )
+        sites_head = (
+            '<h2 class=sec>Nettsteder <span style="float:right;text-transform:none;letter-spacing:0;'
+            f'font-weight:400">{escape(ov_label)}</span></h2>'
+            f'<div class=ovtabs>{ov_tabs}<a href="/app/seo" style="margin-left:auto">Søk og AI →</a></div>'
+            if rows else ""
+        )
+        ny = request.query_params.get("ny")
+        me_email = escape((me or {}).get("email") or "")
+        welcome = ""
+        if ny == "sso":
+            welcome = _note(
+                "ok",
+                f"<b>Velkommen til Sporløs!</b> Det fantes ingen konto for {me_email}, så vi har "
+                "opprettet en ny til deg. Var det feil konto? Logg ut og logg inn med den du vanligvis bruker.",
+            )
+        elif ny:
+            welcome = _note("ok", f"<b>Velkommen til Sporløs!</b> Kontoen for {me_email} er klar.")
         plan_sec = ""
         if planinfo or usage_html or upgrade:
             plan_sec = f"<h2 class=sec>Plan og forbruk</h2>{planinfo}{usage_html}{upgrade}"
@@ -4936,25 +4987,26 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 /* On a phone the trend column would leave no room for the domain name. */
 @media(max-width:560px){{table.ov th:nth-child(2),table.ov td.trend{{display:none}}}}
 .ov .d{{display:block;font-size:.68rem;font-weight:600;margin-top:.05rem}}
-.dg{{color:var(--ok)}}.dr{{color:var(--err)}}.d0{{color:var(--muted)}}</style>
+.dg{{color:var(--ok)}}.dr{{color:var(--err)}}.d0{{color:var(--muted)}}
+.planpick{{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem}}
+@media(max-width:600px){{.planpick{{grid-template-columns:1fr}}}}
+a.pp{{display:flex;flex-direction:column;gap:.1rem;border:1px solid var(--line);border-radius:10px;
+padding:.75rem .85rem;text-decoration:none;color:var(--ink);background:var(--bg)}}
+a.pp:hover,a.pp.hl{{border-color:var(--accent)}}
+a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);font-size:.78rem;line-height:1.35}}
+.onboard ol{{margin:.6rem 0 .9rem 1.2rem;padding:0;line-height:1.6}}.onboard form.add{{margin:0}}
+@media(max-width:560px){{.onboard form.add{{flex-direction:column}}.onboard form.add input{{width:100%;box-sizing:border-box}}}}</style>
 <div class=wrap>
 {_site_nav(request)}
 <h1>Mine nettsteder</h1>
+{welcome}
 {deleted_flash}
 {verify_banner}
 {trial}
 {limit_msg}
 {vipps_flash}{faktura_flash}
-<h2 class=sec>Nettsteder <span style="float:right;text-transform:none;letter-spacing:0;font-weight:400">{escape(ov_label)}</span></h2>
-<div class=ovtabs>{ov_tabs}<a href="/app/seo" style="margin-left:auto">Søk og AI →</a></div>
-<div class=card>
-<table class=ov><tr><th>Nettsted</th><th>Trend</th><th>Unike</th><th>Visn.</th></tr>
-{rows or '<tr><td>ingen nettsteder enda — legg til det første under</td><td class=trend></td><td></td><td></td></tr>'}</table>
-</div>
-<form class=add method=post action="/app/sites">
-  <input name=domain placeholder="dittdomene.no" required>
-  <button class=btn>Legg til nettsted</button>
-</form>
+{sites_head}
+{sites_block}
 {plan_sec}
 <h2 class=sec>API-tilgang</h2>
 {api_html}
