@@ -875,6 +875,12 @@ def get_tenant(tenant_id: int) -> dict | None:
         return dict(r) if r else None
 
 
+def set_stripe_customer(tenant_id: int, customer_id: str) -> None:
+    """Link a Stripe customer before Checkout (the plan is set by the webhook)."""
+    with _cursor() as cur:
+        cur.execute(f"UPDATE tenants SET stripe_customer_id = {P} WHERE id = {P}", (customer_id, tenant_id))
+
+
 def set_tenant_plan(
     tenant_id: int, plan: str, customer_id: str | None = None, sub_id: str | None = None
 ) -> None:

@@ -27,6 +27,7 @@ from app.auth import hash_password  # noqa: E402
 SENT: list[tuple[str, str, str]] = []
 CHECKOUTS: list[dict] = []
 MODIFIED: list[tuple] = []
+CREATED: list[dict] = []
 
 
 class _FakeStripe:
@@ -49,6 +50,11 @@ class _FakeStripe:
         @staticmethod
         def modify(cid, **kw):
             MODIFIED.append((cid, kw))
+
+        @staticmethod
+        def create(**kw):
+            CREATED.append(kw)
+            return {"id": f"cus_new{len(CREATED)}"}
 
 
 def setUpModule():
@@ -135,12 +141,21 @@ class StripeCheckoutTest(unittest.TestCase):
         self.assertEqual(kw["tax_id_collection"], {"enabled": True})
         self.assertEqual(kw["billing_address_collection"], "required")
         self.assertEqual(kw["locale"], "nb")
-        self.assertNotIn("customer", kw)
-        # A returning customer: Stripe needs customer_update to save the company details.
+        # The customer is created first, with the seller footer, so the FIRST invoice has it.
+        made = CREATED[-1]
+        self.assertIn("936 017 207 MVA", made["invoice_settings"]["footer"])
+        self.assertEqual(made["email"], "kort@example.no")
+        self.assertEqual(kw["customer"], store.get_tenant(tid)["stripe_customer_id"])
+        self.assertEqual(kw["customer_update"], {"name": "auto", "address": "auto"})
+        self.assertEqual(store.get_tenant(tid)["plan"], "trial")  # the webhook sets the plan
+        # A returning customer: the footer is refreshed, no second customer is made.
+        n = len(CREATED)
+        MODIFIED.clear()
         store.set_tenant_plan(tid, "cancelled", customer_id="cus_1")
         c.get("/billing/checkout?plan=liten", follow_redirects=False)
+        self.assertEqual(len(CREATED), n)
+        self.assertEqual(MODIFIED[-1][0], "cus_1")
         self.assertEqual(CHECKOUTS[-1]["customer"], "cus_1")
-        self.assertEqual(CHECKOUTS[-1]["customer_update"], {"name": "auto", "address": "auto"})
 
     def _hook(self, typ: str, obj: dict):
         body = json.dumps({"type": typ, "data": {"object": obj}})
