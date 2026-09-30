@@ -476,7 +476,7 @@ details p{{color:var(--muted);margin:.7rem 0 .2rem;max-width:60em}}
 .cta{{text-align:center;padding:2.4rem 0 1rem}}</style>
 {_SELF_SNIPPET}</head><body>
 <div class=wrap>
-{_SITE_NAV}
+{_site_nav(request)}
 <h1>Spørsmål og svar</h1>
 <p class=lede>Det folk lurer på om cookieløs webanalyse, samtykkekrav og Sporløs — uten skjønnmaling.</p>
 {items}
@@ -796,10 +796,14 @@ _BRAND_HEAD = (
     f'<link rel="manifest" href="/site.webmanifest{_ICON_V}">'
     '<meta name=theme-color content="#faf9f6" media="(prefers-color-scheme: light)">'
     '<meta name=theme-color content="#121a2b" media="(prefers-color-scheme: dark)">'
-    # Read-only: the key is only ever written by the theme button in the dashboard.
-    # Public pages have no button and follow the system unless that choice exists.
-    "<script>try{var t=localStorage.getItem('sporlosTema');"
-    "if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>"
+    # Theme: apply the stored choice before first paint (no flash) and define the toggle
+    # used by the theme button in the shared header (logged-in variant). It is defined on
+    # every page, so the button works wherever the header shows it.
+    "<script>(function(){var k='sporlosTema',r=document.documentElement;"
+    "try{var t=localStorage.getItem(k);if(t)r.setAttribute('data-theme',t)}catch(e){}"
+    "window.byttTema=function(){var d=window.matchMedia('(prefers-color-scheme:dark)').matches,"
+    "c=r.getAttribute('data-theme')||(d?'dark':'light'),n=c==='dark'?'light':'dark';"
+    "try{localStorage.setItem(k,n)}catch(e){}r.setAttribute('data-theme',n)}})();</script>"
 )
 
 # Dark tokens live next to the light ones, so EVERY page that loads _BRAND_CSS follows
@@ -826,14 +830,12 @@ font-display:swap;src:url(/static/schibsted-grotesk.woff2) format('woff2')}
 --info:#3730a3;--info-bg:#eef2ff;--warn:#a16207;--warn-bg:#fff7ed;
 --btn-bg:#17263e;--btn-bg-h:#0e1a2e;--accent-fill:#2f6fed;--accent-fill-h:#1d4ed8;color-scheme:light;
 font:17px/1.65 'Schibsted Grotesk',system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
-html{overflow-y:scroll}
+html{overflow-y:scroll;scrollbar-gutter:stable}
 body{margin:0;background:var(--bg);-webkit-font-smoothing:antialiased}
+:where(a,button,summary,input,select,textarea):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 body::before{content:'';display:block;height:3px;
 background:linear-gradient(90deg,var(--accent-deep),var(--accent) 45%,#8fb3ff)}
 a{color:var(--accent-deep)}
-form.ut-form{display:inline;margin:0}
-form.ut-form button.ut{background:none;border:0;padding:0;margin:0;width:auto;font:inherit;font-size:.9rem;color:var(--muted);cursor:pointer}
-form.ut-form button.ut:hover{color:var(--ink)}
 .brand{display:inline-flex;align-items:center;gap:.45rem;font-weight:700;font-size:1.15rem;
 letter-spacing:-.02em;color:var(--ink);text-decoration:none}
 .brand svg{width:1.12em;height:1.12em;color:var(--accent);transform:translateY(-.02em)}
@@ -856,15 +858,51 @@ _SELF_SNIPPET = (
 if assist.configured():
     _SELF_SNIPPET += '<script defer src="/assist.js?v=3"></script>'
 
-# Felles header/footer for alle offentlige sider — samme ramme overalt,
-# så ingen side føles som å «dette ut» av nettstedet.
+# ONE frame for every page, public and logged-in: the header, the content and the footer
+# all sit inside .wrap, so the logo and the nav links never move when you navigate.
+# Narrower content (.content, .auth) is centred INSIDE that same frame.
 _CHROME_CSS = """
 .wrap{max-width:980px;margin:0 auto;padding:0 1.3rem}
-nav.site{display:flex;align-items:center;justify-content:space-between;padding:1.4rem 0;gap:.8rem}
-nav.site .links{display:flex;gap:1.2rem;align-items:center;font-size:.95rem;flex-wrap:wrap}
-nav.site .links a{color:var(--muted);text-decoration:none}
-nav.site .links a:hover{color:var(--ink)}
-nav.site .links a.btn{color:#fff;padding:.5rem 1rem}
+.content{max-width:680px;margin:0 auto;padding-bottom:1rem}
+/* A wide table scrolls inside itself on a phone; it must never widen the page sideways. */
+@media(max-width:760px){.content table{display:block;max-width:100%;overflow-x:auto}}
+/* Header. Fixed height: the logged-out and logged-in variants, and every page, put the logo
+   and the links on exactly the same pixels (2.65rem = the height of the "Prøv gratis" button). */
+nav.site{position:relative;display:flex;align-items:center;justify-content:space-between;gap:.8rem;
+box-sizing:content-box;height:2.65rem;padding:1.4rem 0}
+nav.site .navr,nav.site .navmenu{display:flex;align-items:center;gap:1.2rem}
+nav.site .nl{color:var(--muted);font-size:.95rem;line-height:1.3;text-decoration:none;padding:.35rem 0;
+white-space:nowrap;background:none;border:0;font-family:inherit;cursor:pointer;
+margin:0;width:auto;font-weight:inherit;border-radius:0;text-align:left}
+nav.site .nl:hover,nav.site .nl[aria-current=page]{color:var(--ink)}
+nav.site .btn{padding:.5rem 1rem;white-space:nowrap}
+nav.site .tema{display:inline-flex;align-items:center;justify-content:center;gap:.6rem;width:2rem;height:2rem;
+padding:0;border:1px solid var(--line);border-radius:99px;background:none;color:var(--muted);
+font:inherit;font-size:.95rem;cursor:pointer}
+nav.site .tema:hover{color:var(--ink);border-color:var(--muted)}
+nav.site .tema svg{width:1rem;height:1rem;flex:none}
+nav.site .tl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+nav.site form.logout{display:contents}
+/* Phone menu without JavaScript: a hidden checkbox toggles the panel. */
+nav.site .navtoggle{position:absolute;right:0;opacity:0;width:2.65rem;height:2.65rem;margin:0;pointer-events:none}
+nav.site .navbtn{display:none;align-items:center;justify-content:center;flex:none;width:2.65rem;height:2.65rem;
+box-sizing:border-box;border:1px solid var(--line);border-radius:10px;color:var(--ink);cursor:pointer}
+nav.site .navbtn svg{width:1.25rem;height:1.25rem}
+nav.site .navtoggle:checked ~ .navbtn{background:var(--card);border-color:var(--muted)}
+nav.site .navtoggle:focus-visible ~ .navbtn{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:760px){
+nav.site{padding:1.1rem 0}
+nav.site .navr{margin-left:auto}
+nav.site .navbtn{display:inline-flex}
+nav.site .navmenu{display:none}
+nav.site .navtoggle:checked ~ .navr .navmenu{display:flex;flex-direction:column;align-items:stretch;gap:0;
+position:absolute;top:calc(100% - .4rem);left:0;right:0;z-index:20;padding:.4rem;background:var(--card);
+border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 40px -18px rgba(23,38,62,.4)}
+nav.site .navmenu .nl,nav.site .navmenu .tema{display:flex;align-items:center;justify-content:flex-start;gap:.6rem;
+width:100%;height:auto;box-sizing:border-box;padding:.7rem .8rem;border:0;border-radius:8px;color:var(--ink);font-size:1rem}
+nav.site .navmenu .nl:hover,nav.site .navmenu .tema:hover{background:var(--bg)}
+nav.site .navmenu .tl{position:static;width:auto;height:auto;overflow:visible;clip:auto}
+}
 /* Footer = blekk-panel i BEGGE moduser, så --footer holdes mørk og flipper IKKE
    slik --ink gjør i mørk modus (ellers lys-på-lys = usynlig, jf. knapp-fellen). */
 /* Short pages: body fills the window and the sticky footer is pushed to its bottom edge,
@@ -891,22 +929,70 @@ margin-top:2.6rem;padding-top:1.3rem;border-top:1px solid rgba(255,255,255,.13);
 .foot-bottom .foot-dm:hover{text-decoration:none;color:#cdd6e4}
 @media(max-width:820px){.foot-top{grid-template-columns:1fr 1fr;gap:2rem 1.6rem}.foot-brand{grid-column:1/-1}
 .foot-duo{display:contents}}
-@media(max-width:640px){
-nav.site{flex-wrap:wrap;row-gap:.6rem;padding:1.1rem 0}
-nav.site .links{width:100%;justify-content:flex-start;gap:.55rem 1.1rem;font-size:.9rem}
-nav.site .links a.btn{margin-left:auto}
-}
 """
 
-_SITE_NAV = (
-    "<nav class=site>" + _WORDMARK + '<div class=links>'
-    '<a href="/demo">Live demo</a>'
-    '<a href="/#priser">Priser</a>'
-    '<a href="/google-analytics-alternativ">Mot Google Analytics</a>'
-    '<a href="/blogg">Blogg</a>'
-    '<a href="/login">Logg inn</a>'
-    '<a class="btn btn-accent" href="/signup">Prøv gratis</a></div></nav>'
+# Theme toggle (logged-in header). Inline SVG instead of a "◐" glyph: the glyph's size and
+# baseline depend on which font the system falls back to. The label is visually hidden on
+# desktop and shown in the phone menu.
+_THEME_BTN = (
+    '<button type=button class=tema onclick="byttTema()" title="Bytt lyst/mørkt">'
+    '<svg viewBox="0 0 16 16" aria-hidden=true><circle cx=8 cy=8 r=6.25 fill=none '
+    'stroke=currentColor stroke-width=1.5 /><path d="M8 1.75a6.25 6.25 0 0 0 0 12.5z" '
+    'fill=currentColor /></svg><span class=tl>Bytt tema</span></button>'
 )
+
+_MENU_ICON = (
+    '<svg viewBox="0 0 20 20" aria-hidden=true fill=none stroke=currentColor stroke-width=1.8 '
+    'stroke-linecap=round><path d="M3 6h14M3 10h14M3 14h14" /></svg>'
+)
+
+# Public links in the logged-out header. The last, primary action is rendered as a button.
+_NAV_PUBLIC_LINKS = (
+    ("/demo", "Live demo"),
+    ("/#priser", "Priser"),
+    ("/google-analytics-alternativ", "Mot Google Analytics"),
+    ("/blogg", "Blogg"),
+    ("/login", "Logg inn"),
+)
+
+
+def _logout_link() -> str:
+    """The logout control of the shared header. /logout only logs out on POST (a GET shows a
+    button), so this is a one-button form; `form.logout` is display:contents and the button
+    is styled like the other `.nl` links."""
+    return '<form class=logout method=post action="/logout"><button class=nl>Logg ut</button></form>'
+
+
+def _nav_link(href: str, label: str, path: str) -> str:
+    current = " aria-current=page" if href == path else ""
+    return f'<a class=nl href="{href}"{current}>{label}</a>'
+
+
+def _site_nav(request=None) -> str:
+    """The ONE header for every page. Logged-out and logged-in variants share the same
+    geometry: logo on the left, actions right-aligned, fixed height, same frame (.wrap).
+    On a phone everything but the primary action moves into a menu panel (no JavaScript)."""
+    path = request.url.path if request is not None else ""
+    if request is not None and request.query_params.get("site"):
+        path = ""  # a single site's dashboard is below the sites list, not the list itself
+    if request is not None and _user(request):
+        right = (
+            _nav_link("/app", "Mine nettsteder", path)
+            + f"<div class=navmenu>{_logout_link()}{_THEME_BTN}</div>"
+        )
+    else:
+        right = (
+            "<div class=navmenu>"
+            + "".join(_nav_link(h, label, path) for h, label in _NAV_PUBLIC_LINKS)
+            + '</div><a class="btn btn-accent" href="/signup">Prøv gratis</a>'
+        )
+    return (
+        "<nav class=site aria-label=Hovedmeny>" + _WORDMARK
+        + '<input type=checkbox id=navtoggle class=navtoggle aria-label=Meny>'
+        + f"<div class=navr>{right}</div>"
+        + f'<label class=navbtn for=navtoggle aria-hidden=true>{_MENU_ICON}</label></nav>'
+    )
+
 
 # Same structure as heltenig.no's footer, the fleet's reference: brand + who is
 # behind it, link columns, legal line. Every link here is a page that exists.
@@ -1107,7 +1193,7 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
         + "</head><body>"  # eksplisitt head/body — LinkedIn-parseren er pirkete
         + """<div class=wrap>
 """
-        + _SITE_NAV
+        + _site_nav(request)
         + """
 <header class=hero>
 <div>
@@ -1287,29 +1373,46 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
     )
 
 
-def _shell(title, inner):
+def _shell(request, title, inner, status_code=200):
+    """Small centred card (login, signup, messages) inside the shared frame."""
     return HTMLResponse(
         f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>{escape(title)} — Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
 <style>{_BRAND_CSS}{_CHROME_CSS}
-.auth{{font-size:16px;max-width:380px;margin:1.5rem auto 0;padding:0 1rem 3rem}}
-h1{{font-size:1.5rem;letter-spacing:-.02em}}
-label{{display:block;margin:.8rem 0 .2rem;font-size:.9rem;color:var(--muted)}}
-input{{width:100%;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:1rem;
-box-sizing:border-box;background:var(--card);font:inherit}}
-form .btn{{margin-top:1.2rem;width:100%}}
-button{{margin-top:1.2rem;width:100%;background:var(--btn-bg);color:#fff;border:0;padding:.7rem;
+.auth{{font-size:16px;max-width:380px;margin:1.5rem auto 0;padding:0 0 3rem}}
+.auth h1{{font-size:1.5rem;letter-spacing:-.02em}}
+.auth label{{display:block;margin:.8rem 0 .2rem;font-size:.9rem;color:var(--muted)}}
+.auth input{{width:100%;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:1rem;
+box-sizing:border-box;background:var(--card);color:var(--ink);font:inherit}}
+.auth form .btn{{margin-top:1.2rem;width:100%}}
+.auth button{{margin-top:1.2rem;width:100%;background:var(--btn-bg);color:#fff;border:0;padding:.7rem;
 border-radius:8px;font-size:1rem;cursor:pointer;font:inherit;font-weight:600}}
-.err{{background:#fee;color:#900;padding:.6rem;border-radius:8px;font-size:.9rem;margin:.5rem 0}}
-.muted{{margin-top:1.2rem;font-size:.85rem}}</style>
+.auth .err{{background:var(--err-bg);color:var(--err);padding:.6rem;border-radius:8px;font-size:.9rem;margin:.5rem 0}}
+.auth .ok{{color:var(--ok);font-size:.9rem}}
+.auth .muted{{margin-top:1.2rem;font-size:.85rem}}</style>
 {_SELF_SNIPPET}
-<div class=wrap>{_SITE_NAV}</div>
+<div class=wrap>{_site_nav(request)}
 <div class=auth>
 {inner}
-</div>
-{_SITE_FOOTER}"""
+</div></div>
+{_SITE_FOOTER}""",
+        status_code=status_code,
+    )
+
+
+def _not_found_page(request):
+    """Branded 404 in the shared frame, so a wrong link does not drop the visitor into a bare
+    text page with no header."""
+    return _shell(
+        request,
+        "Fant ikke siden",
+        "<h1>Fant ikke siden</h1>"
+        "<p class=muted>Lenken er feil, eller siden er flyttet.</p>"
+        '<p class=muted><a href="/">Til forsiden</a> · <a href="/blogg">Blogg</a> · '
+        '<a href="/demo">Live demo</a></p>',
+        status_code=404,
     )
 
 
@@ -1333,6 +1436,7 @@ async def signup(request):
         if (f.get("website") or "").strip():
             log.warning("signup: honeypot utløst (email=%s)", email)
             return _shell(
+                request,
                 "Sjekk e-posten",
                 "<h1>Sjekk e-posten din</h1><p class=muted>Vi har sendt deg en "
                 "bekreftelseslenke.</p>",
@@ -1374,6 +1478,7 @@ async def signup(request):
     )
     eb = f'<div class=err>{escape(err)}</div>' if err else ""
     return _shell(
+        request,
         "Opprett konto",
         f"""<h1>Opprett konto</h1>{chosen}{eb}
 <form method=post>
@@ -1411,8 +1516,9 @@ async def login(request):
             err = "Feil e-post eller passord."
     eb = f'<div class=err>{escape(err)}</div>' if err else ""
     if request.query_params.get("reset"):
-        eb += '<p style="color:#0a0;font-size:.9rem">Passordet er oppdatert — logg inn.</p>'
+        eb += '<p class=ok>Passordet er oppdatert — logg inn.</p>'
     return _shell(
+        request,
         "Logg inn",
         f"""<h1>Logg inn</h1>{eb}
 <form method=post>
@@ -1434,12 +1540,14 @@ def unsubscribe(request):
         except Exception:
             pass
         return _shell(
+            request,
             "Avmeldt",
             "<h1>Du er avmeldt</h1><p class=muted>Du får ikke flere ukerapporter på e-post. "
             'Vil du ha dem tilbake, kontakt oss på post@sporlos.no.</p>'
             '<p class=muted><a href="/app">Til Sporløs</a></p>',
         )
     return _shell(
+        request,
         "Ugyldig lenke",
         '<h1>Ugyldig avmeldings-lenke</h1><p class=muted><a href="/">Til forsiden</a></p>',
     )
@@ -1454,10 +1562,12 @@ def verify_email(request):
         except Exception:
             pass
         return _shell(
+            request,
             "Bekreftet",
             '<h1>E-posten er bekreftet ✓</h1><p class=muted><a href="/app">Til Sporløs</a></p>',
         )
     return _shell(
+        request,
         "Ugyldig lenke",
         '<h1>Ugyldig bekreftelseslenke</h1><p class=muted><a href="/app">Til Sporløs</a></p>',
     )
@@ -1516,12 +1626,14 @@ async def forgot(request):
                     )
         # alltid samme svar (ingen e-post-enumerering, heller ikke ved struping/honeypot)
         return _shell(
+            request,
             "Sjekk e-posten",
             "<h1>Sjekk e-posten din</h1><p class=muted>Hvis det finnes en konto på adressen, "
             "har vi sendt en lenke for å tilbakestille passordet. Lenken er gyldig i én time.</p>"
             '<p class=muted><a href="/login">Tilbake til innlogging</a></p>',
         )
     return _shell(
+        request,
         "Glemt passord",
         """<h1>Glemt passord</h1>
 <p class=muted>Skriv inn e-posten din, så sender vi en lenke for å velge nytt passord.</p>
@@ -1544,6 +1656,7 @@ async def reset(request):
         email = store.pop_reset_token(token) if token else None
         if not email:
             return _shell(
+                request,
                 "Lenke utløpt",
                 "<h1>Lenken er ugyldig eller utløpt</h1>"
                 '<p class=muted><a href="/forgot">Be om en ny</a></p>',
@@ -1551,6 +1664,7 @@ async def reset(request):
         if len(pw) < 8:
             new = store.create_reset_token(email)  # ny token, prøv igjen
             return _shell(
+                request,
                 "For kort passord",
                 f"""<h1>Velg nytt passord</h1><div class=err>Passordet må være minst 8 tegn.</div>
 <form method=post>
@@ -1573,6 +1687,7 @@ async def reset(request):
                 store.set_email_verified(u["id"])
         return RedirectResponse("/login?reset=1", status_code=302)
     return _shell(
+        request,
         "Velg nytt passord",
         f"""<h1>Velg nytt passord</h1>
 <form method=post>
@@ -1881,6 +1996,7 @@ async def betal(request):
     if not knapper:
         return RedirectResponse("/app", status_code=302)
     return _shell(
+        request,
         "Betaling",
         f"""<h1>Nesten i mål</h1>
 <p class=muted>Du har valgt <b>{escape(_PLAN_LABELS[plan])}</b>. Velg betalingsmåte —
@@ -2033,7 +2149,6 @@ async def utviklere(request):
 <link rel="canonical" href="https://sporlos.no/utviklere">
 {_BRAND_HEAD}
 <style>{_BRAND_CSS}{_CHROME_CSS}
-.content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
 h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
 pre{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.8rem;overflow-x:auto;font-size:.82rem}}
 code{{font-size:.88em}}
@@ -2041,7 +2156,7 @@ table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-botto
 .muted{{font-size:.85rem;color:var(--muted)}}</style>
 {_SELF_SNIPPET}
 <div class=wrap>
-{_SITE_NAV}
+{_site_nav(request)}
 <div class=content>
 <h1>API for utviklere og AI-verktøy</h1>
 <p>Sporløs har et read-only Stats-API så du kan hente tallene dine inn i rapporter, regneark
@@ -2115,7 +2230,6 @@ async def shopify_guide(request):
 <meta property="og:url" content="https://sporlos.no/shopify">
 {_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_CHROME_CSS}
-.content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
 h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
 ol{{padding-left:1.2rem}}ol li{{margin:.4rem 0}}
 pre{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.8rem;overflow-x:auto;font-size:.78rem;max-height:340px}}
@@ -2125,7 +2239,7 @@ table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-botto
 .note{{background:var(--info-bg);color:var(--info);border-radius:8px;padding:.7rem .9rem;font-size:.88rem}}</style>
 {_SELF_SNIPPET}
 <div class=wrap>
-{_SITE_NAV}
+{_site_nav(request)}
 <div class=content>
 <h1>Sporløs på Shopify</h1>
 <p>Cookieløs, samtykke-fri webanalyse for Shopify-butikker — <b>uten cookie-banner</b>,
@@ -2168,7 +2282,7 @@ Annen plattform? Lim inn <a href="/utviklere">sporings-snippeten</a> rett i tema
     )
 
 
-def _legal(title, inner, path="", desc=""):
+def _legal(request, title, inner, path="", desc=""):
     canon = f'<link rel="canonical" href="https://sporlos.no{path}">' if path else ""
     meta_desc = f'<meta name="description" content="{escape(desc)}">' if desc else ""
     return HTMLResponse(
@@ -2178,13 +2292,12 @@ def _legal(title, inner, path="", desc=""):
 {meta_desc}{canon}
 {_BRAND_HEAD}
 <style>{_BRAND_CSS}{_CHROME_CSS}
-.content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
 h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
 table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}}
 .muted{{font-size:.85rem}}</style>
 {_SELF_SNIPPET}
 <div class=wrap>
-{_SITE_NAV}
+{_site_nav(request)}
 <div class=content>
 {inner}
 <p class=muted style="margin-top:3rem">Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@sporlos.no<br>
@@ -2306,7 +2419,7 @@ _GUIDES = {
 }
 
 
-def _render_guide(slug):
+def _render_guide(request, slug):
     g = _GUIDES[slug]
     steg = "".join(f"<li>{s}</li>" for s in g["steg"])
     feller = "".join(f"<li>{f}</li>" for f in g["feller"])
@@ -2320,7 +2433,6 @@ def _render_guide(slug):
 <meta property="og:description" content="Slik installerer du Sporløs cookieløs webanalyse på {escape(g['navn'])} — uten cookie-banner. {escape(g['krav'])}">
 {_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_CHROME_CSS}
-.content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
 h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
 ol{{padding-left:1.2rem}}ol li{{margin:.45rem 0}}ul{{padding-left:1.2rem}}ul li{{margin:.3rem 0;color:var(--muted);font-size:.92rem}}
 pre{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.8rem;overflow-x:auto;font-size:.78rem}}
@@ -2328,7 +2440,7 @@ pre{{background:var(--card);border:1px solid var(--line);border-radius:8px;paddi
 .note{{background:var(--info-bg);color:var(--info);border-radius:8px;padding:.7rem .9rem;font-size:.88rem;margin:1rem 0}}</style>
 {_SELF_SNIPPET}</head><body>
 <div class=wrap>
-{_SITE_NAV}
+{_site_nav(request)}
 <div class=content>
 <p class=muted style="margin:0"><a href="/integrasjoner">← Alle integrasjoner</a></p>
 <h1>Sporløs på {escape(g['navn'])}</h1>
@@ -2354,7 +2466,7 @@ async def platform_guide(request):
     slug = request.path_params.get("slug", "")
     if slug not in _GUIDES:
         return RedirectResponse("/integrasjoner", status_code=302)
-    return _render_guide(slug)
+    return _render_guide(request, slug)
 
 
 async def integrasjoner(request):
@@ -2374,7 +2486,6 @@ async def integrasjoner(request):
 <meta property="og:description" content="Sporløs cookieløs webanalyse fungerer med WordPress, Shopify, Wix, Squarespace, Webflow, Framer, Ghost og Google Tag Manager — eller hvilken som helst side der du kan lime inn en kodesnutt.">
 {_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_CHROME_CSS}
-.content{{max-width:760px;margin:0 auto;padding-bottom:1rem}}
 h1{{font-size:2.1rem;letter-spacing:-.025em}}h2{{font-size:1.05rem;margin:2rem 0 .8rem;color:var(--muted)}}
 .lede{{font-size:1.15rem;color:var(--muted);max-width:42em}}
 .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.7rem}}
@@ -2387,7 +2498,7 @@ padding:1rem 1.1rem;text-decoration:none;background:var(--card);transition:borde
 .cta b{{font-size:1.1rem}}</style>
 {_SELF_SNIPPET}</head><body>
 <div class=wrap>
-{_SITE_NAV}
+{_site_nav(request)}
 <div class=content>
 <h1>Fungerer med plattformen din</h1>
 <p class=lede>Sporløs er én liten kodesnutt — den virker på alt som lar deg legge til kode i
@@ -2418,6 +2529,7 @@ padding:1rem 1.1rem;text-decoration:none;background:var(--card);transition:borde
 
 async def vilkar(request):
     return _legal(
+        request,
         "Salgsbetingelser",
         path="/vilkar",
         desc="Salgsbetingelser for webanalysetjenesten Sporløs — utformet etter Forbrukertilsynets anbefalinger.",
@@ -2494,6 +2606,7 @@ Avtalen reguleres av norsk rett.</p>""",
 
 async def personvern(request):
     return _legal(
+        request,
         "Personvernerklæring",
         path="/personvern",
         desc="Slik behandler Sporløs personopplysninger: ingen IP-lagring, ingen cookies, kun daglig-roterende hash.",
@@ -2565,7 +2678,6 @@ async def ga_alternativ(request):
         + _BRAND_CSS
         + _CHROME_CSS
         + """
-.content{max-width:680px;margin:0 auto}
 header{padding:2.5rem 0 2rem}
 h1{font-size:2.1rem;line-height:1.15;margin:0 0 1rem;letter-spacing:-.02em}
 .lede{font-size:1.15rem;color:var(--muted)}
@@ -2584,7 +2696,7 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
         + "</head><body>"  # eksplisitt head/body — LinkedIn-parseren er pirkete
         + """<div class=wrap>
 """
-        + _SITE_NAV
+        + _site_nav(request)
         + """<div class=content>
 <header>
   <h1>Bytte fra Google Analytics? Her er den ærlige sammenligningen.</h1>
@@ -2684,7 +2796,6 @@ _BLOGG_RSS_LINK = (
     'href="/blogg/rss.xml">'
 )
 _BLOGG_CSS = """
-.content{max-width:680px;margin:0 auto;padding-bottom:1rem}
 h1{font-size:1.9rem;letter-spacing:-.02em;line-height:1.25}
 h2{font-size:1.2rem;margin-top:2.2rem}
 .dato{font-size:.85rem;color:var(--muted)}
@@ -2711,7 +2822,7 @@ def _blogg_rss_dato(iso: str) -> str:
     return f"{_RSS_DAG[d.weekday()]}, {d.day:02d} {_RSS_MND[d.month]} {d.year} 08:00:00 +0200"
 
 
-def _render_blogg_post(slug):
+def _render_blogg_post(request, slug):
     p = blogg.POSTS[slug]
     url = f"https://sporlos.no/blogg/{slug}"
     ld = (
@@ -2755,7 +2866,7 @@ def _render_blogg_post(slug):
 <style>{_BRAND_CSS}{_CHROME_CSS}{_BLOGG_CSS}</style>
 {_SELF_SNIPPET}</head><body>
 <div class=wrap>
-{_SITE_NAV}
+{_site_nav(request)}
 <div class=content>
 <p class=muted style="margin:0"><a href="/blogg">← Bloggen</a></p>
 <h1>{escape(p['tittel'])}</h1>
@@ -2771,7 +2882,7 @@ async def blogg_post(request):
     slug = request.path_params.get("slug", "")
     if slug not in blogg.POSTS:
         return RedirectResponse("/blogg", status_code=302)
-    return _render_blogg_post(slug)
+    return _render_blogg_post(request, slug)
 
 
 async def blogg_index(request):
@@ -2795,7 +2906,6 @@ async def blogg_index(request):
 <meta property="og:locale" content="nb_NO">
 {_BRAND_HEAD}{_OG_META}{_BLOGG_RSS_LINK}
 <style>{_BRAND_CSS}{_CHROME_CSS}
-.content{{max-width:680px;margin:0 auto;padding-bottom:1rem}}
 h1{{font-size:2.1rem;letter-spacing:-.025em}}
 .lede{{font-size:1.15rem;color:var(--muted)}}
 .post{{display:flex;flex-direction:column;gap:.25rem;border:1px solid var(--line);border-radius:12px;
@@ -2807,7 +2917,7 @@ padding:1.2rem 1.3rem;margin:.8rem 0;text-decoration:none;background:var(--card)
 .muted{{font-size:.9rem;color:var(--muted)}}</style>
 {_SELF_SNIPPET}</head><body>
 <div class=wrap>
-{_SITE_NAV}
+{_site_nav(request)}
 <div class=content>
 <h1>Bloggen</h1>
 <p class=lede>{escape(_BLOGG_LEDE)}</p>
@@ -2934,14 +3044,6 @@ def _safe_filename(s: str) -> str:
 
 # Delt dashboard-CSS (innlogget dashboard + offentlig live-demo).
 _DASH_CSS = """
-.wrap{max-width:980px;margin:0 auto;padding:0 1.2rem 4rem}
-nav{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}
-nav .links{display:flex;gap:1.1rem;align-items:center;font-size:.9rem}
-nav .links a{color:var(--muted);text-decoration:none}nav .links a:hover{color:var(--ink)}
-nav .links a.btn{color:#fff;padding:.45rem .9rem}
-.tema{background:none;border:1px solid var(--line);border-radius:99px;width:30px;height:30px;
-cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;padding:0}
-.tema:hover{color:var(--ink);border-color:var(--muted)}
 .head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
 h1{font-size:1.7rem;letter-spacing:-.02em;margin:0}
 .tabs{display:flex;flex-wrap:wrap;gap:.3rem}
@@ -3024,19 +3126,7 @@ pre{background:var(--bg);padding:.8rem;border-radius:8px;overflow:auto;font-size
 # «Midnattsblekk». NB knapp-fyll: i mørk modus flipper --ink til nesten-hvitt, så
 # .btn med hvit tekst MÅ ha egne --btn-bg-var (ellers hvit-på-lyst = usynlig).
 # Sekundærknapp = dempet blå-grå flate; primær (.btn-accent) holder saturert blå.
-# Tema-toggle: tidlig inline-script setter lagret tema FØR render (unngår blink),
-# og window.byttTema veksler lyst↔mørkt og husker valget. Knapp i dashbord-nav.
-_THEME_HEAD = (
-    "<script>(function(){var k='sporlosTema',r=document.documentElement,"
-    "s=localStorage.getItem(k);if(s)r.setAttribute('data-theme',s);"
-    "window.byttTema=function(){var d=window.matchMedia('(prefers-color-scheme:dark)').matches,"
-    "c=r.getAttribute('data-theme')||(d?'dark':'light'),n=c==='dark'?'light':'dark';"
-    "localStorage.setItem(k,n);r.setAttribute('data-theme',n);};})();</script>"
-)
-_THEME_BTN = (
-    '<button class=tema onclick="byttTema()" title="Bytt lyst/mørkt" '
-    'aria-label="Bytt lyst eller mørkt tema">◐</button>'
-)
+# Theme toggle: the script lives in _BRAND_HEAD, the button (_THEME_BTN) in the shared header.
 
 
 _BARS_JS = """<script>
@@ -3426,7 +3516,7 @@ def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, ti
 padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
 </head><body>
 <div class=wrap>
-{_SITE_NAV}
+{_site_nav(request)}
 {intro}
 <div class=head><h1>{escape(site["domain"])} <span class=muted style="font-size:1rem;font-weight:400">· {escape(suffix)}</span></h1>
 <div class=tabs>{tabs}</div></div>
@@ -3550,7 +3640,7 @@ def demo(request):
     """Offentlig live-demo: ekte tall for sporlos.no selv — produktet i drift som bevis."""
     site = store.resolve_site(os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7"))
     if not site:
-        return PlainTextResponse("not found", status_code=404)
+        return _not_found_page(request)
     intro = (
         "<div class=demobar>Dette er ekte, levende tall for <b>sporlos.no</b> — målt av "
         "Sporløs selv, uten cookies og uten samtykke. Det du ser her, er det kundene får.</div>"
@@ -3570,7 +3660,7 @@ def public_dash(request):
     pid = request.path_params["public_id"]
     site = store.get_public_site(pid)
     if not site or not site.get("public_dash"):
-        return PlainTextResponse("not found", status_code=404)
+        return _not_found_page(request)
     return _public_stats_page(
         request, site, f"/p/{escape(pid)}",
         public_id=pid,
@@ -3861,11 +3951,8 @@ def dashboard(request):
 <title>Sporløs — mine nettsteder</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}
-.wrap{{max-width:640px;margin:0 auto;padding:0 1.2rem 4rem}}
-nav{{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}}
-nav a.ut{{color:var(--muted);text-decoration:none;font-size:.9rem}}
-h1{{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 .3rem}}
+<style>{_BRAND_CSS}{_CHROME_CSS}
+h1{{font-size:1.7rem;letter-spacing:-.02em;margin:0 0 .3rem}}
 h2.sec{{font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
 font-weight:700;margin:2rem 0 .4rem}}
 .card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem;margin:.9rem 0}}
@@ -3879,10 +3966,8 @@ td a{{color:var(--ink);text-decoration:none;font-weight:600}}td a:hover{{color:v
 form.add{{display:flex;gap:.5rem}}
 input,textarea,select{{color:var(--ink);background:var(--card)}}
 input::placeholder,textarea::placeholder{{color:var(--muted)}}
-form.add input{{flex:1;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:.95rem;background:var(--card);color:var(--ink)}}
+form.add input{{flex:1;min-width:0;padding:.6rem;border:1px solid var(--line);border-radius:8px;font-size:.95rem;background:var(--card);color:var(--ink)}}
 .fine{{color:var(--muted);font-size:.8rem}}
-.tema{{background:none;border:1px solid var(--line);border-radius:99px;width:30px;height:30px;cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;padding:0;margin-right:.6rem}}
-.tema:hover{{color:var(--ink);border-color:var(--muted)}}
 .ovtabs{{display:flex;flex-wrap:wrap;gap:.3rem;margin:.1rem 0 .8rem}}
 .ovtabs a{{padding:.3rem .75rem;border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--muted);font-size:.82rem;background:var(--card)}}
 .ovtabs a.on{{background:var(--ink);color:var(--bg);border-color:var(--ink)}}
@@ -3892,11 +3977,12 @@ table.ov td.num{{white-space:normal;line-height:1.15;vertical-align:middle}}
 table.ov td.num b{{display:block;color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}}
 table.ov td.trend{{overflow:visible;vertical-align:middle}}
 table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:auto}}
+/* On a phone the trend column would leave no room for the domain name. */
+@media(max-width:560px){{table.ov th:nth-child(2),table.ov td.trend{{display:none}}}}
 .ov .d{{display:block;font-size:.68rem;font-weight:600;margin-top:.05rem}}
 .dg{{color:var(--ok)}}.dr{{color:var(--err)}}.d0{{color:var(--muted)}}</style>
-{_THEME_HEAD}
 <div class=wrap>
-<nav>{_WORDMARK}<span>{_THEME_BTN}<form class=ut-form method=post action="/logout"><button class=ut>Logg ut</button></form></span></nav>
+{_site_nav(request)}
 <h1>Mine nettsteder</h1>
 {verify_banner}
 {trial}
@@ -3906,7 +3992,7 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 <div class=ovtabs>{ov_tabs}<a href="/app/seo" style="margin-left:auto">Søk og AI →</a></div>
 <div class=card>
 <table class=ov><tr><th>Nettsted</th><th>Trend</th><th>Unike</th><th>Visn.</th></tr>
-{rows or '<tr><td>ingen nettsteder enda — legg til det første under</td><td></td><td></td><td></td></tr>'}</table>
+{rows or '<tr><td>ingen nettsteder enda — legg til det første under</td><td class=trend></td><td></td><td></td></tr>'}</table>
 </div>
 <form class=add method=post action="/app/sites">
   <input name=domain placeholder="dittdomene.no" required>
@@ -3919,7 +4005,8 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 {pw_flash}
 {password_html}
 <p class=fine style="margin-top:1.5rem">Cookieløs · ingen IP lagret · samtykkefri</p>
-</div>"""
+</div>
+{_SITE_FOOTER}"""
         )
 
     period = request.query_params.get("period", "7")
@@ -4369,10 +4456,9 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 <title>Sporløs — {escape(site['domain'])}</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}{_DASH_CSS}</style>
-{_THEME_HEAD}
+<style>{_BRAND_CSS}{_CHROME_CSS}{_DASH_CSS}</style>
 <div class=wrap>
-<nav>{_WORDMARK}<div class=links>{_THEME_BTN}<a href="/app">Mine sites</a><form class=ut-form method=post action="/logout"><button class=ut>Logg ut</button></form></div></nav>
+{_site_nav(request)}
 {verify_banner}
 <div class=head><h1>{escape(site['domain'])}</h1><div class=tabs>{tabs}</div></div>
 {kpiband}
@@ -4404,6 +4490,7 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 <p class=footnote>Cookieløs · ingen IP lagret · samtykkefri ·
 Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
 </div>
+{_SITE_FOOTER}
 {_BARS_JS}
 {_CHART_JS}"""
     )
@@ -4457,12 +4544,8 @@ def seo_page(request):
 <title>Sporløs — søk og AI på tvers</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}
-.wrap{{max-width:760px;margin:0 auto;padding:0 1.2rem 4rem}}
-nav{{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0 1.6rem}}
-nav a.ut{{color:var(--muted);text-decoration:none;font-size:.9rem;margin-left:.9rem}}
-nav form.ut-form{{margin-left:.9rem}}
-h1{{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 .3rem}}
+<style>{_BRAND_CSS}{_CHROME_CSS}
+h1{{font-size:1.7rem;letter-spacing:-.02em;margin:0 0 .3rem}}
 .card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem;margin:.9rem 0}}
 table{{border-collapse:collapse;width:100%;table-layout:fixed}}
 th,td{{border-bottom:1px solid var(--line);padding:.55rem .2rem;text-align:left;font-size:.95rem;
@@ -4476,14 +4559,12 @@ td.num b{{display:block;color:var(--ink);font-weight:700;font-variant-numeric:ta
 .d{{display:block;font-size:.68rem;font-weight:600;margin-top:.05rem}}
 .dg{{color:var(--ok)}}.dr{{color:var(--err)}}.d0{{color:var(--muted)}}
 .fine{{color:var(--muted);font-size:.8rem}}
-.tema{{background:none;border:1px solid var(--line);border-radius:99px;width:30px;height:30px;cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;padding:0;margin-right:.6rem}}
-.tema:hover{{color:var(--ink);border-color:var(--muted)}}
 .ovtabs{{display:flex;flex-wrap:wrap;gap:.3rem;margin:.1rem 0 .8rem}}
 .ovtabs a{{padding:.3rem .75rem;border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--muted);font-size:.82rem;background:var(--card)}}
-.ovtabs a.on{{background:var(--ink);color:var(--bg);border-color:var(--ink)}}</style>
-{_THEME_HEAD}
+.ovtabs a.on{{background:var(--ink);color:var(--bg);border-color:var(--ink)}}
+@media(max-width:640px){{.card{{overflow-x:auto}}th:first-child,td:first-child{{width:8rem}}}}</style>
 <div class=wrap>
-<nav>{_WORDMARK}<span>{_THEME_BTN}<a class=ut href="/app">Mine nettsteder</a><form class=ut-form method=post action="/logout"><button class=ut>Logg ut</button></form></span></nav>
+{_site_nav(request)}
 <h1>Søk og AI på tvers</h1>
 <p class=fine style="margin:0 0 .8rem">Google/Bing-søk og AI-henvisninger for alle nettstedene dine i én tabell — {escape(label)}.</p>
 <div class=ovtabs>{tabs}</div>
@@ -4494,7 +4575,8 @@ td.num b{{display:block;color:var(--ink);font-weight:700;font-variant-numeric:ta
 </div>
 <p class=fine>Klikk/visninger/posisjon: Google Search Console (1–2 døgns forsinkelse — perioden slutter i forgårs).
 Bing: Bing Webmaster Tools. AI-besøk: unike besøkende henvist fra AI-assistenter, målt live av Sporløs.</p>
-</div>"""
+</div>
+{_SITE_FOOTER}"""
     )
 
 
@@ -4635,6 +4717,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers.setdefault("Content-Security-Policy", _CSP)
+        # The header shows a logged-in or logged-out variant depending on the session cookie,
+        # so a shared cache must never serve one visitor's variant to another.
+        if response.headers.get("content-type", "").startswith("text/html"):
+            response.headers.append("Vary", "Cookie")
         return response
 
 
@@ -4660,4 +4746,11 @@ middleware = [
     Middleware(GZipMiddleware, minimum_size=500),
 ]
 
-app = Starlette(routes=routes, middleware=middleware)
+async def _handle_404(request, exc):
+    # API and static paths keep Starlette's plain answer; pages get the branded one.
+    if request.url.path.startswith(("/api/", "/static/", "/webhooks/")):
+        return PlainTextResponse("Not Found", status_code=404)
+    return _not_found_page(request)
+
+
+app = Starlette(routes=routes, middleware=middleware, exception_handlers={404: _handle_404})
