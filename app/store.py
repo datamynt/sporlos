@@ -371,6 +371,9 @@ def init_db() -> None:
                     cur.execute(ddl)
                 except Exception:
                     pass
+    # Reset links issued before tokens were hashed at rest are plaintext rows; drop them.
+    with _cursor() as cur:
+        cur.execute("DELETE FROM reset_tokens WHERE length(token) <> 64")
 
 
 def ping() -> bool:
@@ -590,13 +593,25 @@ def set_password(email: str, password_hash: str) -> None:
         )
 
 
+def _reset_token_key(token: str) -> str:
+    """The DB stores sha256(token), never the token itself: a leaked row or backup
+    must not be usable as a reset link. 64 hex chars, which also tells a hashed row
+    apart from a legacy plaintext one (token_urlsafe(32) is 43 chars)."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def create_reset_token(email: str) -> str:
     token = secrets.token_urlsafe(32)
-    expires = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(timezone.utc)
+    expires = (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     with _cursor() as cur:
         cur.execute(
+            f"DELETE FROM reset_tokens WHERE expires_at <= {P}",
+            (now.strftime("%Y-%m-%d %H:%M:%S"),),
+        )
+        cur.execute(
             f"INSERT INTO reset_tokens (token, email, expires_at) VALUES ({P}, {P}, {P})",
-            (token, email.strip().lower(), expires),
+            (_reset_token_key(token), email.strip().lower(), expires),
         )
     return token
 
@@ -604,13 +619,20 @@ def create_reset_token(email: str) -> str:
 def pop_reset_token(token: str) -> str | None:
     """Returner e-post hvis token er gyldig + ikke utløpt, og forbruk den (engangs)."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    key = _reset_token_key(token)
     with _cursor() as cur:
         cur.execute(
-            f"SELECT email FROM reset_tokens WHERE token = {P} AND expires_at > {P}", (token, now)
+            f"SELECT email FROM reset_tokens WHERE token = {P} AND expires_at > {P}", (key, now)
         )
         r = cur.fetchone()
-        cur.execute(f"DELETE FROM reset_tokens WHERE token = {P}", (token,))
+        cur.execute(f"DELETE FROM reset_tokens WHERE token = {P}", (key,))
         return r["email"] if r else None
+
+
+def invalidate_reset_tokens(email: str) -> None:
+    """Drop every outstanding reset link for this address (after a password change)."""
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM reset_tokens WHERE email = {P}", (email.strip().lower(),))
 
 
 def trial_ending_tenants(within_days: int = 3) -> list[dict]:
