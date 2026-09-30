@@ -46,6 +46,7 @@ from app.auth import check_token, hash_password, verify_password
 from app.datacenter import is_datacenter
 from app.geo import country_no
 from app.geo import lookup as geo_lookup
+from app.pathmask import mask_label, mask_path
 from app.privacy import client_ip, visitor_hash
 from app.useragent import is_bot, parse_ua
 
@@ -583,17 +584,20 @@ def _over_rate(vhash: str) -> bool:
 
 
 def _clean_name(v) -> str:
-    """Event name: a short string, or it is a pageview."""
+    """Event name: a short string, or it is a pageview. A name is free text, so an
+    ID-like word in it (an order number, say) is masked like a path segment."""
     if not isinstance(v, str) or not v.strip():
         return "pageview"
-    return v.strip()[:64]
+    return mask_label(v.strip()[:64])
 
 
 def _clean_path(v) -> str:
     """Path only. The tracker never sends a query string, but the endpoint is
     public and other senders (plugins, custom code) may pass a full URL. Query
     strings and fragments are where e-mail addresses and tokens hide, so they
-    are cut here, on the server, where the promise can actually be enforced."""
+    are cut here, on the server, where the promise can actually be enforced.
+    ID-like segments (order numbers, tokens, UUIDs) become `:id` for the same
+    reason: on many sites the path itself is the key (app/pathmask.py)."""
     if not isinstance(v, str):
         return "/"
     v = v.strip()
@@ -604,7 +608,7 @@ def _clean_path(v) -> str:
     v = v.split("?", 1)[0].split("#", 1)[0]
     if not v.startswith("/"):
         return "/"
-    return v[:512]
+    return mask_path(v[:512])
 
 
 def _ingest_store(payload: dict, headers: dict, client_host: str):
@@ -2188,6 +2192,8 @@ async def goal_create(request):
         name = (f.get("name") or "").strip()
         mtype = f.get("match_type") if f.get("match_type") in ("event", "path") else "event"
         mval = (f.get("match_value") or "").strip()
+        # Stored events are masked, so the goal is too: "/order/<id>" matches "/order/:id".
+        mval = mask_path(mval) if mtype == "path" else mask_label(mval)
         if name and mval:
             store.create_goal(site["id"], name, mtype, mval)
     return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
@@ -2214,7 +2220,10 @@ async def funnel_create(request):
             line = line.strip()
             if not line:
                 continue
-            steps.append({"type": "path" if line.startswith("/") else "event", "value": line})
+            if line.startswith("/"):
+                steps.append({"type": "path", "value": mask_path(line)})
+            else:
+                steps.append({"type": "event", "value": mask_label(line)})
         if name and len(steps) >= 2:
             store.create_funnel(site["id"], name, steps)
     return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
