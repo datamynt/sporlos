@@ -181,6 +181,16 @@ CREATE TABLE IF NOT EXISTS search_stats (
     position REAL,
     PRIMARY KEY (site_id, day, source, dim, key)
 );
+CREATE TABLE IF NOT EXISTS invites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+    email TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    invited_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    UNIQUE (tenant_id, email)
+);
 """
 
 
@@ -344,6 +354,9 @@ def init_db() -> None:
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS currency TEXT")
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS payment_method TEXT")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0")
+            # New tables (invites, ...) need no line here: the schema file above is all
+            # CREATE ... IF NOT EXISTS and runs on every start, which creates them on an
+            # existing database too. Same for _SQLITE_SCHEMA below.
             # Etter kolonne-migreringen over — kan ikke stå i schema.sql (se merknad der).
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
@@ -2511,3 +2524,328 @@ def seo_overview(tenant_id: int, days: int = 7) -> list[dict]:
     out = list(sites.values())
     out.sort(key=lambda s: (-s["clicks"], -s["ai"], s["domain"]))
     return out
+
+
+# --- Self-serve deletion (a site, or the whole account) ------------------------
+
+# Every table that holds rows for one site, children before parents (event_items
+# points at events). search_stats and search_connections are created lazily and
+# `anchors` is unused schema that exists only in Postgres (see
+# scripts/purge_bot_signups.py), so tables missing from this database are skipped:
+# the list names everything that could ever hold a site's rows.
+# On-chain anchors hold only Merkle roots over many sites' daily rollup hashes, and
+# every rollup row stores its own inclusion proof (app/anchor.py), so deleting one
+# site's rollups breaks no other site's proof and leaves nothing on chain to delete.
+SITE_TABLES = (
+    "event_items",
+    "events",
+    "goals",
+    "funnels",
+    "daily_rollups",
+    "search_stats",
+    "search_connections",
+    "anchors",
+)
+
+
+def _table_exists(cur, name: str) -> bool:
+    if _USE_PG:
+        cur.execute("SELECT to_regclass(%s) IS NOT NULL AS x", (name,))
+        return bool(cur.fetchone()["x"])
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,))
+    return cur.fetchone() is not None
+
+
+def _delete_sites(cur, site_ids: list[int]) -> dict[str, int]:
+    """Delete these sites and all their rows on the caller's cursor (one transaction).
+    Returns rows deleted per table."""
+    counts: dict[str, int] = {}
+    if not site_ids:
+        return counts
+    ph = ",".join([P] * len(site_ids))
+    for table in SITE_TABLES:
+        if _table_exists(cur, table):
+            cur.execute(f"DELETE FROM {table} WHERE site_id IN ({ph})", tuple(site_ids))
+            counts[table] = cur.rowcount
+    cur.execute(f"DELETE FROM sites WHERE id IN ({ph})", tuple(site_ids))
+    counts["sites"] = cur.rowcount
+    return counts
+
+
+def delete_site(site_id: int, tenant_id: int) -> dict[str, int] | None:
+    """Delete one site and everything stored for it, in one transaction. The tenant
+    check is part of the same transaction, so another tenant's site is never
+    touched. None if the site isn't this tenant's; else rows deleted per table."""
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, public_id FROM sites WHERE id = {P} AND tenant_id = {P}",
+            (site_id, tenant_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        counts = _delete_sites(cur, [row["id"]])
+    _site_cache.pop(row["public_id"], None)  # ingest stops counting it right away
+    return counts
+
+
+def tenant_emails(tenant_id: int) -> list[str]:
+    with _cursor() as cur:
+        cur.execute(f"SELECT email FROM users WHERE tenant_id = {P} ORDER BY id", (tenant_id,))
+        return [r["email"] for r in cur.fetchall()]
+
+
+def delete_tenant(tenant_id: int) -> dict[str, int]:
+    """Delete a whole account in one transaction: every site with all its rows (as
+    delete_site), the API keys, open invites, the users with their Google/Microsoft
+    logins and outstanding reset links, and the tenant row. Returns rows deleted per table.
+
+    Nothing here touches Stripe or Vipps: the caller refuses while a paid
+    subscription runs, and invoices live with Stripe/Vipps/Fiken, not here."""
+    with _cursor() as cur:
+        cur.execute(f"SELECT id, public_id FROM sites WHERE tenant_id = {P}", (tenant_id,))
+        sites = [dict(r) for r in cur.fetchall()]
+        counts = _delete_sites(cur, [s["id"] for s in sites])
+        cur.execute(f"SELECT id, email FROM users WHERE tenant_id = {P}", (tenant_id,))
+        users = [dict(r) for r in cur.fetchall()]
+        uids = [u["id"] for u in users]
+        emails = [u["email"] for u in users]
+        if uids:
+            ph = ",".join([P] * len(uids))
+            # Explicit: SQLite runs without foreign_keys=ON, so ON DELETE CASCADE is not enforced there.
+            cur.execute(f"DELETE FROM user_identities WHERE user_id IN ({ph})", tuple(uids))
+            counts["user_identities"] = cur.rowcount
+            cur.execute(f"DELETE FROM reset_tokens WHERE email IN ({ph})", tuple(emails))
+            counts["reset_tokens"] = cur.rowcount
+        cur.execute(f"DELETE FROM api_keys WHERE tenant_id = {P}", (tenant_id,))
+        counts["api_keys"] = cur.rowcount
+        cur.execute(f"DELETE FROM invites WHERE tenant_id = {P}", (tenant_id,))
+        counts["invites"] = cur.rowcount
+        cur.execute(f"DELETE FROM users WHERE tenant_id = {P}", (tenant_id,))
+        counts["users"] = cur.rowcount
+        cur.execute(f"DELETE FROM tenants WHERE id = {P}", (tenant_id,))
+        counts["tenants"] = cur.rowcount
+    for s in sites:
+        _site_cache.pop(s["public_id"], None)
+    return counts
+
+
+# --- Users of an account, and invitations to join one ---------------------------
+
+INVITE_TTL_DAYS = 7
+
+
+def _now_str(delta: timedelta = timedelta()) -> str:
+    return (datetime.now(timezone.utc) + delta).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _invite_key(token: str) -> str:
+    """Stored instead of the token, like reset tokens: a leaked row or backup must not
+    work as an invitation link."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def list_users(tenant_id: int) -> list[dict]:
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, email, created_at FROM users WHERE tenant_id = {P} ORDER BY id", (tenant_id,)
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def account_owner_id(tenant_id: int) -> int | None:
+    """The user who created the account (the first user). Only the owner may delete the
+    account, and the owner can't be removed by a colleague."""
+    with _cursor() as cur:
+        cur.execute(f"SELECT MIN(id) AS id FROM users WHERE tenant_id = {P}", (tenant_id,))
+        r = cur.fetchone()
+        return int(r["id"]) if r and r["id"] is not None else None
+
+
+def remove_user(user_id: int, tenant_id: int) -> bool:
+    """Remove one user from an account: the user row, their Google/Microsoft logins,
+    reset links and the invites they sent, in one transaction. Only within the given
+    tenant; False if the user isn't in it.
+
+    This also ends every session of theirs: _user() requires the session version
+    stored on the user row, which no longer exists (ids are never reused)."""
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, email FROM users WHERE id = {P} AND tenant_id = {P}", (user_id, tenant_id)
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        cur.execute(f"DELETE FROM user_identities WHERE user_id = {P}", (user_id,))
+        cur.execute(f"DELETE FROM reset_tokens WHERE email = {P}", (row["email"],))
+        cur.execute(f"DELETE FROM invites WHERE invited_by = {P}", (user_id,))
+        cur.execute(f"DELETE FROM users WHERE id = {P} AND tenant_id = {P}", (user_id, tenant_id))
+    return True
+
+
+def create_invite(tenant_id: int, email: str, invited_by: int) -> dict:
+    """Invite an address to an account, replacing any open invite for the same address
+    there. Returns {id, token}; the token exists only in the mail we send."""
+    token = secrets.token_urlsafe(32)
+    email = email.strip().lower()
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM invites WHERE expires_at <= {P}", (_now_str(),))
+        cur.execute(f"DELETE FROM invites WHERE tenant_id = {P} AND email = {P}", (tenant_id, email))
+        sql = (
+            "INSERT INTO invites (tenant_id, email, token_hash, invited_by, created_at, expires_at) "
+            f"VALUES ({P}, {P}, {P}, {P}, {P}, {P})"
+        )
+        args = (tenant_id, email, _invite_key(token), invited_by, _now_str(),
+                _now_str(timedelta(days=INVITE_TTL_DAYS)))
+        if _USE_PG:
+            cur.execute(sql + " RETURNING id", args)
+            invite_id = cur.fetchone()["id"]
+        else:
+            cur.execute(sql, args)
+            invite_id = cur.lastrowid
+    return {"id": invite_id, "token": token}
+
+
+_INVITE_SELECT = (
+    "SELECT i.id, i.tenant_id, i.email, i.expires_at, t.name AS company, u.email AS inviter "
+    "FROM invites i JOIN tenants t ON t.id = i.tenant_id JOIN users u ON u.id = i.invited_by "
+)
+
+
+def get_invite(token: str) -> dict | None:
+    """The open, unexpired invite for this link, with the company and inviter, or None."""
+    if not token:
+        return None
+    with _cursor() as cur:
+        cur.execute(
+            _INVITE_SELECT + f"WHERE i.token_hash = {P} AND i.expires_at > {P}",
+            (_invite_key(token), _now_str()),
+        )
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def get_invite_by_id(invite_id: int) -> dict | None:
+    with _cursor() as cur:
+        cur.execute(
+            _INVITE_SELECT + f"WHERE i.id = {P} AND i.expires_at > {P}", (invite_id, _now_str())
+        )
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def list_invites(tenant_id: int) -> list[dict]:
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, email, expires_at FROM invites WHERE tenant_id = {P} AND expires_at > {P} "
+            "ORDER BY id",
+            (tenant_id, _now_str()),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def delete_invite(invite_id: int, tenant_id: int) -> bool:
+    with _cursor() as cur:
+        cur.execute(
+            f"DELETE FROM invites WHERE id = {P} AND tenant_id = {P}", (invite_id, tenant_id)
+        )
+        return cur.rowcount > 0
+
+
+def accept_invite(invite_id: int, password_hash: str,
+                  identity: tuple[str, str, str | None] | None = None) -> dict | str | None:
+    """Turn an invite into a user of the invite's account, in one transaction: the invite
+    is consumed (single use), the user gets the invited address, verified (the link
+    proves it), and optionally a Google/Microsoft login (idp_id, subject, email) bound.
+
+    The invite alone decides the account and the address. Returns {uid, tid, email};
+    "exists" if the address already has a Sporløs account; "taken" if the login is
+    already bound to someone; None if the invite is gone or expired. A concurrent
+    accept loses on the DELETE, or on a unique key: that rolls the whole transaction
+    back (the invite stays) and reads as "exists"."""
+    try:
+        return _accept_invite(invite_id, password_hash, identity)
+    except (psycopg2.IntegrityError if _USE_PG else sqlite3.IntegrityError):
+        return "exists"
+
+
+def _accept_invite(invite_id, password_hash, identity):
+    with _cursor() as cur:
+        cur.execute(
+            f"SELECT id, tenant_id, email FROM invites WHERE id = {P} AND expires_at > {P}",
+            (invite_id, _now_str()),
+        )
+        inv = cur.fetchone()
+        if not inv:
+            return None
+        inv = dict(inv)
+        cur.execute(f"SELECT 1 AS x FROM users WHERE email = {P}", (inv["email"],))
+        if cur.fetchone():
+            return "exists"
+        if identity:
+            cur.execute(
+                f"SELECT 1 AS x FROM user_identities WHERE idp_id = {P} AND subject = {P}",
+                identity[:2],
+            )
+            if cur.fetchone():
+                return "taken"
+        cur.execute(f"DELETE FROM invites WHERE id = {P}", (inv["id"],))
+        if cur.rowcount != 1:
+            return None
+        sql = (
+            "INSERT INTO users (tenant_id, email, password_hash, email_verified) "
+            f"VALUES ({P}, {P}, {P}, 1)"
+        )
+        args = (inv["tenant_id"], inv["email"], password_hash)
+        if _USE_PG:
+            cur.execute(sql + " RETURNING id", args)
+            uid = cur.fetchone()["id"]
+        else:
+            cur.execute(sql, args)
+            uid = cur.lastrowid
+        if identity:
+            cur.execute(
+                "INSERT INTO user_identities (idp_id, subject, user_id, email) "
+                f"VALUES ({P}, {P}, {P}, {P})",
+                (identity[0], identity[1], uid, identity[2]),
+            )
+    return {"uid": uid, "tid": inv["tenant_id"], "email": inv["email"]}
+
+
+# Invite mails go to addresses the inviter chooses, so they get the same kind of cap
+# as /forgot, in the same hashed hourly buckets: per account, and per target address
+# (re-inviting one address over and over must not flood that inbox).
+def _tenant_key(tenant_id: int) -> str:
+    return hashlib.sha256(f"tenant|{tenant_id}".encode()).hexdigest()
+
+
+def invite_attempts(tenant_id: int, email: str) -> tuple[int, int]:
+    """(invite mails from this account, invite mails to this address) this hour."""
+    _ensure_forgot_throttle()
+    hour = _forgot_hour()
+    keys = (("invite_tenant", _tenant_key(tenant_id)), ("invite_email", forgot_email_hash(email)))
+    out = []
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM forgot_throttle WHERE hour < {P}", (hour,))
+        for kind, key in keys:
+            cur.execute(
+                f"SELECT n FROM forgot_throttle WHERE hour = {P} AND kind = {P} AND key = {P}",
+                (hour, kind, key),
+            )
+            r = cur.fetchone()
+            out.append(r["n"] if r else 0)
+    return out[0], out[1]
+
+
+def invite_bump(tenant_id: int, email: str) -> None:
+    _ensure_forgot_throttle()
+    hour = _forgot_hour()
+    with _cursor() as cur:
+        for kind, key in (("invite_tenant", _tenant_key(tenant_id)),
+                          ("invite_email", forgot_email_hash(email))):
+            cur.execute(
+                f"INSERT INTO forgot_throttle (hour, kind, key, n) VALUES ({P}, {P}, {P}, 1) "
+                f"ON CONFLICT (hour, kind, key) DO UPDATE SET n = forgot_throttle.n + 1",
+                (hour, kind, key),
+            )

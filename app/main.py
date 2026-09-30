@@ -1764,11 +1764,18 @@ async def sso_start(request):
     if not innlogg.enabled(provider):
         return _sso_fail()
     plan = request.query_params.get("plan", "")
+    return await _sso_begin(
+        request, provider, plan=plan if plan in _PLAN_LABELS else "",
+        # ?reauth=1: a logged-in, SSO-only user proves it's still them before deleting the account.
+        reauth=request.query_params.get("reauth") == "1",
+    )
+
+
+async def _sso_begin(request, provider: str, **flow):
+    """Send the browser to the provider. `flow` rides along in the session, bound to this
+    one state value, and comes back to sso_callback as `pending`."""
     state = secrets.token_urlsafe(24)
-    request.session["sso"] = {
-        "s": state, "p": provider, "exp": int(time.time()) + _SSO_TTL,
-        "plan": plan if plan in _PLAN_LABELS else "",
-    }
+    request.session["sso"] = {"s": state, "p": provider, "exp": int(time.time()) + _SSO_TTL, **flow}
     try:
         url = await innlogg.start(
             provider, f"{PUBLIC_BASE}/auth/sso/callback?state={state}",
@@ -1822,8 +1829,17 @@ async def sso_callback(request):
         log.warning("sso callback %s: %s", provider, e)
         return _sso_fail()
 
+    if pending.get("invite"):  # started from an invite link: join that account
+        return _sso_join(request, pending["invite"], who)
     bound = store.user_by_identity(who.idp_id, who.subject)
     me = _user(request)
+    if me and pending.get("reauth"):
+        # Fresh login before deleting an SSO-only account: only the login bound to
+        # this very user counts. A new session restarts the clock (iat).
+        if not bound or bound["id"] != me["uid"]:
+            return RedirectResponse("/app?konto=annen#slett-konto", status_code=302)
+        _login(request, me["uid"], me["tid"])
+        return RedirectResponse("/app?konto=klar#slett-konto", status_code=302)
     if me:  # «Koble til» from the account page
         if bound and bound["id"] != me["uid"]:
             return RedirectResponse("/app?sso=opptatt#konto", status_code=302)
@@ -2258,6 +2274,319 @@ async def change_password(request):
     # Every other session (a stolen cookie, a forgotten laptop) ends here; this one stays.
     request.session["sv"] = store.bump_session_version(me["id"])
     return RedirectResponse("/app?pw=ok", status_code=302)
+
+
+# --- Self-serve deletion: one site, or the whole account --------------------------
+# Deletion logs one line with ids only (no e-mail, no domain). WARNING because the
+# app configures no logging: INFO from the "sporlos" logger never reaches the
+# container log.
+
+# An account without a password (Google/Microsoft only) proves it is still its owner
+# by a login at most this old.
+_REAUTH_SECONDS = 600
+_PAID_PLANS = ("liten", "vekst", "pro")
+
+
+def _running_subscription(tenant: dict) -> str:
+    """Returns "stripe" or "vipps" while a paid subscription runs (or a Vipps agreement
+    awaits approval), else "". Account deletion waits for it to end: we never cancel it on
+    the customer's behalf, since nothing in this flow may touch money."""
+    if tenant.get("vipps_pending_plan"):
+        return "vipps"
+    if tenant.get("plan") in _PAID_PLANS:
+        if tenant.get("stripe_subscription_id"):
+            return "stripe"
+        if tenant.get("vipps_agreement_id"):
+            return "vipps"
+    return ""
+
+
+async def site_delete(request):
+    """Delete one site and all its data. The user types the domain to confirm."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    f = await request.form()
+    site, pid = _own_site(request, f)
+    if not site:  # not this tenant's site: don't reveal whether it exists
+        return RedirectResponse("/app", status_code=302)
+    typed = str(f.get("confirm") or "").strip().lower()
+    if not typed or (typed != site["domain"] and store.normalize_domain(typed) != site["domain"]):
+        return RedirectResponse(f"/app?site={pid}&slett=feil#slett", status_code=302)
+    counts = store.delete_site(site["id"], user["tid"])
+    if counts is None:
+        return RedirectResponse("/app", status_code=302)
+    log.warning("site deleted: tenant=%s site=%s rows=%s", user["tid"], site["id"], sum(counts.values()))
+    request.session["deleted_site"] = site["domain"]  # shown once on /app, kept out of the URL
+    return RedirectResponse("/app", status_code=302)
+
+
+async def account_delete(request):
+    """Delete the whole account (tenant). Confirm by typing the company name or the
+    e-mail, plus the password; an SSO-only account needs a login from the last
+    _REAUTH_SECONDS instead. Refused while a paid subscription runs."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    f = await request.form()
+    back = "/app?konto={}#slett-konto"
+    tenant = store.get_tenant(user["tid"]) or {}
+    me = store.get_user(user["uid"]) or {}
+    login_row = store.get_user_by_email(me.get("email") or "") or {}
+    if user["uid"] != store.account_owner_id(user["tid"]):
+        return RedirectResponse(back.format("ikke-eier"), status_code=302)
+    if _running_subscription(tenant):
+        return RedirectResponse(back.format("abonnement"), status_code=302)
+    typed = str(f.get("confirm") or "").strip().lower()
+    if not typed or typed not in (str(tenant.get("name") or "").strip().lower(), me.get("email")):
+        return RedirectResponse(back.format("feil"), status_code=302)
+    pw_hash = str(login_row.get("password_hash") or "")
+    if pw_hash.startswith("!"):  # SSO only: no password to ask for
+        if time.time() - int(request.session.get("iat") or 0) > _REAUTH_SECONDS:
+            return RedirectResponse(back.format("logginn"), status_code=302)
+    else:
+        # The password field is a guessing oracle for whoever holds the session:
+        # same failure budget as /login.
+        ip = client_ip(dict(request.headers), fallback=request.client.host if request.client else "")
+        by_ip, by_email = store.login_failures(ip, me["email"])
+        if by_ip >= LOGIN_FAILS_PER_IP_HOURLY or by_email >= LOGIN_FAILS_PER_EMAIL_HOURLY:
+            return RedirectResponse(back.format("for-mange"), status_code=302)
+        if not verify_password(f.get("password") or "", pw_hash):
+            store.login_fail_bump(ip, me["email"])
+            return RedirectResponse(back.format("passord"), status_code=302)
+    emails = store.tenant_emails(user["tid"])
+    counts = store.delete_tenant(user["tid"])
+    request.session.clear()
+    log.warning(
+        "account deleted: tenant=%s by_user=%s users=%s sites=%s",
+        user["tid"], user["uid"], counts.get("users", 0), counts.get("sites", 0),
+    )
+    for addr in emails:
+        mailer.send(
+            addr,
+            "Kontoen er slettet – Sporløs",
+            "Hei,\n\nKontoen og alle data er slettet fra Sporløs: nettstedene med all statistikk, "
+            "API-nøklene og alle brukerne på kontoen. Sporingskoden på nettstedene teller ikke "
+            "lenger, og du kan fjerne den når det passer.\n\n"
+            "Sikkerhetskopiene våre slettes ikke én og én. Dataene forsvinner fra dem når "
+            "kopiene roterer ut.\n\n"
+            "Var det ikke du som slettet kontoen, skriv til post@sporlos.no.\n\nSporløs",
+        )
+    return _shell(
+        request,
+        "Kontoen er slettet",
+        "<h1>Kontoen er slettet</h1>"
+        "<p class=muted>Nettstedene, all statistikk, API-nøklene og brukerne er slettet. "
+        "Vi har sendt en bekreftelse på e-post.</p>"
+        "<p class=muted>Sporingskoden på nettstedene teller ikke lenger. Fjern den når det passer.</p>"
+        '<p class=muted><a href="/">Til forsiden</a></p>',
+    )
+
+
+# --- Users of an account: invite a colleague, remove one -------------------------
+# Every user of an account has the same rights (no roles yet): sees and runs the same
+# sites, invites and removes others. Nobody removes themselves here; that is what
+# deleting the account is for.
+# Invite mails go to addresses the inviter types, so: only from a verified address,
+# and capped per account and per target address (hashed hourly buckets, like /forgot).
+INVITES_PER_ACCOUNT_HOURLY = 10
+INVITES_PER_ADDRESS_HOURLY = 3
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _plain(s: str, limit: int = 80) -> str:
+    """User-typed text (a company name) for a plain-text mail: one line, capped."""
+    s = " ".join(str(s or "").split())
+    return s if len(s) <= limit else s[: limit - 1] + "…"
+
+
+def _short_date(v) -> str:
+    try:
+        d = datetime.strptime(str(v)[:10], "%Y-%m-%d")
+    except ValueError:
+        return ""
+    return f"{d.day}.{d.month}."
+
+
+async def user_invite(request):
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    f = await request.form()
+    back = "/app?brukere={}#brukere"
+    email = str(f.get("email") or "").strip().lower()
+    me = store.get_user(user["uid"]) or {}
+    if not me.get("email_verified"):
+        return RedirectResponse(back.format("ubekreftet"), status_code=302)
+    if len(email) > 254 or not _EMAIL_RE.match(email):
+        return RedirectResponse(back.format("ugyldig"), status_code=302)
+    if store.get_user_by_email(email):  # users.email is unique across all accounts
+        return RedirectResponse(back.format("finnes"), status_code=302)
+    by_account, by_address = store.invite_attempts(user["tid"], email)
+    if by_account >= INVITES_PER_ACCOUNT_HOURLY or by_address >= INVITES_PER_ADDRESS_HOURLY:
+        log.warning("invite: throttled (tenant=%s)", user["tid"])
+        return RedirectResponse(back.format("for-mange"), status_code=302)
+    inv = store.create_invite(user["tid"], email, user["uid"])
+    store.invite_bump(user["tid"], email)
+    company = _plain((store.get_tenant(user["tid"]) or {}).get("name"))
+    sent = mailer.send(
+        email,
+        "Invitasjon til Sporløs",
+        f"Hei,\n\n{me['email']} har invitert deg til {company} på Sporløs, webanalyse uten "
+        f"cookies.\n\nKlikk for å bli med (lenken gjelder i {store.INVITE_TTL_DAYS} dager og "
+        f"virker én gang):\n{PUBLIC_BASE}/invitasjon?t={inv['token']}\n\n"
+        "Kjenner du ikke til dette, kan du se bort fra e-posten.\n\nSporløs",
+    )
+    if not sent:  # nobody holds the link, so the invite is useless: drop it
+        store.delete_invite(inv["id"], user["tid"])
+        return RedirectResponse(back.format("sendefeil"), status_code=302)
+    log.warning("invite sent: tenant=%s by_user=%s invite=%s", user["tid"], user["uid"], inv["id"])
+    return RedirectResponse(back.format("invitert"), status_code=302)
+
+
+async def invite_revoke(request):
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    f = await request.form()
+    try:
+        done = store.delete_invite(int(f.get("invite_id") or 0), user["tid"])
+    except ValueError:
+        done = False
+    return RedirectResponse("/app?brukere=trukket#brukere" if done else "/app#brukere", status_code=302)
+
+
+async def user_remove(request):
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    f = await request.form()
+    try:
+        target = int(f.get("user_id") or 0)
+    except ValueError:
+        target = 0
+    if target == user["uid"]:
+        return RedirectResponse("/app?brukere=deg#brukere", status_code=302)
+    if target == store.account_owner_id(user["tid"]):
+        return RedirectResponse("/app?brukere=eier#brukere", status_code=302)
+    if not store.remove_user(target, user["tid"]):  # not in this account: say nothing
+        return RedirectResponse("/app#brukere", status_code=302)
+    log.warning("user removed: tenant=%s user=%s by_user=%s", user["tid"], target, user["uid"])
+    return RedirectResponse("/app?brukere=fjernet#brukere", status_code=302)
+
+
+def _invite_gone(request):
+    return _shell(
+        request,
+        "Invitasjonen virker ikke",
+        "<h1>Invitasjonen virker ikke</h1><p class=muted>Lenken er allerede brukt, trukket "
+        f"tilbake eller utløpt (den gjelder i {store.INVITE_TTL_DAYS} dager). Be den som "
+        "inviterte deg om å sende en ny.</p>"
+        '<p class=muted><a href="/login">Logg inn</a></p>',
+    )
+
+
+def _invite_exists(request, email: str):
+    return _shell(
+        request,
+        "Du har allerede en konto",
+        f"<h1>Du har allerede en konto</h1><p class=muted><b>{escape(email)}</b> har allerede "
+        "en Sporløs-konto, og en adresse kan bare høre til én konto. Be den som inviterte deg "
+        "om å invitere en annen adresse.</p>"
+        '<p class=muted><a href="/login">Logg inn</a></p>',
+    )
+
+
+async def invitation(request):
+    """/invitasjon?t=…: join the account an invite points to. Password, or Google/Microsoft."""
+    if request.method == "POST":
+        f = await request.form()
+        token, pw = str(f.get("t") or ""), f.get("password") or ""
+    else:
+        token, pw = request.query_params.get("t") or "", ""
+    inv = store.get_invite(token)
+    if not inv:
+        return _invite_gone(request)
+    err = ""
+    if request.method == "POST":
+        if len(pw) < 8:
+            err = "Passordet må ha minst 8 tegn."
+        else:
+            res = store.accept_invite(inv["id"], hash_password(pw))
+            if res == "exists":
+                return _invite_exists(request, inv["email"])
+            if not res:
+                return _invite_gone(request)
+            _login(request, res["uid"], res["tid"])
+            log.warning("invite accepted: tenant=%s user=%s", res["tid"], res["uid"])
+            return RedirectResponse("/app", status_code=302)
+    company, t = escape(inv["company"] or ""), escape(token)
+    sso = ""
+    providers = [p for p in ("google", "microsoft") if innlogg.enabled(p)]
+    if providers:
+        sso = '<div class=sso><div class=sso-or>eller</div>' + "".join(
+            f'<a class=sso-btn href="/invitasjon/sso/{p}?t={t}">{_SSO_ICONS[p]}'
+            f"<span>Fortsett med {innlogg.LABELS[p]}</span></a>"
+            for p in providers
+        ) + "</div>"
+    other = (
+        "<p class=muted>Du er logget inn på en annen konto nå. Blir du med, logges du inn "
+        f"som {escape(inv['email'])} i stedet.</p>" if _user(request) else ""
+    )
+    eb = f"<div class=err>{escape(err)}</div>" if err else ""
+    return _shell(
+        request,
+        "Bli med",
+        f"""<h1>Bli med i {company}</h1>
+<p class=muted><b>{escape(inv["inviter"])}</b> har invitert deg til <b>{company}</b> på Sporløs.
+Du ser og styrer de samme nettstedene som resten av {company}.</p>{other}{eb}
+<form method=post action="/invitasjon">
+  <input type=hidden name=t value="{t}">
+  <label>E-post</label><input name=email value="{escape(inv["email"])}" readonly autocomplete=username
+    style="color:var(--muted);background:var(--bg)">
+  <label>Velg passord</label><input name=password type=password required minlength=8 autocomplete=new-password>
+  <button>Bli med</button>
+</form>
+{sso}
+<p class=muted>Invitasjonen gjelder til {_short_date(inv["expires_at"])} og virker én gang.</p>""",
+    )
+
+
+async def invitation_sso(request):
+    """«Fortsett med Google/Microsoft» on the invite page: the normal SSO flow, with the
+    invite id riding along in the flow's own session state."""
+    provider = request.path_params.get("provider", "")
+    if not innlogg.enabled(provider):
+        return _sso_fail()
+    inv = store.get_invite(request.query_params.get("t") or "")
+    if not inv:
+        return _invite_gone(request)
+    return await _sso_begin(request, provider, plan="", invite=inv["id"])
+
+
+def _sso_join(request, invite_id: int, who):
+    """Finish an invite with a Google/Microsoft login. The invite decides the account and
+    the address (the inviter typed it, and the link was mailed there); the provider's
+    e-mail decides nothing. The login must not be bound to anyone yet."""
+    inv = store.get_invite_by_id(invite_id)
+    if not inv:
+        return _invite_gone(request)
+    res = store.accept_invite(inv["id"], "!sso", identity=(who.idp_id, who.subject, who.email))
+    if res == "taken":
+        label = escape(innlogg.LABELS.get(who.provider, ""))
+        return _shell(
+            request,
+            "Allerede i bruk",
+            f"<h1>{label}-kontoen er allerede i bruk</h1><p class=muted>Den er koblet til en "
+            "annen Sporløs-bruker. Åpne lenken i invitasjonen igjen og velg et passord i stedet.</p>",
+        )
+    if res == "exists":
+        return _invite_exists(request, inv["email"])
+    if not res:
+        return _invite_gone(request)
+    _login(request, res["uid"], res["tid"])
+    log.warning("invite accepted: tenant=%s user=%s sso=%s", res["tid"], res["uid"], who.provider)
+    return RedirectResponse("/app", status_code=302)
 
 
 async def api_key_create(request):
@@ -3878,6 +4207,212 @@ def export_csv(request):
     )
 
 
+# Danger zone (delete a site / the account): the .card frame with a red-toned border
+# and a red button. The button red is fixed, not --err: --err turns light pink in
+# dark mode, and white text on it would be unreadable.
+_DANGER_CSS = """
+.card.danger{border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
+.danger summary{cursor:pointer;color:var(--err);font-weight:600;font-size:1rem}
+.danger p{margin:.6rem 0}
+.danger label{display:block;font-size:.85rem;color:var(--muted);margin:.8rem 0 .25rem}
+.danger input:not([type=hidden]){width:100%;max-width:24rem;box-sizing:border-box;padding:.55rem .6rem;
+border:1px solid var(--line);border-radius:8px;font:inherit;font-size:.95rem;background:var(--card);color:var(--ink)}
+.danger .btn-danger{display:block;margin-top:1rem}
+.btn-danger{background:#b91c1c}.btn-danger:hover{background:#991b1b}
+"""
+
+
+def _note(kind: str, html: str) -> str:
+    """Flash message in the same style as pw_flash. `html` must already be escaped."""
+    bg, fg = {"ok": ("--ok-bg", "--ok-ink"), "err": ("--err-bg", "--err"), "info": ("--info-bg", "--info")}[kind]
+    return (
+        f'<p style="background:var({bg});color:var({fg});padding:.5rem .8rem;border-radius:7px;'
+        f'font-size:.9rem">{html}</p>'
+    )
+
+
+_KONTO_FLASH = {
+    "ikke-eier": ("err", "Bare den som opprettet kontoen kan slette den."),
+    "feil": ("err", "Skriv firmanavnet eller e-posten din nøyaktig slik den står, for å bekrefte."),
+    "passord": ("err", "Feil passord. Kontoen er ikke slettet."),
+    "for-mange": ("err", "For mange feil passord. Vent en time, eller bruk «Glemt passord»."),
+    "logginn": ("err", "Logg inn på nytt først (under), så kan du slette kontoen."),
+    "annen": ("err", "Det var ikke den Google- eller Microsoft-kontoen du er logget inn med."),
+    "klar": ("ok", "Takk. Du kan slette kontoen de neste 10 minuttene."),
+}
+
+
+def _account_delete_card(request, user: dict, tenant: dict, me: dict) -> str:
+    """«Slett kontoen» at the bottom of the account section."""
+    code = request.query_params.get("konto") or ""
+    flash = _note(*_KONTO_FLASH[code]) if code in _KONTO_FLASH else ""
+    company = escape(str(tenant.get("name") or ""))
+    intro = (
+        f"<p class=fine>Sletter kontoen <b>{company}</b> for godt: alle nettsteder med all statistikk, "
+        "API-nøklene og alle brukerne. Det kan ikke angres. Vil du ta vare på tallene, last ned CSV "
+        "fra hvert nettsted først.</p>"
+        "<p class=fine>Sikkerhetskopiene slettes ikke én og én. Dataene forsvinner fra dem når "
+        "kopiene roterer ut, senest etter 35 dager.</p>"
+    )
+    owner = store.account_owner_id(user["tid"])
+    running = _running_subscription(tenant)
+    if user["uid"] != owner:
+        owner_row = store.get_user(owner) if owner else None
+        who = escape(owner_row["email"]) if owner_row else "den som opprettet kontoen"
+        body = f"<p class=fine>Bare {who}, som opprettet kontoen, kan slette den.</p>"
+    elif running == "stripe":
+        body = _note(
+            "info",
+            "Du har et aktivt abonnement. Si det opp under "
+            '<a href="/billing/portal" style="color:inherit">Administrer abonnement</a> først. '
+            "Kontoen kan slettes når den betalte perioden er ute. Haster det, skriv til post@sporlos.no.",
+        )
+    elif running == "vipps":
+        body = (
+            '<div style="background:var(--info-bg);color:var(--info);padding:.5rem .8rem;'
+            'border-radius:7px;font-size:.9rem">Du betaler med Vipps. Avslutt avtalen først, i '
+            "Vipps-appen eller her: "
+            '<form method=post action="/billing/vipps/avslutt" style="display:inline">'
+            '<button style="background:none;border:0;padding:0;color:inherit;cursor:pointer;'
+            'font:inherit;text-decoration:underline">Avslutt abonnement</button></form>. '
+            "Kontoen kan slettes når den betalte perioden er ute. Haster det, skriv til "
+            "post@sporlos.no.</div>"
+        )
+    else:
+        login_row = store.get_user_by_email(me.get("email") or "") or {}
+        sso_only = str(login_row.get("password_hash") or "").startswith("!")
+        fresh = time.time() - int(request.session.get("iat") or 0) <= _REAUTH_SECONDS
+        if sso_only and not fresh:
+            linked = set(store.identities_for_user(user["uid"]))
+            links = "".join(
+                f'<a class=sso-link href="/auth/sso/start/{p}?reauth=1">{_SSO_ICONS[p]} '
+                f"Logg inn på nytt med {innlogg.LABELS[p]}</a>"
+                for p in ("google", "microsoft")
+                if innlogg.enabled(p) and innlogg.PROVIDERS[p] in linked
+            )
+            body = (
+                "<p class=fine>Du logger inn med Google eller Microsoft, så vi har ikke noe passord "
+                "å spørre om. Logg inn på nytt for å bekrefte at det er deg. Da kan du slette kontoen "
+                "de neste 10 minuttene.</p>"
+                + (f'<div style="display:flex;gap:.8rem;flex-wrap:wrap">{links}</div>' if links else
+                   '<p class=fine>Logg ut og inn igjen, eller sett et passord under '
+                   '<a href="/forgot">Glemt passord</a>.</p>')
+            )
+        else:
+            pw_field = (
+                "" if sso_only else
+                "<label for=del-pw>Passord</label>"
+                "<input id=del-pw name=password type=password required autocomplete=current-password>"
+            )
+            body = (
+                '<form method=post action="/app/account/delete">'
+                f"<label for=del-confirm>Skriv <b>{company}</b> eller e-posten din for å bekrefte</label>"
+                "<input id=del-confirm name=confirm required autocomplete=off autocapitalize=off spellcheck=false>"
+                f"{pw_field}"
+                '<button class="btn btn-danger">Slett kontoen for godt</button></form>'
+            )
+    opened = " open" if code in _KONTO_FLASH or code == "abonnement" else ""
+    return (
+        f"{flash}<div class='card danger' id=slett-konto><details{opened}>"
+        f"<summary>Slett kontoen</summary>{intro}{body}</details></div>"
+    )
+
+
+_BRUKERE_FLASH = {
+    "invitert": ("ok", "Invitasjonen er sendt. Den gjelder i 7 dager."),
+    "finnes": ("err", "Den adressen har allerede en Sporløs-konto. En adresse kan bare høre til én konto."),
+    "ugyldig": ("err", "Skriv en gyldig e-postadresse."),
+    "for-mange": ("err", "For mange invitasjoner akkurat nå. Prøv igjen om en time."),
+    "sendefeil": ("err", "Vi fikk ikke sendt e-posten. Prøv igjen om litt."),
+    "ubekreftet": ("err", "Bekreft e-posten din først, så kan du invitere andre."),
+    "fjernet": ("ok", "Brukeren er fjernet og logget ut."),
+    "trukket": ("ok", "Invitasjonen er trukket tilbake."),
+    "deg": ("err", "Du kan ikke fjerne deg selv. Be en annen bruker om det, eller slett hele kontoen under."),
+    "eier": ("err", "Den som opprettet kontoen kan ikke fjernes."),
+}
+
+_USERS_CSS = """
+table.users td{padding:.6rem .2rem}
+table.users td:last-child{width:7.5rem}
+table.users small{display:block;font-size:.78rem;color:var(--muted);font-weight:400}
+table.users td.me{color:var(--muted);font-size:.9rem}
+.linkbtn{background:none;border:0;padding:0;font:inherit;font-size:.9rem;cursor:pointer;
+color:var(--err);text-decoration:underline}
+"""
+
+
+def _users_card(request, user: dict, me: dict) -> str:
+    """«Brukere»: who can log in to this account, open invites, and the invite form."""
+    code = request.query_params.get("brukere") or ""
+    flash = _note(*_BRUKERE_FLASH[code]) if code in _BRUKERE_FLASH else ""
+    rows = ""
+    owner = store.account_owner_id(user["tid"])
+    for u in store.list_users(user["tid"]):
+        email = escape(u["email"])
+        if u["id"] == user["uid"] or u["id"] == owner:
+            label = " · ".join(x for x in (
+                "deg" if u["id"] == user["uid"] else "", "eier" if u["id"] == owner else "") if x)
+            rows += f'<tr><td title="{email}">{email}</td><td class=me>{label}</td></tr>'
+            continue
+        rows += (
+            f'<tr><td title="{email}">{email}</td><td>'
+            '<form method=post action="/app/users/remove" '
+            "onsubmit=\"return confirm('Fjerne brukeren fra kontoen? Den logges ut med en gang.')\">"
+            f'<input type=hidden name=user_id value="{int(u["id"])}">'
+            "<button class=linkbtn>Fjern</button></form></td></tr>"
+        )
+    for inv in store.list_invites(user["tid"]):
+        email = escape(inv["email"])
+        rows += (
+            f'<tr><td title="{email}">{email}'
+            f"<small>Invitert · gjelder til {_short_date(inv['expires_at'])}</small></td><td>"
+            '<form method=post action="/app/users/invite/revoke">'
+            f'<input type=hidden name=invite_id value="{int(inv["id"])}">'
+            "<button class=linkbtn>Trekk tilbake</button></form></td></tr>"
+        )
+    if me.get("email_verified"):
+        form = (
+            '<form class=add method=post action="/app/users/invite" style="margin-top:.8rem">'
+            '<input name=email type=email placeholder="kollega@firma.no" required autocomplete=off>'
+            "<button class=btn>Inviter</button></form>"
+        )
+    else:
+        form = '<p class=fine style="margin:.8rem 0 0">Bekreft e-posten din først, så kan du invitere kolleger.</p>'
+    return (
+        f"{flash}<div class=card id=brukere><b>Brukere</b>"
+        f"<table class=users style='margin-top:.4rem'>{rows}</table>{form}"
+        '<p class=fine style="margin:.6rem 0 0">Alle brukere ser og styrer de samme nettstedene, og kan '
+        "invitere og fjerne andre. Bare den som opprettet kontoen kan slette den. Invitasjonen sendes "
+        "på e-post og gjelder i 7 dager.</p></div>"
+    )
+
+
+def _site_delete_card(request, site: dict, public_id: str) -> str:
+    """Danger zone at the bottom of a site's dashboard."""
+    pid = escape(public_id)
+    domain = escape(site["domain"])
+    failed = request.query_params.get("slett") == "feil"
+    err = _note("err", f"Skriv <b>{domain}</b> nøyaktig for å bekrefte.") if failed else ""
+    csv = " · ".join(
+        f'<a href="/app/export?site={pid}&period=90&what={w}">{w}</a>'
+        for w in ("tidsserie", "sider", "kilder", "land")
+    )
+    return (
+        f"<div class='card block danger' id=slett><details{' open' if failed else ''}>"
+        f"<summary>Slett nettstedet</summary>{err}"
+        f"<p class=hint>Sletter <b>{domain}</b> og alt vi har lagret om det: hendelser, dagstall, "
+        "mål, funnels og søkedata. Det kan ikke angres, og sporingskoden slutter å telle.</p>"
+        f"<p class=hint>Vil du ta vare på tallene, last ned CSV først (siste 90 dager): {csv}.</p>"
+        "<p class=hint>Forseglingen i den offentlige loggen inneholder bare fingeravtrykk av "
+        "dagstall og sier ingenting om nettstedet. Den trenger ikke slettes.</p>"
+        '<form method=post action="/app/sites/delete">'
+        f'<input type=hidden name=site value="{pid}">'
+        f"<label for=del-domain>Skriv <b>{domain}</b> for å bekrefte</label>"
+        "<input id=del-domain name=confirm required autocomplete=off autocapitalize=off spellcheck=false>"
+        '<button class="btn btn-danger">Slett nettstedet</button></form></details></div>'
+    )
+
+
 def dashboard(request):
     """Dashboard m/ periodevelger, trendgraf og breakdowns. Styling: midlertidig (design-runde senere)."""
     user = _user(request)
@@ -4087,6 +4622,14 @@ def dashboard(request):
                 + "".join(items) + "</div></div>"
             )
 
+        users_html = _users_card(request, user, me or {})
+        delete_html = _account_delete_card(request, user, tenant, me or {})
+        deleted_site = request.session.pop("deleted_site", None)
+        deleted_flash = (
+            _note("ok", f"<b>{escape(deleted_site)}</b> er slettet, med all statistikk.")
+            if deleted_site else ""
+        )
+
         planinfo = ""
         if tenant.get("plan") in ("liten", "vekst", "pro"):
             label = {"liten": "Liten", "vekst": "Vekst", "pro": "Pro"}[tenant["plan"]]
@@ -4122,7 +4665,7 @@ def dashboard(request):
 <title>Sporløs — mine nettsteder</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}{_CHROME_CSS}{_SSO_CSS}
+<style>{_BRAND_CSS}{_CHROME_CSS}{_SSO_CSS}{_DANGER_CSS}{_USERS_CSS}
 h1{{font-size:1.7rem;letter-spacing:-.02em;margin:0 0 .3rem}}
 h2.sec{{font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
 font-weight:700;margin:2rem 0 .4rem}}
@@ -4155,6 +4698,7 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 <div class=wrap>
 {_site_nav(request)}
 <h1>Mine nettsteder</h1>
+{deleted_flash}
 {verify_banner}
 {trial}
 {limit_msg}
@@ -4173,9 +4717,11 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 <h2 class=sec>API-tilgang</h2>
 {api_html}
 <h2 class=sec>Konto</h2>
+{users_html}
 {pw_flash}
 {password_html}
 {sso_html}
+{delete_html}
 <p class=fine style="margin-top:1.5rem">Cookieløs · ingen IP lagret · samtykkefri</p>
 </div>
 {_SITE_FOOTER}"""
@@ -4628,7 +5174,7 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 <title>Sporløs — {escape(site['domain'])}</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}{_CHROME_CSS}{_DASH_CSS}</style>
+<style>{_BRAND_CSS}{_CHROME_CSS}{_DASH_CSS}{_DANGER_CSS}</style>
 <div class=wrap>
 {_site_nav(request)}
 {verify_banner}
@@ -4659,6 +5205,7 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 <a href="https://wordpress.org/plugins/sporlos-analytics/">WordPress</a> ·
 <a href="/shopify">Shopify</a></p></details></div>
 {public_html}
+{_site_delete_card(request, site, public_id)}
 <p class=footnote>Cookieløs · ingen IP lagret · samtykkefri ·
 Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
 </div>
@@ -4813,6 +5360,12 @@ routes = [
     Route("/app/api-keys", api_key_create, methods=["POST"]),
     Route("/app/api-keys/revoke", api_key_revoke, methods=["POST"]),
     Route("/app/password", change_password, methods=["POST"]),
+    Route("/app/account/delete", account_delete, methods=["POST"]),
+    Route("/app/users/invite", user_invite, methods=["POST"]),
+    Route("/app/users/invite/revoke", invite_revoke, methods=["POST"]),
+    Route("/app/users/remove", user_remove, methods=["POST"]),
+    Route("/invitasjon", invitation, methods=["GET", "POST"]),
+    Route("/invitasjon/sso/{provider}", invitation_sso),
     Route("/utviklere", utviklere),
     Route("/shopify", shopify_guide),
     Route("/integrasjoner", integrasjoner),
@@ -4830,6 +5383,7 @@ routes = [
     Route("/api/v1/ecommerce", api.ecommerce),
     Route("/api/v1/anchors", api.anchors),
     Route("/app/sites", create_site_post, methods=["POST"]),
+    Route("/app/sites/delete", site_delete, methods=["POST"]),
     Route("/app/goals", goal_create, methods=["POST"]),
     Route("/app/goals/delete", goal_delete, methods=["POST"]),
     Route("/app/funnels", funnel_create, methods=["POST"]),
