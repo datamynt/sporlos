@@ -12,8 +12,9 @@ Kobling per site skjer ved AUTOMATCH mot instansens nøkler — ingen konfig per
   - Bing: BING_WEBMASTER_API_KEY. Matcher mot GetUserSites.
 
 Multi-tenant-merknad: nøklene er instans-globale (self-host-modellen — den som
-drifter instansen eier koblingen). Per-tenant OAuth er bevisst utsatt; ikke
-gjenbruk disse nøklene på en delt instans med fremmede tenants.
+drifter instansen eier koblingen). They are used only for the tenants listed in
+SPORLOS_SEO_TENANTS; everyone else connects Search Console with their own
+Google account (OAuth, «Koble til Search Console»).
 
 Google: dagstotaler + søkeord + sider (dimensions=[date,…]).
 Bing:   kun dagstotaler (GetRankAndTrafficStats) — query-API-et har kjente
@@ -337,6 +338,17 @@ def sync(days: int = 30) -> str:
     """
     sa, bing_key = _sa(), _bing_key()
     store.ensure_search_schema()
+    # The instance keys see every property the operator has access to. Matching
+    # them against ANY tenant's site would hand a stranger who adds "merdata.no"
+    # to their own account that property's search data. Only the operator's own
+    # tenants (SPORLOS_SEO_TENANTS, comma-separated ids) use them; customers
+    # connect their own Search Console via OAuth.
+    operator = {
+        int(t) for t in os.environ.get("SPORLOS_SEO_TENANTS", "").replace(" ", "").split(",")
+        if t.isdigit()
+    }
+    if (sa or bing_key) and not operator:
+        log.warning("SPORLOS_SEO_TENANTS er ikke satt: instansnøklene brukes ikke for noen site")
     has_connections = bool(store.search_connections_all())
     if not sa and not bing_key and not has_connections:
         return ("ingen kilder: sett GSC_SERVICE_ACCOUNT / BING_WEBMASTER_API_KEY, "
@@ -373,7 +385,8 @@ def sync(days: int = 30) -> str:
         try:
             gmc_token = _gmc_token(_sa())
             gmc_map = _gmc_account_map(
-                gmc_token, {s["domain"].lower(): s["id"] for s in store.seo_sites()})
+                gmc_token, {s["domain"].lower(): s["id"] for s in store.seo_sites()
+                            if s["tenant_id"] in operator})
         except Exception as e:
             log.info("GMC hoppes over: %s", e)
 
@@ -383,6 +396,7 @@ def sync(days: int = 30) -> str:
         parts = []
         rows: list[tuple] = []
         conn = connections.get(site["id"])
+        shared = site["tenant_id"] in operator
         if conn:
             try:
                 utok = user_access_token(decrypt_token(conn["refresh_token"]))
@@ -396,7 +410,7 @@ def sync(days: int = 30) -> str:
                     parts.append("gsc(kunde) ingen property-match")
             except Exception as e:
                 parts.append(f"gsc(kunde) FEIL ({e})")
-        elif sa:
+        elif sa and shared:
             prop = _match_gsc(site["domain"], gsc_props)
             if prop:
                 try:
@@ -407,7 +421,7 @@ def sync(days: int = 30) -> str:
                     parts.append(f"gsc FEIL ({e})")
             else:
                 parts.append("gsc –")
-        if bing_key:
+        if bing_key and shared:
             burl = _match_bing(site["domain"], bing_urls)
             if burl:
                 try:

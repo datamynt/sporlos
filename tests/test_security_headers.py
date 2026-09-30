@@ -42,6 +42,15 @@ class SecurityHeadersTest(unittest.TestCase):
         self.assertEqual(resp.headers["X-Frame-Options"], "DENY")
         self.assertEqual(resp.headers["Referrer-Policy"], "strict-origin-when-cross-origin")
 
+    def test_csp_blocks_third_party_sources(self):
+        csp = self.client.get("/").headers["Content-Security-Policy"]
+        self.assertIn("default-src 'self'", csp)
+        self.assertIn("script-src 'self' 'unsafe-inline';", csp)
+        self.assertIn("connect-src 'self'", csp)
+        self.assertIn("object-src 'none'", csp)
+        self.assertIn("frame-ancestors 'none'", csp)
+        self.assertNotIn("form-action", csp)  # would break Stripe/Vipps redirects after POST
+
     def test_no_includesubdomains_or_preload(self):
         # Deliberately conservative this round — see the middleware docstring.
         hsts = self.client.get("/").headers["Strict-Transport-Security"]

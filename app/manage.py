@@ -52,7 +52,9 @@ def main(argv: list[str]) -> int:
     if cmd == "blind-hashes":
         # One-off after the switch to random daily salts. Dry run without --apply.
         res = store.blind_legacy_hashes(apply="--apply" in argv[1:])
-        verb = "blinded" if res["applied"] else "would blind (dry run, pass --apply)"
+        # The count is every event before today: the command can't tell a blinded
+        # hash from a legacy one, so a dry run after --apply shows the same number.
+        verb = "blinded" if res["applied"] else "would process (dry run, pass --apply)"
         print(f"blind-hashes: {verb} {res['events']} events across {res['days']} days")
         return 0
 

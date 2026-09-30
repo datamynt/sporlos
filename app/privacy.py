@@ -56,8 +56,14 @@ def visitor_hash(
 
 
 def client_ip(headers: dict, fallback: str = "") -> str:
-    """Hent klient-IP fra proxy-headere. Brukes KUN til hashing, lagres aldri."""
+    """Hent klient-IP fra proxy-headere. Brukes KUN til hashing, lagres aldri.
+
+    Only the RIGHTMOST X-Forwarded-For entry is trusted: it is the one our own proxy
+    (Caddy, the only way in, the app binds 127.0.0.1) appended. Anything to its left
+    is whatever the client sent and can be forged to dodge the signup/forgot/assist
+    throttles or to pick a visitor hash. X-Real-IP is never set by Caddy, so a value
+    there could only come from the client; it is ignored."""
     xff = headers.get("x-forwarded-for", "")
     if xff:
-        return xff.split(",")[0].strip()
-    return headers.get("x-real-ip", "") or fallback
+        return xff.split(",")[-1].strip()
+    return fallback
