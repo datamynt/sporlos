@@ -75,16 +75,16 @@ er ekte. Fingerprinting eller vedvarende identifikatorer ville endret bildet.)
 Sporløs lagrer og behandler statistikken på **norsk-eid maskinvare i Norge**. All innsamling, all
 behandling og hele den levende databasen ligger der.
 
-**Ett unntak, og vi sier det rett ut:** en nattlig sikkerhetskopi av databasen lastes opp til Google Cloud
-Storage i Belgia (region europe-west1). Google er amerikansk-eid, og norsk praksis (Datatilsynet, EDPB, KS' standardavtale for kommuner)
-regner ikke en EØS-*region* hos en US-eid skyleverandør som full datasuverenitet, fordi amerikansk lovgivning
-(FISA 702 / CLOUD Act) kan kreve innsyn uavhengig av hvor dataene fysisk ligger. Kopien inneholder det samme
-som databasen: aggregert statistikk og hasher som ikke kan føres tilbake til en person, pluss
-kontoopplysningene til den som har registrert seg.
+**Sikkerhetskopiene ligger også her.** Fra 30.09.2026 tas den nattlige sikkerhetskopien kun til Datamynts
+egne maskiner i Oslo, på to adresser, og gjenopprettes på prøve hver natt. Før det ble en kopi lastet opp til
+Google Cloud Storage i Belgia; den ordningen er avsluttet og kopiene der er slettet. Grunnen: norsk praksis
+(Datatilsynet, EDPB, KS' standardavtale for kommuner) regner ikke en EØS-*region* hos en US-eid
+skyleverandør som full datasuverenitet, fordi amerikansk lovgivning (FISA 702 / CLOUD Act) kan kreve
+innsyn uavhengig av hvor dataene fysisk ligger.
 
 For kommuner og offentlig sektor er dette spesielt viktig: KS' standard databehandleravtale har som
-**hovedregel** at personopplysninger ikke føres ut av Norge og at servere står i Norge. Serveren står i
-Norge i dag; sikkerhetskopien over er det som gjenstår før vi kan si at hele kjeden gjør det.
+**hovedregel** at personopplysninger ikke føres ut av Norge og at servere står i Norge. Både serveren og
+sikkerhetskopiene står i Norge.
 
 ---
 

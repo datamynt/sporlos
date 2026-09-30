@@ -114,9 +114,9 @@ Norsk rett. Verneting er [Oslo tingrett].
 
 ## Bilag C — Godkjente underleverandører
 
-| Underleverandør | Tjeneste | Lokasjon | Eierskap |
-|---|---|---|---|
-| Google Cloud (Google Ireland Ltd) | Nattlig sikkerhetskopi av databasen | Google Cloud Storage, region europe-west1 (Belgia, EU) | Amerikansk-eid — omfattet av US CLOUD Act |
+Ingen per 30.09.2026. Drift og nattlige sikkerhetskopier skjer på Datamynts egne maskiner i Oslo
+(to adresser). Fram til 30.09.2026 ble en nattlig sikkerhetskopi lastet opp til Google Cloud Storage
+(europe-west1, Belgia); den ordningen er avsluttet og kopiene er slettet.
 
 Datamynt varsler Kunden ved endringer i denne listen.
 
