@@ -356,6 +356,8 @@ def init_db() -> None:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS dpa_version TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS dpa_accepted_at TIMESTAMPTZ")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS invoice_details TEXT")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS invoice_paid_through TEXT")
             # New tables (invites, ...) need no line here: the schema file above is all
             # CREATE ... IF NOT EXISTS and runs on every start, which creates them on an
             # existing database too. Same for _SQLITE_SCHEMA below.
@@ -390,6 +392,8 @@ def init_db() -> None:
                 "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE tenants ADD COLUMN dpa_version TEXT",
                 "ALTER TABLE tenants ADD COLUMN dpa_accepted_at TEXT",
+                "ALTER TABLE tenants ADD COLUMN invoice_details TEXT",
+                "ALTER TABLE tenants ADD COLUMN invoice_paid_through TEXT",
                 # Etter kolonne-migreringene — samme grunn som i PG-grenen over.
                 "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
                 "WHERE revenue_cents IS NOT NULL",
@@ -673,6 +677,17 @@ def _now_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def set_invoice_billing(tenant_id: int, plan: str, details: dict, paid_through: str) -> None:
+    """Annual invoice: the plan starts now; details (JSON) are what the invoice needs.
+    paid_through is the end of the invoiced year, for the renewal."""
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE tenants SET plan = {P}, invoice_details = {P}, invoice_paid_through = {P} "
+            f"WHERE id = {P}",
+            (plan, json.dumps(details, ensure_ascii=False), paid_through, tenant_id),
+        )
+
+
 def accept_dpa(tenant_id: int, version: str) -> None:
     """Record that the tenant accepted this databehandleravtale version (now)."""
     with _cursor() as cur:
@@ -851,7 +866,8 @@ def get_tenant(tenant_id: int) -> dict | None:
     with _cursor() as cur:
         cur.execute(
             f"SELECT id, name, plan, trial_ends_at, stripe_customer_id, stripe_subscription_id, "
-            f"vipps_agreement_id, vipps_pending_plan, vipps_charged_through "
+            f"vipps_agreement_id, vipps_pending_plan, vipps_charged_through, "
+            f"invoice_details, invoice_paid_through "
             f"FROM tenants WHERE id = {P}",
             (tenant_id,),
         )

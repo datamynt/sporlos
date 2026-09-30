@@ -25,6 +25,8 @@ import uuid
 
 import httpx
 
+from app import pricing
+
 VIPPS_MODE = os.environ.get("VIPPS_MODE", "test").lower()
 
 
@@ -39,10 +41,15 @@ MSN = _env("VIPPS_MSN")
 
 BASE = "https://api.vipps.no" if VIPPS_MODE == "live" else "https://apitest.vipps.no"
 
-# Priser i øre — speiler Stripe-produktene (NOK/mnd, eks. mva legges ikke på her:
-# prisene på sporlos.no er oppgitt eks. mva, Vipps trekker beløpet vi sender).
-PLAN_ORE = {"liten": 9900, "vekst": 24900, "pro": 59900}
-PLAN_NAMES = {"liten": "Sporløs Liten", "vekst": "Sporløs Vekst", "pro": "Sporløs Pro"}
+# Prices live in app/pricing.py (øre/month excluding VAT). Vipps charges exactly the
+# amount we send, so every agreement and charge sends the total INCLUDING 25 % MVA.
+PLAN_ORE = pricing.PLAN_ORE
+PLAN_NAMES = {p: f"Sporløs {n}" for p, n in pricing.PLAN_NAMES.items()}
+
+
+def charge_ore(plan: str) -> int:
+    """What Vipps actually draws per month: the plan price including VAT."""
+    return pricing.incl(PLAN_ORE[plan])
 
 _token_cache: dict = {"token": None, "exp": 0.0}
 
@@ -90,13 +97,13 @@ def create_agreement(plan: str, base_url: str) -> dict:
 
     Returnerer {"agreementId": ..., "vippsConfirmationUrl": ...}.
     """
-    amount = PLAN_ORE[plan]
+    amount = charge_ore(plan)
     name = PLAN_NAMES[plan]
     body = {
         "interval": {"unit": "MONTH", "count": 1},
         "pricing": {"type": "LEGACY", "amount": amount, "currency": "NOK"},
         "productName": name,
-        "productDescription": "Webanalyse uten cookies — sporlos.no",
+        "productDescription": "Webanalyse uten cookies — sporlos.no (inkl. 25 % mva)",
         "merchantRedirectUrl": f"{base_url}/billing/vipps/retur",
         "merchantAgreementUrl": f"{base_url}/app",
         "initialCharge": {
@@ -137,7 +144,7 @@ def create_charge(tenant_id: int, agreement_id: str, plan: str, due: dt.date) ->
     """Månedstrekk på aktiv avtale. Idempotent per tenant+måned."""
     ext = f"sporlos-{tenant_id}-{due:%Y-%m}"
     body = {
-        "amount": PLAN_ORE[plan],
+        "amount": charge_ore(plan),
         "transactionType": "DIRECT_CAPTURE",
         "type": "RECURRING",
         "description": f"{PLAN_NAMES[plan]} — {due:%B %Y}"[:45],
