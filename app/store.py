@@ -2654,6 +2654,15 @@ def list_users(tenant_id: int) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def account_owner_id(tenant_id: int) -> int | None:
+    """The user who created the account (the first user). Only the owner may delete the
+    account, and the owner can't be removed by a colleague."""
+    with _cursor() as cur:
+        cur.execute(f"SELECT MIN(id) AS id FROM users WHERE tenant_id = {P}", (tenant_id,))
+        r = cur.fetchone()
+        return int(r["id"]) if r and r["id"] is not None else None
+
+
 def remove_user(user_id: int, tenant_id: int) -> bool:
     """Remove one user from an account: the user row, their Google/Microsoft logins,
     reset links and the invites they sent, in one transaction. Only within the given

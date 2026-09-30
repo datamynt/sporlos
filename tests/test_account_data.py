@@ -479,6 +479,24 @@ class RemoveUserTest(unittest.TestCase):
         self.assertIn("brukere=deg", r.headers["location"])
         self.assertTrue(logged_in(owner))
 
+    def test_the_owner_cant_be_removed_by_a_colleague(self):
+        tid, owner, colleague, col = self._team("eierfjern")
+        owner_row = store.get_user_by_email("eierfjern-eier@example.no")
+        r = colleague.post("/app/users/remove", data={"user_id": owner_row["id"]}, follow_redirects=False)
+        self.assertIn("brukere=eier", r.headers["location"])
+        self.assertTrue(logged_in(owner))
+        self.assertNotIn("Fjern</button>", colleague.get("/app").text.split('id=brukere')[1].split("</table>")[0])
+
+    def test_only_the_owner_can_delete_the_account(self):
+        tid, owner, colleague, col = self._team("eierslett")
+        page = colleague.get("/app").text
+        self.assertIn("som opprettet kontoen, kan slette den", page)
+        r = colleague.post("/app/account/delete", data={"confirm": "eierslett AS", "password": "kollega-pw"},
+                           follow_redirects=False)
+        self.assertIn("konto=ikke-eier", r.headers["location"])
+        self.assertEqual(tenant_rows(tid)["users"], 2)
+        self.assertTrue(logged_in(owner))
+
     def test_account_deletion_takes_colleagues_and_invites_along(self):
         tid, owner, colleague, col = self._team("alle")
         invite(owner, "alle-apen@example.no")

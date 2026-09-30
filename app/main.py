@@ -2333,6 +2333,8 @@ async def account_delete(request):
     tenant = store.get_tenant(user["tid"]) or {}
     me = store.get_user(user["uid"]) or {}
     login_row = store.get_user_by_email(me.get("email") or "") or {}
+    if user["uid"] != store.account_owner_id(user["tid"]):
+        return RedirectResponse(back.format("ikke-eier"), status_code=302)
     if _running_subscription(tenant):
         return RedirectResponse(back.format("abonnement"), status_code=302)
     typed = str(f.get("confirm") or "").strip().lower()
@@ -2465,6 +2467,8 @@ async def user_remove(request):
         target = 0
     if target == user["uid"]:
         return RedirectResponse("/app?brukere=deg#brukere", status_code=302)
+    if target == store.account_owner_id(user["tid"]):
+        return RedirectResponse("/app?brukere=eier#brukere", status_code=302)
     if not store.remove_user(target, user["tid"]):  # not in this account: say nothing
         return RedirectResponse("/app#brukere", status_code=302)
     log.warning("user removed: tenant=%s user=%s by_user=%s", user["tid"], target, user["uid"])
@@ -4228,6 +4232,7 @@ def _note(kind: str, html: str) -> str:
 
 
 _KONTO_FLASH = {
+    "ikke-eier": ("err", "Bare den som opprettet kontoen kan slette den."),
     "feil": ("err", "Skriv firmanavnet eller e-posten din nøyaktig slik den står, for å bekrefte."),
     "passord": ("err", "Feil passord. Kontoen er ikke slettet."),
     "for-mange": ("err", "For mange feil passord. Vent en time, eller bruk «Glemt passord»."),
@@ -4247,10 +4252,15 @@ def _account_delete_card(request, user: dict, tenant: dict, me: dict) -> str:
         "API-nøklene og alle brukerne. Det kan ikke angres. Vil du ta vare på tallene, last ned CSV "
         "fra hvert nettsted først.</p>"
         "<p class=fine>Sikkerhetskopiene slettes ikke én og én. Dataene forsvinner fra dem når "
-        "kopiene roterer ut.</p>"
+        "kopiene roterer ut, senest etter 35 dager.</p>"
     )
+    owner = store.account_owner_id(user["tid"])
     running = _running_subscription(tenant)
-    if running == "stripe":
+    if user["uid"] != owner:
+        owner_row = store.get_user(owner) if owner else None
+        who = escape(owner_row["email"]) if owner_row else "den som opprettet kontoen"
+        body = f"<p class=fine>Bare {who}, som opprettet kontoen, kan slette den.</p>"
+    elif running == "stripe":
         body = _note(
             "info",
             "Du har et aktivt abonnement. Si det opp under "
@@ -4318,6 +4328,7 @@ _BRUKERE_FLASH = {
     "fjernet": ("ok", "Brukeren er fjernet og logget ut."),
     "trukket": ("ok", "Invitasjonen er trukket tilbake."),
     "deg": ("err", "Du kan ikke fjerne deg selv. Be en annen bruker om det, eller slett hele kontoen under."),
+    "eier": ("err", "Den som opprettet kontoen kan ikke fjernes."),
 }
 
 _USERS_CSS = """
@@ -4335,10 +4346,13 @@ def _users_card(request, user: dict, me: dict) -> str:
     code = request.query_params.get("brukere") or ""
     flash = _note(*_BRUKERE_FLASH[code]) if code in _BRUKERE_FLASH else ""
     rows = ""
+    owner = store.account_owner_id(user["tid"])
     for u in store.list_users(user["tid"]):
         email = escape(u["email"])
-        if u["id"] == user["uid"]:
-            rows += f'<tr><td title="{email}">{email}</td><td class=me>deg</td></tr>'
+        if u["id"] == user["uid"] or u["id"] == owner:
+            label = " · ".join(x for x in (
+                "deg" if u["id"] == user["uid"] else "", "eier" if u["id"] == owner else "") if x)
+            rows += f'<tr><td title="{email}">{email}</td><td class=me>{label}</td></tr>'
             continue
         rows += (
             f'<tr><td title="{email}">{email}</td><td>'
@@ -4368,7 +4382,8 @@ def _users_card(request, user: dict, me: dict) -> str:
         f"{flash}<div class=card id=brukere><b>Brukere</b>"
         f"<table class=users style='margin-top:.4rem'>{rows}</table>{form}"
         '<p class=fine style="margin:.6rem 0 0">Alle brukere ser og styrer de samme nettstedene, og kan '
-        "invitere og fjerne andre. Invitasjonen sendes på e-post og gjelder i 7 dager.</p></div>"
+        "invitere og fjerne andre. Bare den som opprettet kontoen kan slette den. Invitasjonen sendes "
+        "på e-post og gjelder i 7 dager.</p></div>"
     )
 
 
