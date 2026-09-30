@@ -335,6 +335,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS revenue_cents BIGINT")
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS currency TEXT")
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS payment_method TEXT")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0")
             # Etter kolonne-migreringen over — kan ikke stå i schema.sql (se merknad der).
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
@@ -363,6 +364,7 @@ def init_db() -> None:
                 "ALTER TABLE events ADD COLUMN revenue_cents INTEGER",
                 "ALTER TABLE events ADD COLUMN currency TEXT",
                 "ALTER TABLE events ADD COLUMN payment_method TEXT",
+                "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0",
                 # Etter kolonne-migreringene — samme grunn som i PG-grenen over.
                 "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
                 "WHERE revenue_cents IS NOT NULL",
@@ -578,6 +580,23 @@ def get_user(uid: int) -> dict | None:
         )
         r = cur.fetchone()
         return dict(r) if r else None
+
+
+def session_version(uid: int) -> int | None:
+    """Current session version, or None if the user no longer exists. A session
+    carries the version it was issued with; bumping it logs out every session."""
+    with _cursor() as cur:
+        cur.execute(f"SELECT session_version FROM users WHERE id = {P}", (uid,))
+        r = cur.fetchone()
+        return int(r["session_version"] or 0) if r else None
+
+
+def bump_session_version(uid: int) -> int:
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE users SET session_version = session_version + 1 WHERE id = {P}", (uid,)
+        )
+    return session_version(uid) or 0
 
 
 def set_email_verified(uid: int) -> None:
@@ -1292,6 +1311,17 @@ def list_api_keys(tenant_id: int) -> list[dict]:
             (tenant_id,),
         )
         return [dict(r) for r in cur.fetchall()]
+
+
+def revoke_all_api_keys(tenant_id: int) -> None:
+    """Revoke every API key of a tenant (e.g. when the address owner takes over an
+    unverified account someone else may have created)."""
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE api_keys SET revoked_at = {P} WHERE tenant_id = {P} AND revoked_at IS NULL",
+            (now_str, tenant_id),
+        )
 
 
 def revoke_api_key(key_id: int, tenant_id: int) -> None:
@@ -2051,6 +2081,39 @@ def forgot_bump(ip: str, email: str) -> None:
             )
 
 
+
+# Failed logins share the forgot_throttle table (same hourly buckets and hashed
+# keys) under their own kinds, so /forgot's global 'ip' total is unaffected.
+def login_failures(ip: str, email: str) -> tuple[int, int]:
+    """(failed logins from this IP, failed logins against this address) this hour."""
+    _ensure_forgot_throttle()
+    hour = _forgot_hour()
+    keys = (("login_ip", _ip_key(ip)), ("login_email", forgot_email_hash(email)))  # before the cursor: _ip_key reads the DB
+    out = []
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM forgot_throttle WHERE hour < {P}", (hour,))
+        for kind, key in keys:
+            cur.execute(
+                f"SELECT n FROM forgot_throttle WHERE hour = {P} AND kind = {P} AND key = {P}",
+                (hour, kind, key),
+            )
+            r = cur.fetchone()
+            out.append(r["n"] if r else 0)
+    return out[0], out[1]
+
+
+def login_fail_bump(ip: str, email: str) -> None:
+    _ensure_forgot_throttle()
+    hour = _forgot_hour()
+    keys = (("login_ip", _ip_key(ip)), ("login_email", forgot_email_hash(email)))
+    with _cursor() as cur:
+        for kind, key in keys:
+            cur.execute(
+                f"INSERT INTO forgot_throttle (hour, kind, key, n) VALUES ({P}, {P}, {P}, 1) "
+                f"ON CONFLICT (hour, kind, key) DO UPDATE SET n = forgot_throttle.n + 1",
+                (hour, kind, key),
+            )
+
 def sites_by_domains(domains: list[str]) -> list[dict]:
     """id+domene for et sett domener — brukes av forsidens «måler allerede»-chips."""
     if not domains:
@@ -2149,10 +2212,10 @@ def _ai_hosts() -> tuple[str, ...]:
 
 
 def seo_sites() -> list[dict]:
-    """Alle sites i instansen for seo-sync — GSC/Bing-nøklene er instans-globale
-    (self-host-modellen; se merknad i app/seo.py)."""
+    """Alle sites i instansen for seo-sync. The instance-wide GSC/Bing/GMC keys may
+    only be used for the operator's tenants: seo.sync filters on tenant_id."""
     with _cursor() as cur:
-        cur.execute("SELECT id, domain FROM sites ORDER BY domain")
+        cur.execute("SELECT id, tenant_id, domain FROM sites ORDER BY domain")
         return [dict(r) for r in cur.fetchall()]
 
 

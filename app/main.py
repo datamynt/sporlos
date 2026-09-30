@@ -85,10 +85,35 @@ if HTTPS_ONLY:
         log.critical("SMTP (SMTP_HOST + MAIL_FROM) ikke satt — passord-reset/verifisering feiler STILLE.")
 
 
+# Absolute session lifetime. The cookie is re-signed on every response, so without
+# this a session used at least every 14 days would never expire.
+SESSION_MAX_AGE = 30 * 86400
+
+
+def _login(request, uid: int, tid: int) -> None:
+    """Start a fresh session for this user, stamped with its session version."""
+    request.session.clear()
+    request.session.update(
+        uid=uid, tid=tid, sv=store.session_version(uid) or 0, iat=int(time.time())
+    )
+
+
 def _user(request):
-    """Innlogget bruker fra session, eller None."""
+    """Innlogget bruker fra session, eller None.
+
+    A session is valid only while the user exists, its version matches (a password
+    change or reset bumps it, which logs out every other session) and it is younger
+    than SESSION_MAX_AGE."""
     uid, tid = request.session.get("uid"), request.session.get("tid")
-    return {"uid": uid, "tid": tid} if uid and tid else None
+    if not (uid and tid):
+        return None
+    iat = request.session.get("iat")
+    if iat is None:  # issued before sessions carried a timestamp: start the clock now
+        request.session["iat"] = iat = int(time.time())
+    if time.time() - iat > SESSION_MAX_AGE or store.session_version(uid) != request.session.get("sv", 0):
+        request.session.clear()
+        return None
+    return {"uid": uid, "tid": tid}
 
 
 # Ekstern innlogging (OpenID Connect) — hver leverandør aktiveres kun når
@@ -182,6 +207,9 @@ SIGNUP_GLOBAL_HOURLY = 40
 # romslig for en ekte bruker som roter med passordet, stramt nok til at
 # trakassering av ett offer ikke skalerer — se store.forgot_attempts.
 FORGOT_PER_IP_HOURLY = 5
+# Password guessing: a person who mistypes a few times never gets near these.
+LOGIN_FAILS_PER_IP_HOURLY = 30
+LOGIN_FAILS_PER_EMAIL_HOURLY = 10
 FORGOT_PER_EMAIL_HOURLY = 3
 FORGOT_GLOBAL_HOURLY = 40
 stripe = None
@@ -1327,7 +1355,7 @@ async def signup(request):
             else:
                 try:
                     tid, uid = store.create_account(company, email, hash_password(pw))
-                    request.session["uid"], request.session["tid"] = uid, tid
+                    _login(request, uid, tid)
                     store.signup_bump(ip)
                     try:
                         notify.send_verification(uid, email)
@@ -1370,11 +1398,17 @@ async def login(request):
         f = await request.form()
         email = (f.get("email") or "").strip().lower()
         pw = f.get("password") or ""
-        u = store.get_user_by_email(email)
-        if u and verify_password(pw, u["password_hash"]):
-            request.session["uid"], request.session["tid"] = u["id"], u["tenant_id"]
-            return RedirectResponse("/app", status_code=302)
-        err = "Feil e-post eller passord."
+        ip = client_ip(dict(request.headers), fallback=request.client.host if request.client else "")
+        by_ip, by_email = store.login_failures(ip, email)
+        if by_ip >= LOGIN_FAILS_PER_IP_HOURLY or by_email >= LOGIN_FAILS_PER_EMAIL_HOURLY:
+            err = "For mange mislykkede forsøk. Vent en time, eller bruk «Glemt passord»."
+        else:
+            u = store.get_user_by_email(email)
+            if u and verify_password(pw, u["password_hash"]):
+                _login(request, u["id"], u["tenant_id"])
+                return RedirectResponse("/app", status_code=302)
+            store.login_fail_bump(ip, email)
+            err = "Feil e-post eller passord."
     eb = f'<div class=err>{escape(err)}</div>' if err else ""
     if request.query_params.get("reset"):
         eb += '<p style="color:#0a0;font-size:.9rem">Passordet er oppdatert — logg inn.</p>'
@@ -1527,6 +1561,16 @@ async def reset(request):
             )
         store.set_password(email, hash_password(pw))
         store.invalidate_reset_tokens(email)
+        u = store.get_user_by_email(email)
+        if u:
+            store.bump_session_version(u["id"])  # logs out every existing session
+            me = store.get_user(u["id"]) or {}
+            if not me.get("email_verified"):
+                # The reset link proves who owns the address. If the account was never
+                # verified, someone else may have registered it (pre-hijack): their
+                # sessions just ended above, and their API keys go too.
+                store.revoke_all_api_keys(u["tenant_id"])
+                store.set_email_verified(u["id"])
         return RedirectResponse("/login?reset=1", status_code=302)
     return _shell(
         "Velg nytt passord",
@@ -1586,12 +1630,12 @@ async def _oidc_callback(request, provider: str, sentinel: str):
         return RedirectResponse("/login", status_code=302)
     u = store.get_user_by_email(email)
     if u:
-        request.session["uid"], request.session["tid"] = u["id"], u["tenant_id"]
+        _login(request, u["id"], u["tenant_id"])
     else:
         name = info.get("name") or email.split("@")[0]
         tid, uid = store.create_account(name, email, sentinel)
         store.set_email_verified(uid)  # leverandøren har allerede bekreftet e-posten
-        request.session["uid"], request.session["tid"] = uid, tid
+        _login(request, uid, tid)
     return RedirectResponse("/app", status_code=302)
 
 
@@ -1951,6 +1995,8 @@ async def change_password(request):
         return RedirectResponse("/app?pw=kort", status_code=302)
     store.set_password(me["email"], hash_password(new))
     store.invalidate_reset_tokens(me["email"])
+    # Every other session (a stolen cookie, a forgotten laptop) ends here; this one stays.
+    request.session["sv"] = store.bump_session_version(me["id"])
     return RedirectResponse("/app?pw=ok", status_code=302)
 
 
@@ -4549,12 +4595,25 @@ if _INDEXNOW_KEY:
         Route(f"/{_INDEXNOW_KEY}.txt", _indexnow_keyfile),
 ]
 
+_CSP = (
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; "
+    "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Baseline security headers (Observatory baseline round, 2026-09-16).
 
-    No enforcing Content-Security-Policy yet — Stripe/Vipps checkout, GSC
-    OAuth and the Shopify pixel beacon haven't been audited for a CSP
-    allowlist, and a wrong CSP can silently break payment.
+    Content-Security-Policy (2026-09-30): every page is self-contained, with no
+    third-party script, style, font, image or fetch (checked by grepping all
+    rendered HTML), so everything is limited to 'self'. Inline <script>/<style>
+    blocks are everywhere, hence 'unsafe-inline'; the policy still stops an
+    injected <script src=evil> and exfiltration through fetch/img/connect.
+    Stripe and Vipps checkout, GSC OAuth and Google/Microsoft login are all
+    server-side redirects (top-level navigation), which CSP doesn't restrict.
+    No form-action: Chrome applies it to redirects after a POST, and a payment
+    redirect is exactly what a wrong form-action would silently break.
 
     X-Frame-Options: DENY. Checked whether anything served by this app is
     meant to be framed: the Shopify integration's "Fase 1" pixel (/shopify)
@@ -4575,6 +4634,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers.setdefault("Content-Security-Policy", _CSP)
         return response
 
 
@@ -4593,6 +4653,7 @@ middleware = [
         secret_key=SESSION_SECRET,
         https_only=HTTPS_ONLY,
         same_site="lax",
+        max_age=SESSION_MAX_AGE,
     ),
     # Komprimer HTML/CSS/JSON (~70-80% mindre) på markedsførings- og /app-sider.
     # minimum_size hopper over de bittesmå beacon-svarene (POST /api/v1/events).

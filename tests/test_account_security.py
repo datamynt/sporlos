@@ -1,5 +1,6 @@
 """Account security: reset links hashed at rest, single use, killed by a password
-change; logout only on POST.
+change; logout only on POST; session versions and max age; failed-login throttle;
+client IP taken from the proxy-appended X-Forwarded-For entry only.
 
 Stdlib unittest against a throwaway SQLite file, like tests/test_forgot_throttle.py.
 Run ONE FILE PER PROCESS (the backend is chosen at import time):
@@ -95,6 +96,70 @@ class LogoutTest(unittest.TestCase):
         r = self.client.post("/logout", follow_redirects=False)
         self.assertEqual(r.status_code, 303)
         self.assertFalse(self._logged_in())
+
+
+class SessionVersionTest(unittest.TestCase):
+    def _client(self):
+        c = TestClient(app)
+        r = c.post("/login", data={"email": EMAIL, "password": PASSWORD}, follow_redirects=False)
+        self.assertIn(r.status_code, (302, 303))
+        return c
+
+    def _in(self, c):
+        return c.get("/app", follow_redirects=False).status_code == 200
+
+    def test_password_change_ends_other_sessions_but_not_this_one(self):
+        global PASSWORD
+        a, b = self._client(), self._client()
+        self.assertTrue(self._in(a) and self._in(b))
+        new = PASSWORD + "-ny"
+        r = a.post("/app/password", data={"old": PASSWORD, "new": new}, follow_redirects=False)
+        self.assertIn("pw=ok", r.headers["location"])
+        PASSWORD = new
+        self.assertTrue(self._in(a))
+        self.assertFalse(self._in(b))
+
+    def test_reset_ends_every_session(self):
+        global PASSWORD
+        a = self._client()
+        token = store.create_reset_token(EMAIL)
+        new = PASSWORD + "-r"
+        r = TestClient(app).post("/reset", data={"token": token, "password": new},
+                                 follow_redirects=False)
+        self.assertIn("reset=1", r.headers["location"])
+        PASSWORD = new
+        self.assertFalse(self._in(a))
+
+    def test_session_older_than_max_age_is_rejected(self):
+        import time as _time
+        from app import main
+        a = self._client()
+        real = _time.time
+        try:
+            main.time.time = lambda: real() + main.SESSION_MAX_AGE + 60
+            self.assertFalse(self._in(a))
+        finally:
+            main.time.time = real
+
+
+class LoginThrottleTest(unittest.TestCase):
+    def test_locks_after_repeated_failures_for_one_address(self):
+        from app import main
+        c = TestClient(app)
+        target = "stranger@example.no"
+        for _ in range(main.LOGIN_FAILS_PER_EMAIL_HOURLY):
+            r = c.post("/login", data={"email": target, "password": "feil"})
+            self.assertIn("Feil e-post eller passord", r.text)
+        r = c.post("/login", data={"email": target, "password": "feil"})
+        self.assertIn("For mange mislykkede", r.text)
+
+
+class ClientIpTest(unittest.TestCase):
+    def test_only_the_proxy_appended_entry_counts(self):
+        from app.privacy import client_ip
+        self.assertEqual(client_ip({"x-forwarded-for": "6.6.6.6, 203.0.113.9"}), "203.0.113.9")
+        self.assertEqual(client_ip({"x-forwarded-for": "203.0.113.9"}), "203.0.113.9")
+        self.assertEqual(client_ip({"x-real-ip": "6.6.6.6"}, fallback="10.0.0.1"), "10.0.0.1")
 
 
 if __name__ == "__main__":
