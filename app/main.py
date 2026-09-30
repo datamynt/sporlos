@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -40,7 +41,7 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from app import api, assist, blogg, icons, mailer, notify, store, vipps
+from app import api, assist, blogg, icons, innlogg, mailer, notify, store, vipps
 from app.auth import check_token, hash_password, verify_password
 from app.datacenter import is_datacenter
 from app.geo import country_no
@@ -116,65 +117,87 @@ def _user(request):
     return {"uid": uid, "tid": tid}
 
 
-# Ekstern innlogging (OpenID Connect) — hver leverandør aktiveres kun når
-# credentials er satt. «innlogg» = innlogg.no, Datamynt-flåtens felles innlogging
-# (Zitadel) — registrer sporløs som OIDC-app der og sett INNLOGG_CLIENT_ID/SECRET.
+# Google OAuth app for «Koble til Search Console» (per-site GSC access with the
+# customer's own Google account). Login with Google/Microsoft is separate and goes
+# through Datamynt ID, see app/innlogg.py and the /auth/sso routes.
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
-INNLOGG_ISSUER = os.environ.get("INNLOGG_ISSUER", "https://id.datamynt.no")
-INNLOGG_CLIENT_ID = os.environ.get("INNLOGG_CLIENT_ID")
-INNLOGG_CLIENT_SECRET = os.environ.get("INNLOGG_CLIENT_SECRET")
 _HAS_GOOGLE = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
-_HAS_INNLOGG = bool(INNLOGG_CLIENT_ID and INNLOGG_CLIENT_SECRET)
 oauth = None
-if _HAS_GOOGLE or _HAS_INNLOGG:
+if _HAS_GOOGLE:
     from authlib.integrations.starlette_client import OAuth
 
     oauth = OAuth()
-    if _HAS_GOOGLE:
-        oauth.register(
-            name="google",
-            client_id=GOOGLE_CLIENT_ID,
-            client_secret=GOOGLE_CLIENT_SECRET,
-            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-            client_kwargs={"scope": "openid email profile"},
-        )
-        # «Koble til Search Console»-knappen: samme OAuth-app, ekstra scope +
-        # offline access (refresh-token). prompt=consent tvinger frem refresh-
-        # token også ved re-kobling (Google utelater det ellers ved re-samtykke).
-        oauth.register(
-            name="gscconn",
-            client_id=GOOGLE_CLIENT_ID,
-            client_secret=GOOGLE_CLIENT_SECRET,
-            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-            client_kwargs={
-                "scope": "openid email https://www.googleapis.com/auth/webmasters.readonly"
-            },
-            authorize_params={"access_type": "offline", "prompt": "consent"},
-        )
-    if _HAS_INNLOGG:
-        oauth.register(
-            name="innlogg",
-            client_id=INNLOGG_CLIENT_ID,
-            client_secret=INNLOGG_CLIENT_SECRET,
-            server_metadata_url=f"{INNLOGG_ISSUER}/.well-known/openid-configuration",
-            client_kwargs={"scope": "openid email profile"},
-        )
-
-
-def _sso_buttons():
-    """«Fortsett med …»-knapper for aktiverte leverandører — tomt hvis ingen."""
-    btn = (
-        '<a href="{href}" style="display:block;text-align:center;border:1px solid var(--line);'
-        'border-radius:8px;padding:.6rem;margin-top:1rem;text-decoration:none;color:var(--ink)">'
-        "Fortsett med {navn}</a>"
+    # «Koble til Search Console»-knappen: ekstra scope +
+    # offline access (refresh-token). prompt=consent tvinger frem refresh-
+    # token også ved re-kobling (Google utelater det ellers ved re-samtykke).
+    oauth.register(
+        name="gscconn",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={
+            "scope": "openid email https://www.googleapis.com/auth/webmasters.readonly"
+        },
+        authorize_params={"access_type": "offline", "prompt": "consent"},
     )
-    out = ""
-    if _HAS_GOOGLE:
-        out += btn.format(href="/auth/google", navn="Google")
-    if _HAS_INNLOGG:
-        out += btn.format(href="/auth/innlogg", navn="innlogg.no")
-    return out
+
+
+# Provider marks, inline so the login page loads nothing from Google or Microsoft.
+_SSO_ICONS = {
+    "google": (
+        '<svg viewBox="0 0 48 48" aria-hidden=true>'
+        '<path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/>'
+        '<path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>'
+        '<path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>'
+        '<path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/>'
+        "</svg>"
+    ),
+    "microsoft": (
+        '<svg viewBox="0 0 21 21" aria-hidden=true>'
+        '<path fill="#f25022" d="M1 1h9v9H1z"/><path fill="#7fba00" d="M11 1h9v9h-9z"/>'
+        '<path fill="#00a4ef" d="M1 11h9v9H1z"/><path fill="#ffb900" d="M11 11h9v9h-9z"/>'
+        "</svg>"
+    ),
+}
+
+_SSO_CSS = """
+.sso{margin-top:1.4rem}
+.sso-or{display:flex;align-items:center;gap:.7rem;color:var(--muted);font-size:.8rem;margin-bottom:.8rem}
+.sso-or::before,.sso-or::after{content:"";flex:1;border-top:1px solid var(--line)}
+a.sso-btn{display:flex;align-items:center;justify-content:center;gap:.6rem;border:1px solid var(--line);
+border-radius:8px;padding:.62rem;margin-top:.55rem;text-decoration:none;color:var(--ink);
+background:var(--card);font-weight:600;font-size:.95rem;transition:border-color .15s}
+a.sso-btn:hover{border-color:var(--muted)}
+a.sso-btn svg{width:18px;height:18px;flex:none}
+a.sso-link{display:inline-flex;align-items:center;gap:.45rem;color:var(--ink);font-size:.9rem;text-decoration:none;
+border:1px solid var(--line);border-radius:8px;padding:.4rem .7rem;background:var(--card)}
+a.sso-link:hover{border-color:var(--muted)}
+a.sso-link svg,#konto .fine svg{width:16px;height:16px;vertical-align:-3px}
+"""
+
+
+def _sso_buttons(plan: str = "") -> str:
+    """«Fortsett med Google/Microsoft» — empty when Datamynt ID isn't configured."""
+    providers = [p for p in ("google", "microsoft") if innlogg.enabled(p)]
+    if not providers:
+        return ""
+    q = f"?plan={plan}" if plan in _PLAN_LABELS else ""
+    links = "".join(
+        f'<a class=sso-btn href="/auth/sso/start/{p}{q}">{_SSO_ICONS[p]}'
+        f"<span>Fortsett med {innlogg.LABELS[p]}</span></a>"
+        for p in providers
+    )
+    return f'<div class=sso><div class=sso-or>eller</div>{links}</div>'
+
+
+# Messages for /login?sso=… (the flow redirects there on anything but success).
+_SSO_MESSAGES = {
+    "feil": "Innloggingen feilet. Prøv igjen, eller bruk e-post og passord.",
+    "avbrutt": "Innloggingen ble avbrutt.",
+    "epost": "Kontoen hos leverandøren har ingen e-postadresse vi kan bruke.",
+    "for-mange": "For mange forsøk akkurat nå. Prøv igjen om en time.",
+}
 
 
 # Stripe (kort-betaling) — mode-bevisst: STRIPE_MODE=test|live velger _TEST/_LIVE-nøkler.
@@ -1391,7 +1414,7 @@ box-sizing:border-box;background:var(--card);color:var(--ink);font:inherit}}
 border-radius:8px;font-size:1rem;cursor:pointer;font:inherit;font-weight:600}}
 .auth .err{{background:var(--err-bg);color:var(--err);padding:.6rem;border-radius:8px;font-size:.9rem;margin:.5rem 0}}
 .auth .ok{{color:var(--ok);font-size:.9rem}}
-.auth .muted{{margin-top:1.2rem;font-size:.85rem}}</style>
+.auth .muted{{margin-top:1.2rem;font-size:.85rem}}{_SSO_CSS}</style>
 {_SELF_SNIPPET}
 <div class=wrap>{_site_nav(request)}
 <div class=auth>
@@ -1484,13 +1507,13 @@ async def signup(request):
 <form method=post>
   <input type=hidden name=plan value="{escape(plan)}">
   <label>Firma</label><input name=company required>
-  <label>E-post</label><input name=email type=email required>
-  <label>Passord</label><input name=password type=password required minlength=8>
+  <label>E-post</label><input name=email type=email required autocomplete=email>
+  <label>Passord</label><input name=password type=password required minlength=8 autocomplete=new-password>
   <div style="position:absolute;left:-9999px" aria-hidden=true>
     <label>Nettsted</label><input name=website tabindex=-1 autocomplete=off></div>
   <button>{"Fortsett til betaling" if plan else "Start gratis prøve"}</button>
 </form>
-{_sso_buttons()}
+{_sso_buttons(plan)}
 <p class=muted>Har du konto? <a href="/login">Logg inn</a></p>""",
     )
 
@@ -1515,6 +1538,9 @@ async def login(request):
             store.login_fail_bump(ip, email)
             err = "Feil e-post eller passord."
     eb = f'<div class=err>{escape(err)}</div>' if err else ""
+    sso_msg = _SSO_MESSAGES.get(request.query_params.get("sso") or "")
+    if sso_msg:
+        eb += f"<div class=err>{escape(sso_msg)}</div>"
     if request.query_params.get("reset"):
         eb += '<p class=ok>Passordet er oppdatert — logg inn.</p>'
     return _shell(
@@ -1522,8 +1548,8 @@ async def login(request):
         "Logg inn",
         f"""<h1>Logg inn</h1>{eb}
 <form method=post>
-  <label>E-post</label><input name=email type=email required>
-  <label>Passord</label><input name=password type=password required>
+  <label>E-post</label><input name=email type=email required autocomplete=email>
+  <label>Passord</label><input name=password type=password required autocomplete=current-password>
   <button>Logg inn</button>
 </form>
 {_sso_buttons()}
@@ -1613,8 +1639,9 @@ async def forgot(request):
                 )
             else:
                 u = store.get_user_by_email(email)
-                # «!»-prefiks = SSO-sentinel (Google/innlogg) — passordet styres hos leverandøren
-                if u and not str(u["password_hash"]).startswith("!"):
+                # SSO-only accounts («!»-sentinel) may add a password this way too: the
+                # link proves who owns the address, same as the provider login did.
+                if u:
                     store.forgot_bump(ip, email)
                     token = store.create_reset_token(email)
                     link = f"{PUBLIC_BASE}/reset?token={token}"
@@ -1715,48 +1742,159 @@ async def logout(request):
     )
 
 
-async def google_login(request):
-    if not _HAS_GOOGLE:
-        return RedirectResponse("/login", status_code=302)
-    return await oauth.google.authorize_redirect(request, f"{PUBLIC_BASE}/auth/google/callback")
+# --- Google/Microsoft login through Datamynt ID (app/innlogg.py) --------------
+# A login is bound to (IdP id, the provider's user id) in user_identities. The
+# e-mail only decides which account a FIRST login attaches to, and only when the
+# address is proven: Google asserts a verified address; for Microsoft (whose
+# address any tenant admin can type) we send a confirmation link first.
+_SSO_TTL = 600            # button click -> provider callback
+_SSO_CONFIRM_TTL = 1800   # confirmation mail -> click
 
 
-async def innlogg_login(request):
-    if not _HAS_INNLOGG:
-        return RedirectResponse("/login", status_code=302)
-    return await oauth.innlogg.authorize_redirect(request, f"{PUBLIC_BASE}/auth/innlogg/callback")
+def _sso_fail(code: str = "feil"):
+    return RedirectResponse(f"/login?sso={code}", status_code=302)
 
 
-async def _oidc_callback(request, provider: str, sentinel: str):
-    """Felles OIDC-retur: verifisert e-post → eksisterende konto eller ny.
-    Sentinel-hash => kontoen kan ikke passord-logge (styres hos leverandøren)."""
-    client = getattr(oauth, provider, None) if oauth else None
-    if client is None:
-        return RedirectResponse("/login", status_code=302)
+async def sso_start(request):
+    provider = request.path_params.get("provider", "")
+    if not innlogg.enabled(provider):
+        return _sso_fail()
+    plan = request.query_params.get("plan", "")
+    state = secrets.token_urlsafe(24)
+    request.session["sso"] = {
+        "s": state, "p": provider, "exp": int(time.time()) + _SSO_TTL,
+        "plan": plan if plan in _PLAN_LABELS else "",
+    }
     try:
-        token = await client.authorize_access_token(request)
-    except Exception:
-        return RedirectResponse("/login", status_code=302)
-    info = token.get("userinfo") or {}
-    email = (info.get("email") or "").strip().lower()
-    # Fail-closed: krev POSITIVT verifisert e-post. Kontolinking skjer på e-post
-    # alene (ingen provider+sub-binding enda), så en leverandør som asserter en
-    # uverifisert adresse ville ellers kunne overta en eksisterende konto.
-    if not email or info.get("email_verified") is not True:
-        return RedirectResponse("/login", status_code=302)
-    u = store.get_user_by_email(email)
-    if u:
-        _login(request, u["id"], u["tenant_id"])
-    else:
-        name = info.get("name") or email.split("@")[0]
-        tid, uid = store.create_account(name, email, sentinel)
-        store.set_email_verified(uid)  # leverandøren har allerede bekreftet e-posten
-        _login(request, uid, tid)
+        url = await innlogg.start(
+            provider, f"{PUBLIC_BASE}/auth/sso/callback?state={state}",
+            f"{PUBLIC_BASE}/login?sso=avbrutt",
+        )
+    except innlogg.IdpError as e:
+        log.warning("sso start %s: %s", provider, e)
+        return _sso_fail()
+    return RedirectResponse(url, status_code=302)
+
+
+def _sso_claim(existing: dict, who) -> None:
+    """Attach a proven login to an existing account. If that account's address was
+    never verified, whoever registered it may not own it (pre-hijack): their
+    password, sessions and API keys end here. They can set a password again
+    through «Glemt passord», which mails the real owner."""
+    row = store.get_user(existing["id"]) or {}
+    if not row.get("email_verified"):
+        store.set_password(existing["email"], "!sso")
+        store.bump_session_version(existing["id"])
+        store.revoke_all_api_keys(existing["tenant_id"])
+        store.set_email_verified(existing["id"])
+    store.link_identity(existing["id"], who.idp_id, who.subject, who.email)
+
+
+def _sso_new_account(who) -> tuple[int, int]:
+    company = who.name or who.email.split("@")[0]
+    tid, uid = store.create_account(company, who.email, "!sso")
+    store.set_email_verified(uid)
+    store.link_identity(uid, who.idp_id, who.subject, who.email)
+    return tid, uid
+
+
+def _sso_done(request, uid: int, tid: int, plan: str = "", new: bool = False):
+    _login(request, uid, tid)
+    if new and plan:
+        return RedirectResponse(f"/betal?plan={plan}", status_code=302)
     return RedirectResponse("/app", status_code=302)
 
 
-async def google_callback(request):
-    return await _oidc_callback(request, "google", "!google-oauth")
+async def sso_callback(request):
+    pending = request.session.pop("sso", None) or {}
+    q = request.query_params
+    if (not pending or time.time() > pending.get("exp", 0)
+            or not hmac.compare_digest(str(pending.get("s", "")), q.get("state", ""))):
+        return _sso_fail()
+    provider, plan = pending["p"], pending.get("plan", "")
+    try:
+        who = await innlogg.finish(provider, q.get("id", ""), q.get("token", ""))
+    except innlogg.IdpError as e:
+        log.warning("sso callback %s: %s", provider, e)
+        return _sso_fail()
+
+    bound = store.user_by_identity(who.idp_id, who.subject)
+    me = _user(request)
+    if me:  # «Koble til» from the account page
+        if bound and bound["id"] != me["uid"]:
+            return RedirectResponse("/app?sso=opptatt#konto", status_code=302)
+        store.link_identity(me["uid"], who.idp_id, who.subject, who.email)
+        return RedirectResponse("/app?sso=koblet#konto", status_code=302)
+    if bound:
+        return _sso_done(request, bound["id"], bound["tenant_id"])
+    if not who.email:
+        return _sso_fail("epost")
+
+    existing = store.get_user_by_email(who.email)
+    if who.email_verified:
+        if existing:
+            _sso_claim(existing, who)
+            return _sso_done(request, existing["id"], existing["tenant_id"])
+        tid, uid = _sso_new_account(who)
+        return _sso_done(request, uid, tid, plan, new=True)
+
+    # Unproven address (Microsoft): mail a link that only works in THIS browser.
+    # The session holds a hash of the nonce, never the nonce: the session cookie is
+    # readable by whoever holds it, and that may be the person we're checking.
+    ip = client_ip(dict(request.headers), fallback=request.client.host if request.client else "")
+    used_ip, used_email, total = store.forgot_attempts(ip, who.email)
+    if used_ip >= FORGOT_PER_IP_HOURLY or used_email >= FORGOT_PER_EMAIL_HOURLY or total >= FORGOT_GLOBAL_HOURLY:
+        return _sso_fail("for-mange")
+    store.forgot_bump(ip, who.email)
+    nonce = secrets.token_urlsafe(32)
+    request.session["sso_confirm"] = {
+        "h": hashlib.sha256(nonce.encode()).hexdigest(), "exp": int(time.time()) + _SSO_CONFIRM_TTL,
+        "p": provider, "idp": who.idp_id, "sub": who.subject, "email": who.email,
+        "name": who.name or "", "plan": plan,
+    }
+    label = innlogg.LABELS[provider]
+    mailer.send(
+        who.email,
+        f"Bekreft innlogging med {label} – Sporløs",
+        f"Hei,\n\nNoen, forhåpentligvis du, vil logge inn på Sporløs med {label}-kontoen"
+        f"{' «' + who.name + '»' if who.name else ''}. Klikk for å bekrefte at {who.email} er din "
+        f"adresse. Lenken virker i 30 minutter, og bare i nettleseren der du startet:\n"
+        f"{PUBLIC_BASE}/auth/sso/bekreft?n={nonce}\n\n"
+        "Var det ikke deg, kan du se bort fra e-posten. Ingenting blir koblet til kontoen din.\n\nSporløs",
+    )
+    return _shell(
+        request,
+        "Sjekk e-posten",
+        f"<h1>Sjekk e-posten din</h1><p class=muted>Vi har sendt en lenke til "
+        f"<b>{escape(who.email)}</b>. Klikk på den i denne nettleseren for å fullføre "
+        f"innloggingen med {escape(label)}.</p>"
+        "<p class=muted>Vi spør én gang fordi Microsoft ikke bekrefter e-postadresser for oss.</p>",
+    )
+
+
+async def sso_confirm(request):
+    pend = request.session.get("sso_confirm") or {}
+    n = request.query_params.get("n", "")
+    if (not pend or not n or time.time() > pend.get("exp", 0)
+            or not hmac.compare_digest(pend.get("h", ""), hashlib.sha256(n.encode()).hexdigest())):
+        return _shell(
+            request,
+            "Lenken virker ikke",
+            "<h1>Lenken virker ikke her</h1><p class=muted>Åpne lenken i samme nettleser som du "
+            "startet innloggingen i, innen 30 minutter.</p>"
+            '<p class=muted><a href="/login">Prøv igjen</a></p>',
+        )
+    request.session.pop("sso_confirm", None)
+    who = innlogg.IdpLogin(pend["p"], pend["idp"], pend["sub"], pend["email"], True, pend["name"] or None)
+    bound = store.user_by_identity(who.idp_id, who.subject)
+    if bound:
+        return _sso_done(request, bound["id"], bound["tenant_id"])
+    existing = store.get_user_by_email(who.email)
+    if existing:
+        _sso_claim(existing, who)
+        return _sso_done(request, existing["id"], existing["tenant_id"])
+    tid, uid = _sso_new_account(who)
+    return _sso_done(request, uid, tid, pend.get("plan", ""), new=True)
 
 
 async def gsc_connect(request):
@@ -1812,10 +1950,6 @@ async def gsc_disconnect(request):
     if site and site["tenant_id"] == user["tid"]:
         store.delete_search_connection(site["id"])
     return RedirectResponse(f"/app?site={public_id}#sok", status_code=302)
-
-
-async def innlogg_callback(request):
-    return await _oidc_callback(request, "innlogg", "!innlogg-oidc")
 
 
 def billing_checkout(request):
@@ -2616,9 +2750,12 @@ async def personvern(request):
 behandlingsansvarlig for kunder og besøkende på sporlos.no.</p>
 
 <h2>1. Hva vi samler om kunder</h2>
-<p>Når du oppretter konto lagrer vi e-post, firmanavn og et kryptert passord (eller pålogging via
-Google). Faktureringsopplysninger håndteres av vår betalingspartner (Stripe/Vipps); vi lagrer ikke
-kortnummer.</p>
+<p>Når du oppretter konto lagrer vi e-post, firmanavn og et kryptert passord. Faktureringsopplysninger
+håndteres av vår betalingspartner (Stripe/Vipps); vi lagrer ikke kortnummer.</p>
+<p>Velger du å logge inn med Google eller Microsoft, går innloggingen via Datamynt ID, vår egen
+innloggingstjeneste på samme server i Oslo. Vi lagrer da leverandørens bruker-ID og e-postadressen
+din, slik at vi kjenner deg igjen neste gang. Vi får ikke passordet ditt, og siden laster ingenting
+fra Google eller Microsoft før du selv trykker på knappen.</p>
 <p>Når du logger inn, settes én <b>nødvendig innloggings-cookie</b> (sesjon). Den brukes kun til å
 holde deg innlogget, deles ikke med noen, og er unntatt samtykkekravet (strengt nødvendig).
 Den er det eneste vi noensinne lagrer i nettleseren din — og kun for innloggede kunder.</p>
@@ -2643,6 +2780,7 @@ art. 6 nr. 1 b) og for support. Vi sender ikke markedsføring uten samtykke.</p>
 <tr><td><b>Google Cloud Storage</b></td><td>Nattlig sikkerhetskopi av databasen — lagres i Belgia (EU)</td></tr>
 <tr><td><b>Stripe / Vipps</b></td><td>Betaling</td></tr>
 <tr><td><b>Google Workspace</b></td><td>E-post (support og transaksjonsmeldinger til kunder)</td></tr>
+<tr><td><b>Google / Microsoft</b></td><td>Kun hvis du selv velger å logge inn med dem</td></tr>
 </table>
 <p><b>Lagringstider:</b> Kontoopplysninger lagres så lenge du er kunde, og slettes innen rimelig
 tid etter at kundeforholdet opphører (regnskapsplikt kan kreve lengre lagring av fakturadata).
@@ -3913,9 +4051,33 @@ def dashboard(request):
             '<input name=new type=password placeholder="Nytt passord (min. 8)" required minlength=8 '
             'style="flex:1;min-width:10rem;padding:.5rem;border:1px solid var(--line);border-radius:8px">'
             "<button class=btn>Bytt</button></form>"
-            '<p class=fine style="margin:.5rem 0 0">Logget inn med Google eller innlogg.no? Da styres innloggingen der.</p>'
+            '<p class=fine style="margin:.5rem 0 0">Har du bare logget inn med Google eller Microsoft? '
+            'Bruk <a href="/forgot">Glemt passord</a> for å sette et passord.</p>'
             "</details></div>"
         )
+
+        # Innlogging med Google/Microsoft: what's linked, and «Koble til» for the rest.
+        sso_html = ""
+        if innlogg.enabled():
+            linked = set(store.identities_for_user(user["uid"]))
+            items = []
+            for prov in ("google", "microsoft"):
+                if not innlogg.enabled(prov):
+                    continue
+                name = innlogg.LABELS[prov]
+                if innlogg.PROVIDERS[prov] in linked:
+                    items.append(f'<span class=fine>{_SSO_ICONS[prov]} {name}: koblet</span>')
+                else:
+                    items.append(f'<a class=sso-link href="/auth/sso/start/{prov}">{_SSO_ICONS[prov]} Koble til {name}</a>')
+            sso_flash = {
+                "koblet": '<p style="background:var(--ok-bg);color:var(--ok-ink);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Koblet. Neste gang kan du logge inn med ett klikk.</p>',
+                "opptatt": '<p style="background:var(--err-bg);color:var(--err);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Den kontoen er allerede koblet til en annen Sporløs-bruker.</p>',
+            }.get(request.query_params.get("sso") or "", "")
+            sso_html = (
+                f'{sso_flash}<div class=card id=konto><b>Innlogging</b>'
+                '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.6rem;align-items:center">'
+                + "".join(items) + "</div></div>"
+            )
 
         planinfo = ""
         if tenant.get("plan") in ("liten", "vekst", "pro"):
@@ -3952,7 +4114,7 @@ def dashboard(request):
 <title>Sporløs — mine nettsteder</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
-<style>{_BRAND_CSS}{_CHROME_CSS}
+<style>{_BRAND_CSS}{_CHROME_CSS}{_SSO_CSS}
 h1{{font-size:1.7rem;letter-spacing:-.02em;margin:0 0 .3rem}}
 h2.sec{{font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
 font-weight:700;margin:2rem 0 .4rem}}
@@ -4005,6 +4167,7 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 <h2 class=sec>Konto</h2>
 {pw_flash}
 {password_html}
+{sso_html}
 <p class=fine style="margin-top:1.5rem">Cookieløs · ingen IP lagret · samtykkefri</p>
 </div>
 {_SITE_FOOTER}"""
@@ -4617,10 +4780,9 @@ routes = [
     Route("/verify", verify_email),
     Route("/resend-verify", resend_verify),
     Route("/logout", logout, methods=["GET", "POST"]),
-    Route("/auth/google", google_login),
-    Route("/auth/google/callback", google_callback, name="google_callback"),
-    Route("/auth/innlogg", innlogg_login),
-    Route("/auth/innlogg/callback", innlogg_callback, name="innlogg_callback"),
+    Route("/auth/sso/start/{provider}", sso_start),
+    Route("/auth/sso/callback", sso_callback),
+    Route("/auth/sso/bekreft", sso_confirm),
     Route("/betal", betal),
     Route("/billing/checkout", billing_checkout),
     Route("/billing/portal", billing_portal),

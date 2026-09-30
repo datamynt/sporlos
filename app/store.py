@@ -126,6 +126,14 @@ CREATE TABLE IF NOT EXISTS reset_tokens (
     email TEXT NOT NULL,
     expires_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS user_identities (
+    idp_id TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (idp_id, subject)
+);
 CREATE TABLE IF NOT EXISTS daily_rollups (
     site_id INTEGER NOT NULL,
     day TEXT NOT NULL,
@@ -597,6 +605,39 @@ def bump_session_version(uid: int) -> int:
             f"UPDATE users SET session_version = session_version + 1 WHERE id = {P}", (uid,)
         )
     return session_version(uid) or 0
+
+
+def user_by_identity(idp_id: str, subject: str) -> dict | None:
+    """The user a Google/Microsoft login is bound to, or None."""
+    with _cursor() as cur:
+        cur.execute(
+            "SELECT u.id, u.tenant_id, u.email FROM user_identities i "
+            f"JOIN users u ON u.id = i.user_id WHERE i.idp_id = {P} AND i.subject = {P}",
+            (idp_id, subject),
+        )
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def link_identity(user_id: int, idp_id: str, subject: str, email: str | None) -> bool:
+    """Bind a provider login to a user. False if it is already bound to someone."""
+    existing = user_by_identity(idp_id, subject)
+    if existing:
+        return existing["id"] == user_id
+    with _cursor() as cur:
+        cur.execute(
+            "INSERT INTO user_identities (idp_id, subject, user_id, email) "
+            f"VALUES ({P}, {P}, {P}, {P})",
+            (idp_id, subject, user_id, email),
+        )
+    return True
+
+
+def identities_for_user(user_id: int) -> list[str]:
+    """IdP ids this user can log in with."""
+    with _cursor() as cur:
+        cur.execute(f"SELECT idp_id FROM user_identities WHERE user_id = {P}", (user_id,))
+        return [r["idp_id"] for r in cur.fetchall()]
 
 
 def set_email_verified(uid: int) -> None:
