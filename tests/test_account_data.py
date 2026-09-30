@@ -1,10 +1,16 @@
-"""Self-serve data deletion: remove one site, or the whole account.
+"""Account data: delete a site or the whole account yourself; invite colleagues.
 
-Covers: deleting a site removes every row that belongs to it and nothing of other
+Deletion: removing a site deletes every row that belongs to it and nothing of other
 sites or tenants; a site of another tenant can't be deleted; account deletion is
 refused while a paid subscription runs, needs the password (or, for an account
 that only logs in with Google/Microsoft, a fresh login), removes every row of the
 tenant and ends the session.
+
+Users: an invite is stored hashed, works once, expires and is replaced by a new one;
+it can't be sent to an address that already has an account; accepting it (password
+or Google/Microsoft) creates a verified user in the inviting account, never in the
+account the provider's e-mail points to; removing a user ends their sessions; all of
+it only within your own account.
 
 Run ONE FILE PER PROCESS (the backend and the innlogg env are read at import):
     .venv/bin/python3 -m pytest -q tests/test_account_data.py < /dev/null
@@ -12,7 +18,9 @@ Run ONE FILE PER PROCESS (the backend and the innlogg env are read at import):
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import tempfile
 import unittest
 from unittest import mock
@@ -299,6 +307,235 @@ class SsoOnlyAccountDeletionTest(unittest.TestCase):
         self.assertIsNone(store.get_user_by_email("sso-only@example.no"))
         self.assertIsNone(store.user_by_identity("idp-google", "g-sso-only"))
         self.assertFalse(logged_in(c))
+
+
+def invite(client: TestClient, email: str) -> tuple[str, str]:
+    """POST the invite form. Returns (redirect location, token from the mail or "")."""
+    before = len(SENT)
+    r = client.post("/app/users/invite", data={"email": email}, follow_redirects=False)
+    token = ""
+    if len(SENT) > before:
+        token = re.search(r"/invitasjon\?t=(\S+)", SENT[-1][2]).group(1)
+    return r.headers["location"], token
+
+
+def invites_of(tid: int) -> list[dict]:
+    with store._cursor() as cur:
+        cur.execute("SELECT * FROM invites WHERE tenant_id = ?", (tid,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+class InviteTest(unittest.TestCase):
+    def setUp(self):
+        SENT.clear()
+
+    def test_invite_then_join_with_a_password(self):
+        tid, _ = account("Lag AS", "lag@example.no")
+        store.create_site(tid, "lag.no")
+        owner = login("lag@example.no")
+        loc, token = invite(owner, " Ola@Example.no ")
+        self.assertIn("brukere=invitert", loc)
+        self.assertEqual(SENT[-1][0], "ola@example.no")
+        self.assertIn("lag@example.no har invitert deg til Lag AS", SENT[-1][2])
+        # Stored as sha256 only.
+        rows = invites_of(tid)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["token_hash"], hashlib.sha256(token.encode()).hexdigest())
+        self.assertNotIn(token, " ".join(str(v) for v in rows[0].values()))
+        self.assertIn("Invitert", owner.get("/app").text)
+
+        page = TestClient(main.app).get(f"/invitasjon?t={token}").text
+        self.assertIn("Bli med i Lag AS", page)
+        self.assertIn("lag@example.no", page)
+        self.assertIn(f'href="/invitasjon/sso/google?t={token}"', page)
+
+        ola = TestClient(main.app)
+        r = ola.post("/invitasjon", data={"t": token, "password": "kort"})
+        self.assertIn("minst 8 tegn", r.text)
+        self.assertEqual(len(invites_of(tid)), 1)
+        r = ola.post("/invitasjon", data={"t": token, "password": "ola-passord"}, follow_redirects=False)
+        self.assertEqual(r.headers["location"], "/app")
+        u = store.get_user_by_email("ola@example.no")
+        self.assertEqual(u["tenant_id"], tid)
+        self.assertEqual(store.get_user(u["id"])["email_verified"], 1)
+        self.assertIn("lag.no", ola.get("/app").text)  # same sites as the owner
+        self.assertEqual(invites_of(tid), [])
+        # Single use.
+        again = TestClient(main.app)
+        self.assertIn("Invitasjonen virker ikke", again.get(f"/invitasjon?t={token}").text)
+        r = again.post("/invitasjon", data={"t": token, "password": "annet-passord"})
+        self.assertIn("Invitasjonen virker ikke", r.text)
+        self.assertFalse(logged_in(again))
+        self.assertTrue(logged_in(login("ola@example.no", "ola-passord")))
+
+    def test_invite_expires(self):
+        tid, _ = account("Utløpt AS", "utlopt@example.no")
+        _, token = invite(login("utlopt@example.no"), "sen@example.no")
+        with store._cursor() as cur:
+            cur.execute("UPDATE invites SET expires_at = '2000-01-01 00:00:00' WHERE tenant_id = ?", (tid,))
+        c = TestClient(main.app)
+        self.assertIn("Invitasjonen virker ikke", c.get(f"/invitasjon?t={token}").text)
+        c.post("/invitasjon", data={"t": token, "password": "sen-passord"})
+        self.assertIsNone(store.get_user_by_email("sen@example.no"))
+        self.assertNotIn("sen@example.no", login("utlopt@example.no").get("/app").text)
+
+    def test_a_new_invite_replaces_the_old_one(self):
+        tid, _ = account("Igjen AS", "igjen@example.no")
+        owner = login("igjen@example.no")
+        _, first = invite(owner, "to-ganger@example.no")
+        _, second = invite(owner, "to-ganger@example.no")
+        self.assertEqual(len(invites_of(tid)), 1)
+        self.assertIn("virker ikke", TestClient(main.app).get(f"/invitasjon?t={first}").text)
+        self.assertIn("Bli med", TestClient(main.app).get(f"/invitasjon?t={second}").text)
+
+    def test_an_address_with_an_account_cant_be_invited(self):
+        account("Eksisterende AS", "har-konto@example.no")
+        tid, _ = account("Inviterer AS", "inviterer@example.no")
+        owner = login("inviterer@example.no")
+        loc, token = invite(owner, "Har-Konto@example.no")
+        self.assertIn("brukere=finnes", loc)
+        self.assertEqual((token, invites_of(tid)), ("", []))
+        self.assertIn("har allerede en Sporløs-konto", owner.get("/app?brukere=finnes").text)
+        # And if the address gets an account after the invite went out:
+        _, token = invite(owner, "kom-foran@example.no")
+        account("Foran AS", "kom-foran@example.no")
+        r = TestClient(main.app).post("/invitasjon", data={"t": token, "password": "foran-passord"})
+        self.assertIn("har allerede en Sporløs-konto", r.text)
+        self.assertNotEqual(store.get_user_by_email("kom-foran@example.no")["tenant_id"], tid)
+
+    def test_unverified_address_cant_invite(self):
+        store.create_account("Ubekreftet AS", "ubekreftet@example.no", hash_password(PW))
+        loc, token = invite(login("ubekreftet@example.no"), "noen@example.no")
+        self.assertIn("brukere=ubekreftet", loc)
+        self.assertEqual(SENT, [])
+
+    def test_invites_are_throttled(self):
+        account("Mye AS", "mye@example.no")
+        owner = login("mye@example.no")
+        for _ in range(main.INVITES_PER_ADDRESS_HOURLY):
+            self.assertIn("invitert", invite(owner, "samme@example.no")[0])
+        self.assertIn("for-mange", invite(owner, "samme@example.no")[0])
+        for n in range(main.INVITES_PER_ACCOUNT_HOURLY - main.INVITES_PER_ADDRESS_HOURLY):
+            self.assertIn("invitert", invite(owner, f"n{n}@example.no")[0])
+        self.assertIn("for-mange", invite(owner, "en-til@example.no")[0])
+
+    def test_revoke_an_invite_only_in_your_own_account(self):
+        tid, _ = account("Angre AS", "angre@example.no")
+        owner = login("angre@example.no")
+        _, token = invite(owner, "angret@example.no")
+        inv_id = invites_of(tid)[0]["id"]
+        account("Fremmed AS", "fremmed@example.no")
+        stranger = login("fremmed@example.no")
+        stranger.post("/app/users/invite/revoke", data={"invite_id": inv_id})
+        self.assertEqual(len(invites_of(tid)), 1)
+        r = owner.post("/app/users/invite/revoke", data={"invite_id": inv_id}, follow_redirects=False)
+        self.assertIn("brukere=trukket", r.headers["location"])
+        self.assertIn("virker ikke", TestClient(main.app).get(f"/invitasjon?t={token}").text)
+
+
+class RemoveUserTest(unittest.TestCase):
+    def _team(self, prefix: str):
+        tid, owner_uid = account(f"{prefix} AS", f"{prefix}-eier@example.no")
+        owner = login(f"{prefix}-eier@example.no")
+        _, token = invite(owner, f"{prefix}-kollega@example.no")
+        colleague = TestClient(main.app)
+        colleague.post("/invitasjon", data={"t": token, "password": "kollega-pw"})
+        self.assertTrue(logged_in(colleague))
+        return tid, owner, colleague, store.get_user_by_email(f"{prefix}-kollega@example.no")
+
+    def test_removing_a_user_ends_their_session(self):
+        tid, owner, colleague, col = self._team("fjern")
+        store.link_identity(col["id"], "idp-google", "g-kollega", None)
+        _, their_token = invite(colleague, "via-kollega@example.no")  # dies with them
+        r = owner.post("/app/users/remove", data={"user_id": col["id"]}, follow_redirects=False)
+        self.assertIn("brukere=fjernet", r.headers["location"])
+        self.assertFalse(logged_in(colleague))
+        self.assertIsNone(store.get_user_by_email("fjern-kollega@example.no"))
+        self.assertIsNone(store.user_by_identity("idp-google", "g-kollega"))
+        self.assertIsNone(store.get_invite(their_token))
+        self.assertTrue(logged_in(owner))
+        again = TestClient(main.app)
+        again.post("/login", data={"email": "fjern-kollega@example.no", "password": "kollega-pw"})
+        self.assertFalse(logged_in(again))
+
+    def test_only_within_your_own_account(self):
+        tid, owner, colleague, col = self._team("isolert")
+        account("Utenfor AS", "utenfor@example.no")
+        outsider = login("utenfor@example.no")
+        r = outsider.post("/app/users/remove", data={"user_id": col["id"]}, follow_redirects=False)
+        self.assertEqual(r.headers["location"], "/app#brukere")
+        self.assertTrue(logged_in(colleague))
+        self.assertIsNotNone(store.get_user_by_email("isolert-kollega@example.no"))
+        self.assertFalse(store.remove_user(col["id"], store.get_user_by_email("utenfor@example.no")["tenant_id"]))
+        # Logged out: nothing.
+        r = TestClient(main.app).post("/app/users/remove", data={"user_id": col["id"]}, follow_redirects=False)
+        self.assertEqual(r.headers["location"], "/login")
+        self.assertTrue(logged_in(colleague))
+
+    def test_you_cant_remove_yourself(self):
+        tid, owner, colleague, col = self._team("selv")
+        me = store.get_user_by_email("selv-eier@example.no")
+        r = owner.post("/app/users/remove", data={"user_id": me["id"]}, follow_redirects=False)
+        self.assertIn("brukere=deg", r.headers["location"])
+        self.assertTrue(logged_in(owner))
+
+    def test_account_deletion_takes_colleagues_and_invites_along(self):
+        tid, owner, colleague, col = self._team("alle")
+        invite(owner, "alle-apen@example.no")
+        SENT.clear()
+        owner.post("/app/account/delete", data={"confirm": "alle AS", "password": PW})
+        self.assertEqual(tenant_rows(tid)["users"], 0)
+        self.assertEqual(invites_of(tid), [])
+        self.assertFalse(logged_in(colleague))
+        self.assertEqual(sorted(s[0] for s in SENT), ["alle-eier@example.no", "alle-kollega@example.no"])
+
+
+class InviteWithGoogleTest(unittest.TestCase):
+    def _join(self, client, token, sub, email):
+        NEXT["who"] = innlogg.IdpLogin("google", "idp-google", sub, email, True, "Kari")
+        r = client.get(f"/invitasjon/sso/google?t={token}", follow_redirects=False)
+        self.assertTrue(r.headers["location"].startswith("https://provider.example/"))
+        cb = urlparse(NEXT["success_url"])
+        return client.get(f"{cb.path}?{cb.query}&id=intent1&token=tok1", follow_redirects=False)
+
+    def test_the_invite_decides_the_account_not_the_providers_email(self):
+        # The Google address belongs to an existing account elsewhere; the invite still wins.
+        elsewhere_tid, _ = account("Et annet sted AS", "privat@gmail.example")
+        tid, _ = account("Google-lag AS", "glag@example.no")
+        _, token = invite(login("glag@example.no"), "kari@jobb.example")
+        c = TestClient(main.app)
+        r = self._join(c, token, "g-kari", "privat@gmail.example")
+        self.assertEqual(r.headers["location"], "/app")
+        u = store.get_user_by_email("kari@jobb.example")
+        self.assertEqual(u["tenant_id"], tid)
+        self.assertTrue(u["password_hash"].startswith("!"))
+        self.assertEqual(store.user_by_identity("idp-google", "g-kari")["id"], u["id"])
+        self.assertEqual(store.get_user_by_email("privat@gmail.example")["tenant_id"], elsewhere_tid)
+        self.assertTrue(logged_in(c))
+        self.assertIsNone(store.get_invite(token))
+        # Next time the same Google login lands in the invited account.
+        c2 = TestClient(main.app)
+        NEXT["who"] = innlogg.IdpLogin("google", "idp-google", "g-kari", "privat@gmail.example", True, "Kari")
+        c2.get("/auth/sso/start/google", follow_redirects=False)
+        cb = urlparse(NEXT["success_url"])
+        c2.get(f"{cb.path}?{cb.query}&id=i&token=t", follow_redirects=False)
+        self.assertEqual(c2.get("/app").status_code, 200)
+
+    def test_a_login_already_bound_to_someone_is_refused(self):
+        _, uid = account("Bundet AS", "bundet@example.no")
+        store.link_identity(uid, "idp-google", "g-bundet", "bundet@gmail.example")
+        tid, _ = account("Vil ha AS", "vilha@example.no")
+        _, token = invite(login("vilha@example.no"), "ny-kollega@example.no")
+        c = TestClient(main.app)
+        r = self._join(c, token, "g-bundet", "bundet@gmail.example")
+        self.assertIn("allerede i bruk", r.text)
+        self.assertIsNone(store.get_user_by_email("ny-kollega@example.no"))
+        self.assertFalse(logged_in(c))
+        self.assertIsNotNone(store.get_invite(token))  # still usable with a password
+
+    def test_a_dead_invite_cant_start_the_flow(self):
+        r = TestClient(main.app).get("/invitasjon/sso/google?t=feil", follow_redirects=False)
+        self.assertIn("Invitasjonen virker ikke", r.text)
 
 
 if __name__ == "__main__":

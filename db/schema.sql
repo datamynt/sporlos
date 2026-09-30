@@ -190,3 +190,18 @@ CREATE TABLE IF NOT EXISTS user_identities (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (idp_id, subject)
 );
+
+-- Invitations to join an account («Brukere» on /app). The DB stores sha256 of the
+-- token, never the token. One open invite per (account, address): a new one replaces
+-- the old. Single use, 7 days. An invite dies with the user who sent it.
+-- New tables need no ALTER: init_db runs this file (all IF NOT EXISTS) on every start.
+CREATE TABLE IF NOT EXISTS invites (
+    id          BIGSERIAL PRIMARY KEY,
+    tenant_id   BIGINT NOT NULL REFERENCES tenants(id),
+    email       TEXT NOT NULL,
+    token_hash  TEXT NOT NULL UNIQUE,
+    invited_by  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at  TIMESTAMPTZ NOT NULL,
+    UNIQUE (tenant_id, email)
+);
