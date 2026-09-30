@@ -1,9 +1,5 @@
 """Kvadratisk app-ikon — «Blekk»-varianten fra design-runde 2 (Negativ i squircle).
 
-NB (2026-09-28): static/brand/app-ikon.png (JSON-LD Organization/logo) kommer nå
-fra datamynt-ui/brand (kit blocks/sporlos, mark-256.png), ikke fra dette skriptet.
-Kjører du det på nytt, får du tilbake det gamle «Blekk»-ikonet.
-
 Blekkmørk bunn + aksentblå disk + blekk-strek med Presisjon-proporsjoner.
 Plattformene maskerer selv (squircle/sirkel) — vi leverer fullt kvadrat.
 
