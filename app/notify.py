@@ -44,11 +44,11 @@ def send_trial_reminders(within_days: int = 3) -> int:
             days = within_days
         naar = "i dag" if days == 0 else ("i morgen" if days == 1 else f"om {days} dager")
         body = (
-            f"Hei,\n\nProveperioden din pa Sporlos utloper {naar}.\n\n"
-            f"Velg en plan sa analysen fortsetter uten avbrudd:\n{_base()}/app\n\n"
-            "Sporsmal eller trenger litt mer tid? Bare svar pa denne e-posten.\n\nSporlos"
+            f"Hei,\n\nPrøveperioden din på Sporløs går ut {naar}.\n\n"
+            f"Velg en plan, så fortsetter målingen uten avbrudd:\n{_base()}/app\n\n"
+            "Spørsmål, eller trenger du litt mer tid? Bare svar på denne e-posten.\n\nSporløs"
         )
-        if mailer.send(email, "Proveperioden din pa Sporlos utloper snart", body):
+        if mailer.send(email, "Prøveperioden din på Sporløs går snart ut", body):
             store.mark_trial_reminded(r["id"])
             sent += 1
     return sent
@@ -92,13 +92,13 @@ def send_overage_alerts() -> int:
         unsub = f"{_base()}/unsubscribe?tid={tid}&t={auth.sign_token('unsub', tid)}"
         fmt = lambda n: f"{n:,}".replace(",", " ")  # noqa: E731 — tusenskille med mellomrom
         body = (
-            "Hei,\n\nGratulerer - nettstedene dine vokser! Du har passert planens "
-            f"{fmt(pv_lim)} visninger denne maneden ({fmt(usage['pageviews'])} sa langt).\n\n"
-            "Alt males fortsatt som for - vi kaster aldri data. Men vurder gjerne "
-            f"a oppgradere sa planen matcher trafikken:\n{_base()}/app\n\n"
-            f"Vil du ikke ha slike varsler? Meld av her:\n{unsub}\n\nSporlos"
+            "Hei,\n\nGratulerer, nettstedene dine vokser! Du har passert planens "
+            f"{fmt(pv_lim)} visninger denne måneden ({fmt(usage['pageviews'])} så langt).\n\n"
+            "Alt måles fortsatt som før, og vi kaster aldri data. Men vurder gjerne "
+            f"å oppgradere, så planen passer trafikken:\n{_base()}/app\n\n"
+            f"Vil du ikke ha slike varsler? Meld deg av her:\n{unsub}\n\nSporløs"
         )
-        if mailer.send(t["email"], "Nettstedene dine vokser - du har passert planens visninger", body):
+        if mailer.send(t["email"], "Nettstedene dine vokser – du har passert planens visninger", body):
             store.mark_overage_notified(t["id"])
             sent += 1
     return sent

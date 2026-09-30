@@ -41,7 +41,7 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from app import api, assist, blogg, dpa, icons, innlogg, mailer, notify, store, vipps
+from app import api, assist, blogg, dpa, icons, innlogg, mailer, notify, pricing, store, vipps
 from app.auth import check_token, hash_password, verify_password
 from app.datacenter import is_datacenter
 from app.geo import country_no
@@ -226,7 +226,16 @@ STRIPE_PRICES = {
     "vekst": _stripe_env("STRIPE_PRICE_VEKST"),
     "pro": _stripe_env("STRIPE_PRICE_PRO"),
 }
-_PLAN_LABELS = {"liten": "Liten · 99/mnd", "vekst": "Vekst · 249/mnd", "pro": "Pro · 599/mnd"}
+_PLAN_LABELS = {
+    p: f"{pricing.PLAN_NAMES[p]} · {pricing.kr(o)} kr/mnd eks. mva" for p, o in pricing.PLAN_ORE.items()
+}
+# 25 % MVA as a Stripe TaxRate (exclusive): Checkout adds it on top of the plan price.
+STRIPE_TAX_RATE = _stripe_env("STRIPE_TAX_RATE")
+# Norwegian invoices must name the seller's org.nr, "MVA" and Foretaksregisteret;
+# Stripe prints this footer on every invoice and receipt for the customer.
+_STRIPE_INVOICE_FOOTER = (
+    "Datamynt AS · Org.nr. 936 017 207 MVA · Foretaksregisteret · Maridalsveien 163, 0461 Oslo"
+)
 
 # Tak på hvor mange bekreftelses-e-poster /signup kan utløse. Romslig for ekte
 # bruk (mobilnett deler IP via CGNAT), stramt nok til å drepe en liste-bot som
@@ -443,7 +452,9 @@ _FAQ = [
     ),
     (
         "Hva koster Sporløs?",
-        "Fra 99 kr/mnd (10 000 sidevisninger) til 599 kr/mnd (1 million). 30 dager gratis prøve "
+        "Fra 99 kr/mnd (10 000 sidevisninger) til 599 kr/mnd (1 million), eks. mva "
+        "(123,75 og 748,75 kr inkl. mva). Bedrifter kan betale årlig mot faktura og få 2 måneder "
+        "gratis. 30 dager gratis prøve "
         "uten kort. Vi slutter aldri å måle om du passerer grensen, og sender aldri "
         "overraskelsesregninger — du får et varsel og velger selv om du vil oppgradere.",
     ),
@@ -1123,6 +1134,32 @@ _OG_META = (
 )
 
 
+def _price_card(plan: str, what: str, hl: bool = False) -> str:
+    ore = pricing.PLAN_ORE[plan]
+    cls = "plan hl reveal" if hl else "plan reveal"
+    btn = "velg velg-hl" if hl else "velg"
+    return (
+        f'    <div class="{cls}"><b>{pricing.PLAN_NAMES[plan]}</b>'
+        f"<span class=pris>{pricing.kr(ore)} kr<small>/mnd</small></span>"
+        f"<small class=mva>{pricing.kr(pricing.incl(ore))} kr inkl. mva</small>\n"
+        f"      <small class=hva>{what}</small>\n"
+        f'      <a class="{btn}" href="/signup?plan={plan}">Kom i gang</a></div>\n'
+    )
+
+
+_PRICE_CARDS = (
+    "  <div class=plans>\n"
+    + _price_card("liten", "10 000 visninger<br>1 nettsted")
+    + _price_card("vekst", "100 000 visninger<br>10 nettsteder", hl=True)
+    + _price_card("pro", "1 mill. visninger<br>15 nettsteder<br>verifiserbare tall")
+    + '    <div class="plan reveal"><b>Byrå</b><span class=pris>fra 1\u202f490 kr</span>'
+    + "<small class=mva>eks. mva, etter avtale</small>\n"
+    + "      <small class=hva>fra 25 kundenettsteder<br>forsegling inkludert</small>\n"
+    + '      <a class=velg href="mailto:post@sporlos.no?subject=Byr%C3%A5-avtale">Ta kontakt</a></div>\n'
+    + "  </div>"
+)
+
+
 async def landing(request):
     """Offentlig landingsside (§3-15-budskapet)."""
     return HTMLResponse(
@@ -1217,6 +1254,7 @@ ul{padding-left:1.2rem;margin:.5rem 0}li{margin:.35rem 0}
 .plan{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.2rem 1.3rem;display:flex;flex-direction:column}
 .plan.hl{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .plan b{font-size:1.05rem}.plan .pris{font-size:1.5rem;font-weight:700;margin:.5rem 0 .2rem;letter-spacing:-.02em}
+.plan .mva{display:block;font-size:.78rem;color:var(--muted);margin:-.1rem 0 .1rem}
 .plan small{color:var(--muted);line-height:1.5}
 .plan .hva{margin-top:.4rem;flex:1}
 .plan .velg{display:block;text-align:center;margin-top:1rem;padding:.5rem;border-radius:8px;
@@ -1320,21 +1358,9 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
   <span class="tag kicker reveal">Priser</span>
   <h2 class=reveal>Forutsigbare priser</h2>
   <p class=muted style="margin:0">Etter sidevisninger per måned (totale visninger, ikke unike
-  besøkende) · eks. mva · årlig = 2 måneder gratis.</p>
-  <div class=plans>
-    <div class="plan reveal"><b>Liten</b><span class=pris>99 kr<small>/mnd</small></span>
-      <small class=hva>10 000 visninger<br>1 nettsted</small>
-      <a class=velg href="/signup?plan=liten">Kom i gang</a></div>
-    <div class="plan hl reveal"><b>Vekst</b><span class=pris>249 kr<small>/mnd</small></span>
-      <small class=hva>100 000 visninger<br>10 nettsteder</small>
-      <a class="velg velg-hl" href="/signup?plan=vekst">Kom i gang</a></div>
-    <div class="plan reveal"><b>Pro</b><span class=pris>599 kr<small>/mnd</small></span>
-      <small class=hva>1 mill. visninger<br>15 nettsteder<br>verifiserbare tall</small>
-      <a class=velg href="/signup?plan=pro">Kom i gang</a></div>
-    <div class="plan reveal"><b>Byrå</b><span class=pris>fra 1 490 kr</span>
-      <small class=hva>fra 25 kundenettsteder<br>forsegling inkludert</small>
-      <a class=velg href="mailto:post@sporlos.no?subject=Byr%C3%A5-avtale">Ta kontakt</a></div>
-  </div>
+  besøkende) · priser eks. mva, totalpris inkl. mva under · bedrifter kan betale årlig mot
+  faktura og få 2 måneder gratis.</p>
+""" + _PRICE_CARDS + """
   <div class="loft reveal">
     <svg width=44 height=44 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--bg)" stroke-width=8 stroke-linecap=round/></svg>
     <div>
@@ -1995,19 +2021,33 @@ def billing_checkout(request):
     if not stripe or not price:
         return RedirectResponse("/app", status_code=302)
     tenant = store.get_tenant(user["tid"]) or {}
+    sub_data = {"metadata": {"tenant_id": str(user["tid"]), "plan": plan}}
+    if STRIPE_TAX_RATE:
+        sub_data["default_tax_rates"] = [STRIPE_TAX_RATE]
+    else:
+        log.critical("STRIPE_TAX_RATE mangler: kortbetaling tas uten mva")
+    kwargs = dict(
+        mode="subscription",
+        line_items=[{"price": price, "quantity": 1}],
+        client_reference_id=str(user["tid"]),
+        metadata={"tenant_id": str(user["tid"]), "plan": plan},
+        subscription_data=sub_data,
+        success_url=f"{PUBLIC_BASE}/app",
+        cancel_url=f"{PUBLIC_BASE}/app",
+        allow_promotion_codes=True,
+        locale="nb",
+        # Businesses tick «Jeg kjøper som bedrift» and enter name + org.nr (MVA), which then
+        # appear on the invoice; private buyers just pay.
+        billing_address_collection="required",
+        tax_id_collection={"enabled": True},
+    )
+    if tenant.get("stripe_customer_id"):
+        kwargs["customer"] = tenant["stripe_customer_id"]
+        kwargs["customer_update"] = {"name": "auto", "address": "auto"}
     try:
-        session = stripe.checkout.Session.create(
-            mode="subscription",
-            line_items=[{"price": price, "quantity": 1}],
-            client_reference_id=str(user["tid"]),
-            customer=tenant.get("stripe_customer_id") or None,
-            metadata={"tenant_id": str(user["tid"]), "plan": plan},
-            subscription_data={"metadata": {"tenant_id": str(user["tid"]), "plan": plan}},
-            success_url=f"{PUBLIC_BASE}/app",
-            cancel_url=f"{PUBLIC_BASE}/app",
-            allow_promotion_codes=True,
-        )
-    except Exception:
+        session = stripe.checkout.Session.create(**kwargs)
+    except Exception as e:
+        log.error("stripe checkout: %s", type(e).__name__)
         return RedirectResponse("/app", status_code=302)
     return RedirectResponse(session.url, status_code=303)
 
@@ -2053,6 +2093,22 @@ async def stripe_webhook(request):
             store.set_tenant_plan(
                 int(tid), plan, customer_id=obj.get("customer"), sub_id=obj.get("subscription")
             )
+        if obj.get("customer"):
+            try:  # seller details on every invoice/receipt (best effort, never blocks the plan)
+                stripe.Customer.modify(
+                    obj["customer"], invoice_settings={"footer": _STRIPE_INVOICE_FOOTER}
+                )
+            except Exception as e:
+                log.warning("stripe footer: %s", type(e).__name__)
+    elif typ == "customer.subscription.updated":
+        # Plan changed in the Stripe customer portal: follow the price.
+        cust = obj.get("customer")
+        ten = store.get_tenant_by_customer(cust) if cust else None
+        items = ((obj.get("items") or {}).get("data") or [])
+        price_id = ((items[0].get("price") or {}).get("id")) if items else None
+        by_price = {v: k for k, v in STRIPE_PRICES.items() if v}
+        if ten and price_id in by_price and obj.get("status") in ("active", "trialing", "past_due"):
+            store.set_tenant_plan(ten["id"], by_price[price_id])
     elif typ == "customer.subscription.deleted":
         cust = obj.get("customer")
         ten = store.get_tenant_by_customer(cust) if cust else None
@@ -2152,7 +2208,7 @@ async def betal(request):
     if stripe and STRIPE_PRICES.get(plan):
         knapper += (
             f'<a href="/billing/checkout?plan={plan}" style="display:block;text-align:center;'
-            "background:var(--accent);color:#fff;padding:.75rem;border-radius:9px;"
+            "background:var(--btn-bg);color:#fff;padding:.75rem;border-radius:9px;"
             'text-decoration:none;font-weight:600;margin:.5rem 0">Betal med kort</a>'
         )
     if vipps.configured():
@@ -2161,17 +2217,126 @@ async def betal(request):
             "background:#ff5b24;color:#fff;padding:.75rem;border-radius:9px;"
             'text-decoration:none;font-weight:600;margin:.5rem 0">Betal med Vipps</a>'
         )
-    if not knapper:
-        return RedirectResponse("/app", status_code=302)
+    knapper += (
+        f'<a href="/betal/faktura?plan={plan}" style="display:block;text-align:center;'
+        "border:1px solid var(--line);color:var(--ink);padding:.75rem;border-radius:9px;"
+        'text-decoration:none;font-weight:600;margin:.5rem 0">Årlig faktura (for bedrifter)</a>'
+    )
+    ore = pricing.PLAN_ORE[plan]
     return _shell(
         request,
         "Betaling",
         f"""<h1>Nesten i mål</h1>
-<p class=muted>Du har valgt <b>{escape(_PLAN_LABELS[plan])}</b>. Velg betalingsmåte —
-abonnementet starter med en gang, og du kan si opp når som helst.</p>
+<p class=muted>Du har valgt <b>{escape(pricing.PLAN_NAMES[plan])}</b>:
+{pricing.kr(ore)} kr/mnd eks. mva, <b>{pricing.kr(pricing.incl(ore))} kr/mnd inkl. mva</b>.
+Kort og Vipps trekkes månedlig, og du kan si opp når som helst.</p>
 {knapper}
+<p class=muted>Årlig faktura: {pricing.kr(pricing.annual_ore(plan))} kr eks. mva
+({pricing.kr(pricing.incl(pricing.annual_ore(plan)))} kr inkl. mva) for 12 måneder, altså 2 måneder gratis.
+Sendes på e-post eller EHF, 14 dagers betalingsfrist.</p>
 <p class=muted style="margin-top:1rem"><a href="/app">Eller start 30 dagers gratis prøve først →</a></p>""",
     )
+
+
+def _valid_org_nr(v: str) -> bool:
+    """Norwegian organisation number: 9 digits, mod-11 check digit."""
+    if not re.fullmatch(r"\d{9}", v):
+        return False
+    w = (3, 2, 7, 6, 5, 4, 3, 2)
+    r = 11 - sum(int(d) * k for d, k in zip(v[:8], w)) % 11
+    return (0 if r == 11 else r) == int(v[8]) and r != 10
+
+
+def _invoice_form(request, plan: str, tenant: dict, me: dict, err: str = "", f=None):
+    f = f or {}
+    val = lambda k, d="": escape(str(f.get(k) or d or ""))  # noqa: E731
+    ore = pricing.annual_ore(plan)
+    eb = f"<div class=err>{escape(err)}</div>" if err else ""
+    return _shell(
+        request,
+        "Årlig faktura",
+        f"""<h1>Årlig faktura</h1>
+<p class=muted><b>Sporløs {escape(pricing.PLAN_NAMES[plan])}</b> i 12 måneder:
+{pricing.kr(ore)} kr eks. mva, <b>{pricing.kr(pricing.incl(ore))} kr inkl. mva</b>
+(10 måneders pris). Planen starter med en gang; fakturaen kommer innen to virkedager,
+med 14 dagers betalingsfrist.</p>{eb}
+<form method=post>
+  <input type=hidden name=plan value="{escape(plan)}">
+  <label>Firmanavn</label><input name=company required value="{val('company', tenant.get('name'))}">
+  <label>Organisasjonsnummer</label><input name=org_nr required inputmode=numeric
+    pattern="[0-9 ]{{9,11}}" placeholder="9 siffer" value="{val('org_nr')}">
+  <label>Fakturaadresse</label><input name=address required autocomplete=street-address value="{val('address')}">
+  <label>Postnummer og sted</label><input name=postal required placeholder="0461 Oslo" value="{val('postal')}">
+  <label>E-post for faktura</label><input name=invoice_email type=email required value="{val('invoice_email', me.get('email'))}">
+  <label>Deres referanse (valgfritt)</label><input name=reference maxlength=60 value="{val('reference')}">
+  <label style="display:flex;gap:.5rem;align-items:center;color:var(--ink)"><input type=checkbox name=ehf value=1
+    style="width:auto" {'checked' if f.get('ehf') else ''}> Send som EHF (offentlige og bedrifter som tar imot EHF)</label>
+  <button>Bestill årlig faktura</button>
+</form>
+<p class=muted><a href="/betal?plan={escape(plan)}">Tilbake til kort og Vipps</a></p>""",
+    )
+
+
+async def betal_faktura(request):
+    """Annual invoice for businesses: the plan starts now, Thomas gets the details and
+    sends the invoice from Fiken (draft first), the customer gets a confirmation."""
+    user = _user(request)
+    plan = request.query_params.get("plan", "")
+    if not user:
+        return RedirectResponse(f"/signup?plan={plan}", status_code=302)
+    tenant = store.get_tenant(user["tid"]) or {}
+    me = store.get_user(user["uid"]) or {}
+    if request.method == "GET":
+        if plan not in pricing.PLAN_ORE:
+            return RedirectResponse("/app", status_code=302)
+        return _invoice_form(request, plan, tenant, me)
+    f = await request.form()
+    plan = str(f.get("plan") or "")
+    if plan not in pricing.PLAN_ORE:
+        return RedirectResponse("/app", status_code=302)
+    if _running_subscription(tenant) in ("stripe", "vipps"):
+        return _invoice_form(request, plan, tenant, me,
+                             "Du har allerede et abonnement med kort eller Vipps. Skriv til "
+                             "post@sporlos.no, så bytter vi til faktura for deg.", f)
+    org = re.sub(r"\s", "", str(f.get("org_nr") or ""))
+    fields = {k: str(f.get(k) or "").strip()[:120] for k in
+              ("company", "address", "postal", "invoice_email", "reference")}
+    if not _valid_org_nr(org):
+        return _invoice_form(request, plan, tenant, me, "Organisasjonsnummeret ser ikke riktig ut.", f)
+    if not all(fields[k] for k in ("company", "address", "postal", "invoice_email")) \
+            or "@" not in fields["invoice_email"]:
+        return _invoice_form(request, plan, tenant, me, "Fyll inn alle feltene.", f)
+    ore = pricing.annual_ore(plan)
+    today = date.today()
+    through = today.replace(year=today.year + 1) if not (today.month == 2 and today.day == 29) \
+        else date(today.year + 1, 2, 28)
+    details = {**fields, "org_nr": org, "ehf": bool(f.get("ehf")), "plan": plan,
+               "amount_ex_vat_ore": ore, "amount_incl_vat_ore": pricing.incl(ore),
+               "period": f"{today.isoformat()}–{through.isoformat()}",
+               "ordered_by": me.get("email"), "ordered_at": datetime.now(timezone.utc).isoformat()}
+    store.set_invoice_billing(user["tid"], plan, details, through.isoformat())
+    log.warning("invoice ordered: tenant=%s plan=%s", user["tid"], plan)
+    admin = os.environ.get("SPORLOS_ADMIN_EMAIL") or os.environ.get("MAIL_FROM")
+    lines = "\n".join(f"{k}: {v}" for k, v in details.items())
+    if admin:
+        mailer.send(
+            admin,
+            f"Ny fakturakunde: {fields['company']} — Sporløs {pricing.PLAN_NAMES[plan]}",
+            f"Lag faktura i Fiken (tenant {user['tid']}):\n\n{lines}\n\n"
+            f"Beløp: {pricing.kr(ore)} kr + mva {pricing.kr(pricing.vat(ore))} kr = "
+            f"{pricing.kr(pricing.incl(ore))} kr. Forfall 14 dager."
+            + ("\nSendes som EHF." if details["ehf"] else ""),
+        )
+    mailer.send(
+        fields["invoice_email"],
+        f"Bestilling mottatt — Sporløs {pricing.PLAN_NAMES[plan]}, årlig faktura",
+        f"Hei,\n\nTakk for bestillingen! Sporløs {pricing.PLAN_NAMES[plan]} er aktiv nå.\n\n"
+        f"Fakturaen på {pricing.kr(pricing.incl(ore))} kr inkl. mva for perioden "
+        f"{today:%d.%m.%Y}–{through:%d.%m.%Y} kommer innen to virkedager"
+        f"{' som EHF' if details['ehf'] else ' på e-post'}, med 14 dagers betalingsfrist.\n\n"
+        "Spørsmål? Bare svar på denne e-posten.\n\nSporløs · Datamynt AS",
+    )
+    return RedirectResponse("/app?faktura=ok", status_code=302)
 
 
 async def create_site_post(request):
@@ -2315,6 +2480,8 @@ def _running_subscription(tenant: dict) -> str:
     the customer's behalf, since nothing in this flow may touch money."""
     if tenant.get("vipps_pending_plan"):
         return "vipps"
+    if tenant.get("plan") in _PAID_PLANS and tenant.get("invoice_details"):
+        return "invoice"
     if tenant.get("plan") in _PAID_PLANS:
         if tenant.get("stripe_subscription_id"):
             return "stripe"
@@ -3052,14 +3219,16 @@ E-post: <b>post@sporlos.no</b> · Telefon: +47 48 27 99 19</p>
 
 <h2>2. Tjenesten og priser</h2>
 <p>Sporløs er personvernvennlig webanalyse. Planer og priser fremgår av <a href="/">sporlos.no</a>,
-oppgitt i NOK. (Datamynt er foreløpig ikke mva-registrert; mva tilkommer fra registreringstidspunktet.)</p>
+oppgitt i NOK eks. mva, med totalpris inkl. 25 % mva ved siden av. Datamynt AS er mva-registrert
+(org.nr 936 017 207 MVA). Beløpet som trekkes eller faktureres, er alltid inkl. mva.</p>
 
 <h2>3. Avtaleinngåelse</h2>
 <p>Avtalen er bindende når bestillingen er sendt og bekreftet. Du må være myndig for å inngå avtale.</p>
 
 <h2>4. Betaling</h2>
-<p>Betaling skjer med Vipps eller betalingskort, forskuddsvis per betalingsperiode. Næringsdrivende
-kan etter avtale betale mot faktura/EHF (post@sporlos.no).</p>
+<p>Betaling skjer med Vipps eller betalingskort, forskuddsvis per måned. Næringsdrivende kan i
+stedet velge årlig betaling mot faktura (e-post eller EHF), med 14 dagers betalingsfrist; årlig
+faktura tilsvarer 10 måneders pris. Kvittering og faktura for kort sendes på e-post.</p>
 
 <h2>5. Levering</h2>
 <p>Tjenesten gjøres tilgjengelig umiddelbart etter at avtalen er inngått.</p>
@@ -3246,7 +3415,7 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
     enheter og dager, BigQuery-eksport. Sporløs viser aggregater, aldri enkeltpersoner.</li>
     <li><b>Avansert kampanjeattribusjon.</b> UTM-kampanjer (kilde/medium/kampanje) måles, men
     fler-stegs attribusjonsmodeller og <code>utm_content</code>/<code>utm_term</code> finnes ikke ennå.</li>
-    <li><b>Prisen.</b> GA er gratis. Sporløs koster fra 99 kr/mnd — eller null, hvis du kjører
+    <li><b>Prisen.</b> GA er gratis. Sporløs koster fra 99 kr/mnd eks. mva — eller null, hvis du kjører
     åpen kildekode-versjonen på egen server. Du betaler for at <i>du</i> er kunden, ikke produktet.</li>
   </ul>
 </section>
@@ -3285,7 +3454,7 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
     <tr><td>E-handel (omsetning, produkter)</td><td class=ja>Ja</td><td class=ja>Ja (uten ordre-ID/kundedata)</td></tr>
     <tr><td>Åpen kildekode / self-host</td><td class=nei>Nei</td><td class=ja>Ja</td></tr>
     <tr><td>Etterprøvbare, forseglede tall</td><td class=nei>Nei</td><td class=ja>Ja (Pro)</td></tr>
-    <tr><td>Pris</td><td class=ja>Gratis</td><td class=delvis>Fra 99 kr/mnd · self-host gratis</td></tr>
+    <tr><td>Pris</td><td class=ja>Gratis</td><td class=delvis>Fra 99 kr/mnd eks. mva · self-host gratis</td></tr>
   </table>
   <p class=muted>Etterprøvbare tall: dagstallene forsegles kryptografisk i en uavhengig offentlig
   logg, så de kan ikke pyntes på i etterkant. Nyttig når tall skal dokumenteres overfor kunder
@@ -4320,6 +4489,12 @@ def _account_delete_card(request, user: dict, tenant: dict, me: dict) -> str:
             "Kontoen kan slettes når den betalte perioden er ute. Haster det, skriv til "
             "post@sporlos.no.</div>"
         )
+    elif running == "invoice":
+        body = _note(
+            "info",
+            "Du betaler med årlig faktura. Skriv til post@sporlos.no, så avslutter vi avtalen "
+            "og sletter kontoen for deg.",
+        )
     else:
         login_row = store.get_user_by_email(me.get("email") or "") or {}
         sso_only = str(login_row.get("password_hash") or "").startswith("!")
@@ -4694,6 +4869,9 @@ def dashboard(request):
             label = {"liten": "Liten", "vekst": "Vekst", "pro": "Pro"}[tenant["plan"]]
             if stripe and tenant.get("stripe_customer_id"):
                 portal = ' · <a href="/billing/portal" style="color:var(--info)">Administrer abonnement</a>'
+            elif tenant.get("invoice_details"):
+                through = escape(str(tenant.get("invoice_paid_through") or "")[:10])
+                portal = f" · årlig faktura, betalt til {through} · endringer: post@sporlos.no"
             elif tenant.get("vipps_agreement_id") and not tenant.get("vipps_pending_plan"):
                 portal = (
                     " · betales med Vipps · "
@@ -4709,6 +4887,11 @@ def dashboard(request):
                 '<div style="background:var(--ok-bg);color:var(--ok-ink);padding:.5rem .8rem;border-radius:7px;'
                 f'font-size:.9rem;margin:1rem 0"><b>Plan:</b> {label}{portal}</div>'
             )
+        faktura_flash = (
+            '<p style="background:var(--ok-bg);color:var(--ok-ink);padding:.5rem .8rem;border-radius:7px;'
+            'font-size:.9rem">Takk! Planen er aktiv, og fakturaen kommer innen to virkedager.</p>'
+            if request.query_params.get("faktura") == "ok" else ""
+        )
         vipps_flash = {
             "ok": '<p style="background:var(--ok-bg);color:var(--ok-ink);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Vipps-avtalen er aktiv — velkommen! 🎉</p>',
             "venter": '<p style="background:var(--info-bg);color:var(--info);padding:.5rem .8rem;border-radius:7px;font-size:.9rem">Venter på bekreftelse fra Vipps — oppdater siden om et øyeblikk.</p>',
@@ -4761,7 +4944,7 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 {verify_banner}
 {trial}
 {limit_msg}
-{vipps_flash}
+{vipps_flash}{faktura_flash}
 <h2 class=sec>Nettsteder <span style="float:right;text-transform:none;letter-spacing:0;font-weight:400">{escape(ov_label)}</span></h2>
 <div class=ovtabs>{ov_tabs}<a href="/app/seo" style="margin-left:auto">Søk og AI →</a></div>
 <div class=card>
@@ -5401,6 +5584,7 @@ routes = [
     Route("/auth/sso/callback", sso_callback),
     Route("/auth/sso/bekreft", sso_confirm),
     Route("/betal", betal),
+    Route("/betal/faktura", betal_faktura, methods=["GET", "POST"]),
     Route("/billing/checkout", billing_checkout),
     Route("/billing/portal", billing_portal),
     Route("/api/hero", hero_stats),
