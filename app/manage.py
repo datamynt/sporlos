@@ -3,6 +3,8 @@
     python -m app.manage init
     python -m app.manage create-site "Datamynt" merdata.no
     python -m app.manage seo-sync [dager]      # GSC/Bing → search_stats (cron: daglig)
+    python -m app.manage retention [dager]     # delete raw events older than 90 days (cron: daily)
+    python -m app.manage mask-paths [--apply] [--backup-dir DIR]   # mask stored ID-like paths
 """
 
 from __future__ import annotations
@@ -63,6 +65,28 @@ def main(argv: list[str]) -> int:
         deleted, sealed = store.retention_sweep(days)
         print(f"retention: {deleted} events slettet (eldre enn {days} d), "
               f"{sealed} dager forseglet først")
+        return 0
+
+    if cmd == "mask-paths":
+        # One-off for events stored before ingest masked ID-like segments. Dry run
+        # without --apply; --apply writes a 0600 CSV backup (id + old value) first.
+        from app import mask_stored
+        args = argv[1:]
+        backup_dir = "backups"
+        if "--backup-dir" in args:
+            i = args.index("--backup-dir")
+            if i + 1 >= len(args):
+                print("usage: mask-paths [--apply] [--backup-dir DIR]")
+                return 2
+            backup_dir = args[i + 1]
+        res = mask_stored.run(apply="--apply" in args, backup_dir=backup_dir)
+        rows = ", ".join(f"{k}: {v}" for k, v in sorted(res["rows"].items())) or "nothing to mask"
+        verb = "masked" if res["applied"] else "would mask (dry run, pass --apply)"
+        print(f"mask-paths: {verb}: {rows}")
+        for ex in res["examples"]:
+            print(f"  e.g. {ex}")
+        if res["backup"]:
+            print(f"  backup: {res['backup']} (0600, id + old value)")
         return 0
 
     if cmd == "anchor":
