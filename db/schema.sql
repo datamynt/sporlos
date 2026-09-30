@@ -179,3 +179,14 @@ CREATE TABLE IF NOT EXISTS anchors (
     txid        TEXT,                        -- 1Sat / OP_RETURN PECKSTAT
     anchored_at TIMESTAMPTZ
 );
+
+-- Google/Microsoft logins (via Datamynt ID) bound to a user by the provider's own
+-- id, never by e-mail alone. See app/innlogg.py.
+CREATE TABLE IF NOT EXISTS user_identities (
+    idp_id      TEXT NOT NULL,
+    subject     TEXT NOT NULL,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email       TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (idp_id, subject)
+);
