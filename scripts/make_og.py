@@ -1,9 +1,5 @@
 """Generer static/og.png (1200x630) — delebilde for sosiale medier.
 
-NB (2026-09-28): static/og.png kommer nå fra datamynt-ui/brand
-(kit blocks/sporlos), ikke fra dette skriptet. Kjører du det på nytt, får
-du tilbake det gamle delebildet — ikke kit-kortet.
-
 Kjør:  .venv/bin/python3 scripts/make_og.py  < /dev/null
 Tegner i 3x og nedskalerer (PIL antialiaser ikke former selv).
 Fonten er Schibsted Grotesk (OFL), samme som nettsiden.

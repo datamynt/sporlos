@@ -235,8 +235,6 @@ _WEBMANIFEST = json.dumps({
     "icons": [
         {"src": "/static/brand/icon-192.png", "sizes": "192x192", "type": "image/png"},
         {"src": "/static/brand/icon-512.png", "sizes": "512x512", "type": "image/png"},
-        {"src": "/static/brand/icon-maskable-512.png", "sizes": "512x512", "type": "image/png",
-         "purpose": "maskable"},
     ],
 }, ensure_ascii=False)
 
@@ -734,40 +732,40 @@ def _normalize_referrer(ref: str | None) -> str | None:
         return None
 
 
-# --- Brand: Sporløs designspråk ------------------------------------------------
-# Merket kommer nå fra datamynt-ui/brand (kit blocks/sporlos, 2026-09-28): en mørk
-# blokk med en blå sirkel-og-strek («ingen sporing»). Ikonfiler: static/brand/.
+# --- Brand: Sporløs designspråk (2026-06-10) ---------------------------------
+# Konsept: ø-en i «sporløs» = sirkel med strek = «ingen sporing»-merket.
 # Palett: varm papir-bakgrunn, marine blekk, én klar blå aksent. System-fonter
 # (ingen Google Fonts — et personvernprodukt lekker ikke besøk til tredjepart).
 
-# Favicon = kit-merket uten detalj (16–48 px). Kilde: brand/blocks/sporlos/favicon.svg.
-_FAVICON_SVG = (
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
-    '<rect x="2" y="2" width="60" height="60" rx="8" fill="#24201b"/>'
-    '<circle cx="32" cy="32" r="11.5" fill="none" stroke="#5b8ff9" stroke-width="5" '
-    'stroke-linecap="square" stroke-linejoin="miter"/>'
-    '<path fill="none" stroke="#5b8ff9" stroke-width="5" stroke-linecap="square" '
-    'stroke-linejoin="miter" d="M21 45L43 19"/></svg>'
+# «Blekk»-merket (design-runde 2) overalt: solid disk m/ utstanset strek —
+# solide flater vinner over strek i små størrelser. Favicon = mini-app-ikon.
+_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<rect width="64" height="64" rx="14" fill="#17263e"/>
+<circle cx="32" cy="32" r="22" fill="#2f6fed"/>
+<line x1="18.5" y1="49" x2="45.5" y2="15" stroke="#17263e" stroke-width="7" stroke-linecap="round"/>
+</svg>"""
+
+# Ordmerket: aksent-disk m/ strek i flatens farge — --mark-gap følger
+# konteksten (papir i nav, blekk i mørk footer = utstanset-effekt).
+_WORDMARK = (
+    '<a class=brand href="/"><svg viewBox="0 0 64 64" aria-hidden=true>'
+    '<circle cx="32" cy="32" r="26" fill="currentColor"/>'
+    '<line x1="16" y1="52" x2="48" y2="12" stroke="var(--mark-gap,var(--bg))" stroke-width="8" stroke-linecap="round"/>'
+    "</svg>sporløs</a>"
 )
 
-# Ordmerket i header/dashboard-nav (lys bunn) og footer (blekk-panel, alltid mørk —
-# se footer.site under) bruker hvert sitt lockup-kit-bilde, ikke lenger inline-SVG.
-_WORDMARK = (
-    '<a class=brand href="/"><img class=brand-mark src="/static/brand/lockup-light.svg" '
-    'alt="sporløs" height="28"></a>'
-)
-_WORDMARK_FOOTER = (
-    '<a class=brand href="/"><img class=brand-mark src="/static/brand/lockup-dark.svg" '
-    'alt="sporløs" height="24"></a>'
-)
+# Bump when the icon files change: they are cached for a week, so browsers that
+# fetched the short-lived kit mark (28.09.2026) would keep showing it otherwise.
+_ICON_V = "?v=blekk2"
 
 _BRAND_HEAD = (
-    # Kit: datamynt-ui/brand, blocks/sporlos (2026-09-28) — se head.html i kitet.
-    # Modern: skarp SVG. Fallback: ICO for eldre nettlesere/Google. Apple + PWA.
-    '<link rel="icon" href="/favicon.ico" sizes="32x32">'
-    '<link rel="icon" href="/favicon.svg" type="image/svg+xml">'
-    '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
-    '<link rel="manifest" href="/site.webmanifest">'
+    # Modern: skarp SVG. Fallback: ICO (Google) + PNG (crawlere uten SVG). Apple + PWA.
+    f'<link rel="icon" type="image/svg+xml" href="/favicon.svg{_ICON_V}">'
+    f'<link rel="icon" href="/favicon.ico{_ICON_V}" sizes="48x48">'
+    f'<link rel="icon" type="image/png" sizes="48x48" href="/static/brand/favicon-48.png{_ICON_V}">'
+    f'<link rel="icon" type="image/png" sizes="96x96" href="/static/brand/favicon-96.png{_ICON_V}">'
+    f'<link rel="apple-touch-icon" href="/apple-touch-icon.png{_ICON_V}">'
+    f'<link rel="manifest" href="/site.webmanifest{_ICON_V}">'
     '<meta name=theme-color content="#faf9f6" media="(prefers-color-scheme: light)">'
     '<meta name=theme-color content="#121a2b" media="(prefers-color-scheme: dark)">'
     # Read-only: the key is only ever written by the theme button in the dashboard.
@@ -807,8 +805,7 @@ background:linear-gradient(90deg,var(--accent-deep),var(--accent) 45%,#8fb3ff)}
 a{color:var(--accent-deep)}
 .brand{display:inline-flex;align-items:center;gap:.45rem;font-weight:700;font-size:1.15rem;
 letter-spacing:-.02em;color:var(--ink);text-decoration:none}
-.brand-mark{height:28px;width:auto;display:block}
-@media(max-width:640px){.brand-mark{height:24px}}
+.brand svg{width:1.12em;height:1.12em;color:var(--accent);transform:translateY(-.02em)}
 .btn{display:inline-block;background:var(--btn-bg);color:#fff;text-decoration:none;
 padding:.7rem 1.4rem;border-radius:9px;font-weight:600;border:0;font-size:1rem;cursor:pointer;
 transition:background .15s,transform .15s,box-shadow .15s}
@@ -848,7 +845,7 @@ footer.site .wrap{padding-top:3.2rem;padding-bottom:1.6rem}
 footer.site a{color:#cdd6e4;text-decoration:none}
 footer.site a:hover{color:#fff;text-decoration:underline}
 footer.site .brand{color:#fff;margin-bottom:.7rem}
-footer.site .brand-mark{height:24px}
+footer.site .brand svg{color:var(--accent-fill);--mark-gap:var(--footer)}
 .foot-top{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:2.4rem}
 .foot-brand p{margin:0;max-width:24em}
 .foot-brand .foot-company{margin-top:1.3rem;font-size:.82rem;line-height:1.8}
@@ -884,7 +881,7 @@ _SITE_NAV = (
 # behind it, link columns, legal line. Every link here is a page that exists.
 _SITE_FOOTER = (
     "<footer class=site><div class=wrap><div class=foot-top>"
-    "<div class=foot-brand>" + _WORDMARK_FOOTER +
+    "<div class=foot-brand>" + _WORDMARK +
     "<p>Webanalyse uten cookies, uten samtykkebanner og uten persondata. Bygget og driftet i Norge.</p>"
     '<p class=foot-company><span>En tjeneste fra</span>'
     '<a href="https://datamynt.no" rel=noopener>Datamynt AS</a><br>'
@@ -964,7 +961,7 @@ async def og_image(request):
 # parser hopper over uquotede property=og:* og viser ingen thumbnail (verifisert
 # via Post Inspector 2026-06-12).
 _OG_META = (
-    '<meta property="og:image" content="https://sporlos.no/static/og.png">'
+    '<meta property="og:image" content="https://sporlos.no/static/og.png?v=blekk2">'
     '<meta property="og:image:width" content="1200">'
     '<meta property="og:image:height" content="630">'
     '<meta property="og:image:type" content="image/png">'
