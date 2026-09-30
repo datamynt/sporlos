@@ -354,6 +354,8 @@ def init_db() -> None:
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS currency TEXT")
             cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS payment_method TEXT")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS dpa_version TEXT")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS dpa_accepted_at TIMESTAMPTZ")
             # New tables (invites, ...) need no line here: the schema file above is all
             # CREATE ... IF NOT EXISTS and runs on every start, which creates them on an
             # existing database too. Same for _SQLITE_SCHEMA below.
@@ -386,6 +388,8 @@ def init_db() -> None:
                 "ALTER TABLE events ADD COLUMN currency TEXT",
                 "ALTER TABLE events ADD COLUMN payment_method TEXT",
                 "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE tenants ADD COLUMN dpa_version TEXT",
+                "ALTER TABLE tenants ADD COLUMN dpa_accepted_at TEXT",
                 # Etter kolonne-migreringene — samme grunn som i PG-grenen over.
                 "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
                 "WHERE revenue_cents IS NOT NULL",
@@ -553,8 +557,10 @@ def overview_stats(tenant_id: int, days: int = 7) -> list[dict]:
     return out
 
 
-def create_account(company: str, email: str, password_hash: str, trial_days: int = 30) -> tuple[int, int]:
-    """Opprett tenant (trial) + første bruker. (tenant_id, user_id). Reiser ved dup epost."""
+def create_account(company: str, email: str, password_hash: str, trial_days: int = 30,
+                   dpa_version: str | None = None) -> tuple[int, int]:
+    """Opprett tenant (trial) + første bruker. (tenant_id, user_id). Reiser ved dup epost.
+    dpa_version: the databehandleravtale version accepted at signup (app/dpa.py)."""
     trial_ends = (datetime.now(timezone.utc) + timedelta(days=trial_days)).strftime(
         "%Y-%m-%d %H:%M:%S"
     )
@@ -565,6 +571,11 @@ def create_account(company: str, email: str, password_hash: str, trial_days: int
                 (company, "trial", trial_ends),
             )
             tid = cur.fetchone()["id"]
+            if dpa_version:
+                cur.execute(
+                    f"UPDATE tenants SET dpa_version = {P}, dpa_accepted_at = {P} WHERE id = {P}",
+                    (dpa_version, _now_str(), tid),
+                )
             cur.execute(
                 f"INSERT INTO users (tenant_id, email, password_hash) VALUES ({P}, {P}, {P}) RETURNING id",
                 (tid, email.strip().lower(), password_hash),
@@ -576,6 +587,11 @@ def create_account(company: str, email: str, password_hash: str, trial_days: int
                 (company, "trial", trial_ends),
             )
             tid = cur.lastrowid
+            if dpa_version:
+                cur.execute(
+                    f"UPDATE tenants SET dpa_version = {P}, dpa_accepted_at = {P} WHERE id = {P}",
+                    (dpa_version, _now_str(), tid),
+                )
             cur.execute(
                 f"INSERT INTO users (tenant_id, email, password_hash) VALUES ({P}, {P}, {P})",
                 (tid, email.strip().lower(), password_hash),
@@ -651,6 +667,26 @@ def identities_for_user(user_id: int) -> list[str]:
     with _cursor() as cur:
         cur.execute(f"SELECT idp_id FROM user_identities WHERE user_id = {P}", (user_id,))
         return [r["idp_id"] for r in cur.fetchall()]
+
+
+def _now_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def accept_dpa(tenant_id: int, version: str) -> None:
+    """Record that the tenant accepted this databehandleravtale version (now)."""
+    with _cursor() as cur:
+        cur.execute(
+            f"UPDATE tenants SET dpa_version = {P}, dpa_accepted_at = {P} WHERE id = {P}",
+            (version, _now_str(), tenant_id),
+        )
+
+
+def dpa_status(tenant_id: int) -> dict:
+    with _cursor() as cur:
+        cur.execute(f"SELECT dpa_version, dpa_accepted_at FROM tenants WHERE id = {P}", (tenant_id,))
+        r = cur.fetchone()
+        return dict(r) if r else {}
 
 
 def set_email_verified(uid: int) -> None:
