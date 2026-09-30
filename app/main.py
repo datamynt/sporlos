@@ -41,7 +41,7 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from app import api, assist, blogg, icons, innlogg, mailer, notify, store, vipps
+from app import api, assist, blogg, dpa, icons, innlogg, mailer, notify, store, vipps
 from app.auth import check_token, hash_password, verify_password
 from app.datacenter import is_datacenter
 from app.geo import country_no
@@ -178,7 +178,15 @@ a.sso-link svg,#konto .fine svg{width:16px;height:16px;vertical-align:-3px}
 """
 
 
-def _sso_buttons(plan: str = "") -> str:
+# Shown wherever an account can be created. Creating the account is the acceptance
+# (the databehandleravtale is electronic, GDPR art. 28 nr. 9); the version is stored.
+_ACCEPT_TERMS = (
+    '<p class=fine style="margin:.8rem 0 0;font-size:.8rem">Ved å opprette konto godtar du '
+    '<a href="/vilkar">salgsbetingelsene</a> og <a href="/databehandleravtale">databehandleravtalen</a>.</p>'
+)
+
+
+def _sso_buttons(plan: str = "", accept_terms: bool = True) -> str:
     """«Fortsett med Google/Microsoft» — empty when Datamynt ID isn't configured."""
     providers = [p for p in ("google", "microsoft") if innlogg.enabled(p)]
     if not providers:
@@ -189,7 +197,8 @@ def _sso_buttons(plan: str = "") -> str:
         f"<span>Fortsett med {innlogg.LABELS[p]}</span></a>"
         for p in providers
     )
-    return f'<div class=sso><div class=sso-or>eller</div>{links}</div>'
+    terms = _ACCEPT_TERMS if accept_terms else ""
+    return f'<div class=sso><div class=sso-or>eller</div>{links}{terms}</div>'
 
 
 # Messages for /login?sso=… (the flow redirects there on anything but success).
@@ -1046,7 +1055,8 @@ _SITE_FOOTER = (
     '<a class=foot-link href="https://datamynt.no" rel=noopener>datamynt.no</a></div>'
     "<div><h3>Juridisk</h3>"
     '<a class=foot-link href="/personvern">Personvern</a>'
-    '<a class=foot-link href="/vilkar">Salgsbetingelser</a></div></div>'
+    '<a class=foot-link href="/vilkar">Salgsbetingelser</a>'
+    '<a class=foot-link href="/databehandleravtale">Databehandleravtale</a></div></div>'
     "</div><div class=foot-bottom>"
     f"<span>© {date.today().year} Sporløs – en tjeneste fra Datamynt AS (org.nr 936 017 207)</span>"
     '<a class=foot-dm href="https://datamynt.no" rel=noopener aria-label="En del av Datamynt">'
@@ -1485,7 +1495,9 @@ async def signup(request):
                 err = "For mange registreringer herfra akkurat nå. Prøv igjen om en time."
             else:
                 try:
-                    tid, uid = store.create_account(company, email, hash_password(pw))
+                    tid, uid = store.create_account(
+                        company, email, hash_password(pw), dpa_version=dpa.VERSION
+                    )
                     _login(request, uid, tid)
                     store.signup_bump(ip)
                     try:
@@ -1517,7 +1529,8 @@ async def signup(request):
     <label>Nettsted</label><input name=website tabindex=-1 autocomplete=off></div>
   <button>{"Fortsett til betaling" if plan else "Start gratis prøve"}</button>
 </form>
-{_sso_buttons(plan)}
+{_ACCEPT_TERMS}
+{_sso_buttons(plan, accept_terms=False)}
 <p class=muted>Har du konto? <a href="/login">Logg inn</a></p>""",
     )
 
@@ -1803,7 +1816,7 @@ def _sso_claim(existing: dict, who) -> None:
 
 def _sso_new_account(who) -> tuple[int, int]:
     company = who.name or who.email.split("@")[0]
-    tid, uid = store.create_account(company, who.email, "!sso")
+    tid, uid = store.create_account(company, who.email, "!sso", dpa_version=dpa.VERSION)
     store.set_email_verified(uid)
     store.link_identity(uid, who.idp_id, who.subject, who.email)
     return tid, uid
@@ -2254,6 +2267,15 @@ async def funnel_delete(request):
         except Exception:
             pass
     return RedirectResponse(f"/app?site={pid}" if pid else "/app", status_code=302)
+
+
+async def dpa_accept(request):
+    """Accept the current databehandleravtale for an existing account."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    store.accept_dpa(user["tid"], dpa.VERSION)
+    return RedirectResponse("/app?dpa=ok#konto", status_code=302)
 
 
 async def change_password(request):
@@ -2755,7 +2777,8 @@ Annen plattform? Lim inn <a href="/utviklere">sporings-snippeten</a> rett i tema
     )
 
 
-def _legal(request, title, inner, path="", desc=""):
+def _legal(request, title, inner, path="", desc="",
+           footer="Sist oppdatert 2026-09-30."):
     canon = f'<link rel="canonical" href="https://sporlos.no{path}">' if path else ""
     meta_desc = f'<meta name="description" content="{escape(desc)}">' if desc else ""
     return HTMLResponse(
@@ -2767,14 +2790,15 @@ def _legal(request, title, inner, path="", desc=""):
 <style>{_BRAND_CSS}{_CHROME_CSS}
 h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
 table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}}
-.muted{{font-size:.85rem}}</style>
+.muted{{font-size:.85rem}}
+@media print{{nav,footer,.no-print{{display:none!important}}body{{background:#fff;color:#000}}}}</style>
 {_SELF_SNIPPET}
 <div class=wrap>
 {_site_nav(request)}
 <div class=content>
 {inner}
 <p class=muted style="margin-top:3rem">Datamynt AS · org.nr 936 017 207 · Maridalsveien 163, 0461 Oslo · post@sporlos.no<br>
-Sist oppdatert 2026-06-10 · utkast, kvalitetssikres av jurist.</p>
+{footer}</p>
 </div></div>
 {_SITE_FOOTER}"""
     )
@@ -3000,6 +3024,17 @@ padding:1rem 1.1rem;text-decoration:none;background:var(--card);transition:borde
     )
 
 
+async def databehandleravtale(request):
+    return _legal(
+        request,
+        "Databehandleravtale",
+        dpa.HTML,
+        path="/databehandleravtale",
+        desc="Databehandleravtalen for Sporløs (GDPR art. 28): inngås elektronisk ved registrering, data i Norge, ingen underleverandører.",
+        footer=f"Databehandleravtale versjon {dpa.VERSION} · gjelder fra {dpa.VALID_FROM}",
+    )
+
+
 async def vilkar(request):
     return _legal(
         request,
@@ -3055,7 +3090,8 @@ forbrukerkjøpsloven.</p>
 
 <h2>10. Behandling av data — og dine data</h2>
 <p>Sporløs samler ikke personopplysninger om dine besøkende. Se <a href="/personvern">personvernerklæringen</a>;
-for næringsdrivende gjelder i tillegg databehandleravtale (på forespørsel).</p>
+for næringsdrivende gjelder i tillegg <a href="/databehandleravtale">databehandleravtalen</a>, som du godtar
+når du oppretter konto.</p>
 <p><b>Analysedataene for ditt nettsted er dine.</b> Du kan når som helst eksportere dem (CSV i
 tjenesten). Vi selger eller deler dem aldri med tredjepart. Ved opphør av kundeforholdet slettes
 innsamlede analysedata innen 90 dager.</p>
@@ -3090,6 +3126,9 @@ behandlingsansvarlig for kunder og besøkende på sporlos.no.</p>
 <h2>1. Hva vi samler om kunder</h2>
 <p>Når du oppretter konto lagrer vi e-post, firmanavn og et kryptert passord. Faktureringsopplysninger
 håndteres av vår betalingspartner (Stripe/Vipps); vi lagrer ikke kortnummer.</p>
+<p>Inviterer du en kollega, lagrer vi e-postadressen deres til invitasjonen er brukt eller utløpt
+(inntil 7 dager). Kobler du et nettsted til Google Search Console, lagrer vi Google-adressen du koblet
+med og en kryptert tilgangsnøkkel, til du kobler fra.</p>
 <p>Velger du å logge inn med Google eller Microsoft, går innloggingen via Datamynt ID, vår egen
 innloggingstjeneste på samme server i Oslo. Vi lagrer da leverandørens bruker-ID og e-postadressen
 din, slik at vi kjenner deg igjen neste gang. Vi får ikke passordet ditt, og siden laster ingenting
@@ -3123,10 +3162,13 @@ art. 6 nr. 1 b) og for support. Vi sender ikke markedsføring uten samtykke.</p>
 tid etter at kundeforholdet opphører (regnskapsplikt kan kreve lengre lagring av fakturadata).
 Analysehendelser inneholder ingen personopplysninger og lagres for statistikkformål;
 ved opphør slettes de innen 90 dager.</p>
+<p>Sletter du et nettsted eller hele kontoen selv, forsvinner dataene fra tjenesten med en gang.
+Kopier i de nattlige sikkerhetskopiene forsvinner når kopiene roterer ut, senest etter 35 dager.</p>
 
 <h2>5. Dine rettigheter</h2>
-<p>Du har rett til innsyn, retting, sletting og dataportabilitet. Kontakt oss på
-post@sporlos.no. Du kan klage til Datatilsynet (datatilsynet.no).</p>
+<p>Du har rett til innsyn, retting, sletting og dataportabilitet. Statistikken kan du laste ned som
+CSV, og nettsteder eller hele kontoen kan du slette selv under «Konto» når du er logget inn. Ellers
+kontakt oss på post@sporlos.no. Du kan klage til Datatilsynet (datatilsynet.no).</p>
 
 <h2>6. Analyse på vegne av kunder</h2>
 <p>Når du bruker Sporløs på ditt eget nettsted, er du behandlingsansvarlig og vi er
@@ -3462,7 +3504,7 @@ async def llms_txt(request):
 
 async def sitemap(request):
     pages = ["/", "/demo", "/google-analytics-alternativ", "/sporsmal", "/integrasjoner",
-             "/shopify", "/signup", "/vilkar", "/personvern", "/utviklere", "/blogg"]
+             "/shopify", "/signup", "/vilkar", "/databehandleravtale", "/personvern", "/utviklere", "/blogg"]
     pages += [f"/integrasjoner/{slug}" for slug in _GUIDES]
     pages += [f"/blogg/{slug}" for slug in blogg.POSTS]
     urls = "".join(f"<url><loc>https://sporlos.no{p}</loc></url>" for p in pages)
@@ -4599,6 +4641,23 @@ def dashboard(request):
             "</details></div>"
         )
 
+        # Databehandleravtale: which version this account accepted, and when.
+        ds = store.dpa_status(user["tid"])
+        if ds.get("dpa_version") == dpa.VERSION:
+            when = str(ds.get("dpa_accepted_at") or "")[:10]
+            dpa_state = f"Godtatt {escape(when)} (versjon {escape(dpa.VERSION)})."
+        else:
+            dpa_state = (
+                '<form method=post action="/app/dpa/accept" style="display:inline;margin-right:.6rem">'
+                f'<button class=btn style="padding:.35rem .8rem;font-size:.85rem">Godta versjon {escape(dpa.VERSION)}</button></form>'
+            )
+        dpa_html = (
+            '<div class=card><b>Databehandleravtale</b>'
+            f'<p class=fine style="margin:.5rem 0 0">{dpa_state} '
+            '<a href="/databehandleravtale">Les eller skriv ut</a> · signert eksemplar på '
+            '<a href="mailto:post@sporlos.no">post@sporlos.no</a>.</p></div>'
+        )
+
         # Innlogging med Google/Microsoft: what's linked, and «Koble til» for the rest.
         sso_html = ""
         if innlogg.enabled():
@@ -4721,6 +4780,7 @@ table.ov td.trend .spark{{width:5rem;height:1.5rem;display:block;margin-left:aut
 {pw_flash}
 {password_html}
 {sso_html}
+{dpa_html}
 {delete_html}
 <p class=fine style="margin-top:1.5rem">Cookieløs · ingen IP lagret · samtykkefri</p>
 </div>
@@ -5307,6 +5367,8 @@ routes = [
     Route("/api/event", ingest, methods=["POST"]),
     Route("/", landing),
     Route("/vilkar", vilkar),
+    Route("/databehandleravtale", databehandleravtale),
+    Route("/app/dpa/accept", dpa_accept, methods=["POST"]),
     Route("/personvern", personvern),
     Route("/google-analytics-alternativ", ga_alternativ),
     Route("/demo", demo),

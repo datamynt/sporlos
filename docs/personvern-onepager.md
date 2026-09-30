@@ -4,7 +4,7 @@
 > vi lagrer ingenting på besøkerens enhet, og samler ingen personopplysninger.**
 > Derfor trenger nettstedet ditt verken cookie-banner eller samtykke for å bruke oss.
 
-_Utkast v0 — produktmateriale, ikke juridisk rådgivning. Skal kvalitetssikres av jurist før publisering._
+_Versjon 1 (30.09.2026) — produktmateriale, ikke juridisk rådgivning._
 
 ---
 
