@@ -2058,8 +2058,25 @@ def billing_checkout(request):
         billing_address_collection="required",
         tax_id_collection={"enabled": True},
     )
-    if tenant.get("stripe_customer_id"):
-        kwargs["customer"] = tenant["stripe_customer_id"]
+    # The seller footer (org.nr, MVA, Foretaksregisteret) has to be on the customer BEFORE
+    # Checkout creates the first invoice; set afterwards, it only reaches later invoices.
+    cust = tenant.get("stripe_customer_id")
+    try:
+        if cust:
+            stripe.Customer.modify(cust, invoice_settings={"footer": _STRIPE_INVOICE_FOOTER})
+        else:
+            me = store.get_user(user["uid"]) or {}
+            cust = stripe.Customer.create(
+                email=me.get("email"),
+                invoice_settings={"footer": _STRIPE_INVOICE_FOOTER},
+                metadata={"tenant_id": str(user["tid"])},
+            )["id"]
+            store.set_stripe_customer(user["tid"], cust)
+    except Exception as e:  # never block a sale on the footer: Checkout makes the customer
+        log.error("stripe customer: %s", type(e).__name__)
+        cust = tenant.get("stripe_customer_id")
+    if cust:
+        kwargs["customer"] = cust
         kwargs["customer_update"] = {"name": "auto", "address": "auto"}
     try:
         session = stripe.checkout.Session.create(**kwargs)
@@ -4835,7 +4852,7 @@ def dashboard(request):
         ds = store.dpa_status(user["tid"])
         if ds.get("dpa_version") == dpa.VERSION:
             when = str(ds.get("dpa_accepted_at") or "")[:10]
-            dpa_state = f"Godtatt {escape(when)} (versjon {escape(dpa.VERSION)})."
+            dpa_state = f"Godtatt {_no_date(when)} (versjon {escape(dpa.VERSION)})."
         else:
             dpa_state = (
                 '<form method=post action="/app/dpa/accept" style="display:inline;margin-right:.6rem">'
