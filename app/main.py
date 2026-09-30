@@ -1707,6 +1707,7 @@ async def logout(request):
     if not _user(request):
         return RedirectResponse("/", status_code=302)
     return _shell(
+        request,
         "Logg ut",
         "<h1>Logg ut?</h1>"
         '<form method=post action="/logout"><button>Logg ut</button></form>'
