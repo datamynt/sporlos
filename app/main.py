@@ -3126,6 +3126,9 @@ behandlingsansvarlig for kunder og besøkende på sporlos.no.</p>
 <h2>1. Hva vi samler om kunder</h2>
 <p>Når du oppretter konto lagrer vi e-post, firmanavn og et kryptert passord. Faktureringsopplysninger
 håndteres av vår betalingspartner (Stripe/Vipps); vi lagrer ikke kortnummer.</p>
+<p>Inviterer du en kollega, lagrer vi e-postadressen deres til invitasjonen er brukt eller utløpt
+(inntil 7 dager). Kobler du et nettsted til Google Search Console, lagrer vi Google-adressen du koblet
+med og en kryptert tilgangsnøkkel, til du kobler fra.</p>
 <p>Velger du å logge inn med Google eller Microsoft, går innloggingen via Datamynt ID, vår egen
 innloggingstjeneste på samme server i Oslo. Vi lagrer da leverandørens bruker-ID og e-postadressen
 din, slik at vi kjenner deg igjen neste gang. Vi får ikke passordet ditt, og siden laster ingenting
@@ -3159,10 +3162,13 @@ art. 6 nr. 1 b) og for support. Vi sender ikke markedsføring uten samtykke.</p>
 tid etter at kundeforholdet opphører (regnskapsplikt kan kreve lengre lagring av fakturadata).
 Analysehendelser inneholder ingen personopplysninger og lagres for statistikkformål;
 ved opphør slettes de innen 90 dager.</p>
+<p>Sletter du et nettsted eller hele kontoen selv, forsvinner dataene fra tjenesten med en gang.
+Kopier i de nattlige sikkerhetskopiene forsvinner når kopiene roterer ut, senest etter 35 dager.</p>
 
 <h2>5. Dine rettigheter</h2>
-<p>Du har rett til innsyn, retting, sletting og dataportabilitet. Kontakt oss på
-post@sporlos.no. Du kan klage til Datatilsynet (datatilsynet.no).</p>
+<p>Du har rett til innsyn, retting, sletting og dataportabilitet. Statistikken kan du laste ned som
+CSV, og nettsteder eller hele kontoen kan du slette selv under «Konto» når du er logget inn. Ellers
+kontakt oss på post@sporlos.no. Du kan klage til Datatilsynet (datatilsynet.no).</p>
 
 <h2>6. Analyse på vegne av kunder</h2>
 <p>Når du bruker Sporløs på ditt eget nettsted, er du behandlingsansvarlig og vi er
