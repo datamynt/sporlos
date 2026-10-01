@@ -358,6 +358,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS dpa_accepted_at TIMESTAMPTZ")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS invoice_details TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS invoice_paid_through TEXT")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS plan_ends_at TEXT")
             # New tables (invites, ...) need no line here: the schema file above is all
             # CREATE ... IF NOT EXISTS and runs on every start, which creates them on an
             # existing database too. Same for _SQLITE_SCHEMA below.
@@ -394,6 +395,7 @@ def init_db() -> None:
                 "ALTER TABLE tenants ADD COLUMN dpa_accepted_at TEXT",
                 "ALTER TABLE tenants ADD COLUMN invoice_details TEXT",
                 "ALTER TABLE tenants ADD COLUMN invoice_paid_through TEXT",
+                "ALTER TABLE tenants ADD COLUMN plan_ends_at TEXT",
                 # Etter kolonne-migreringene — samme grunn som i PG-grenen over.
                 "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
                 "WHERE revenue_cents IS NOT NULL",
@@ -867,7 +869,7 @@ def get_tenant(tenant_id: int) -> dict | None:
         cur.execute(
             f"SELECT id, name, plan, trial_ends_at, stripe_customer_id, stripe_subscription_id, "
             f"vipps_agreement_id, vipps_pending_plan, vipps_charged_through, "
-            f"invoice_details, invoice_paid_through "
+            f"invoice_details, invoice_paid_through, plan_ends_at "
             f"FROM tenants WHERE id = {P}",
             (tenant_id,),
         )
@@ -895,6 +897,12 @@ def set_tenant_plan(
     args.append(tenant_id)
     with _cursor() as cur:
         cur.execute(f"UPDATE tenants SET {', '.join(sets)} WHERE id = {P}", tuple(args))
+
+
+def set_plan_ends_at(tenant_id: int, ends: str | None) -> None:
+    """Date (YYYY-MM-DD) a cancelled card subscription runs out, or None while it renews."""
+    with _cursor() as cur:
+        cur.execute(f"UPDATE tenants SET plan_ends_at = {P} WHERE id = {P}", (ends, tenant_id))
 
 
 def get_tenant_by_customer(customer_id: str) -> dict | None:

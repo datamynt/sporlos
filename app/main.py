@@ -2134,21 +2134,62 @@ async def stripe_webhook(request):
                 )
             except Exception as e:
                 log.warning("stripe footer: %s", type(e).__name__)
-    elif typ == "customer.subscription.updated":
-        # Plan changed in the Stripe customer portal: follow the price.
-        cust = obj.get("customer")
-        ten = store.get_tenant_by_customer(cust) if cust else None
-        items = ((obj.get("items") or {}).get("data") or [])
-        price_id = ((items[0].get("price") or {}).get("id")) if items else None
-        by_price = {v: k for k, v in STRIPE_PRICES.items() if v}
-        if ten and price_id in by_price and obj.get("status") in ("active", "trialing", "past_due"):
-            store.set_tenant_plan(ten["id"], by_price[price_id])
-    elif typ == "customer.subscription.deleted":
+    elif typ in ("customer.subscription.updated", "customer.subscription.deleted"):
         cust = obj.get("customer")
         ten = store.get_tenant_by_customer(cust) if cust else None
         if ten:
-            store.set_tenant_plan(ten["id"], "cancelled")
+            _apply_stripe_subscription(ten["id"], obj)
     return PlainTextResponse("ok", status_code=200)
+
+
+def _stripe_sub_ends(obj: dict) -> str | None:
+    """Date (YYYY-MM-DD, UTC) a cancelled subscription runs out, or None while it renews.
+    Newer API versions set cancel_at and leave cancel_at_period_end False; older ones
+    only set the flag, with the period end on the subscription or its first item."""
+    ts = obj.get("cancel_at")
+    if not ts and obj.get("cancel_at_period_end"):
+        items = ((obj.get("items") or {}).get("data") or [])
+        ts = obj.get("current_period_end") or (items[0].get("current_period_end") if items else None)
+    if not ts:
+        return None
+    return datetime.fromtimestamp(int(ts), tz=timezone.utc).date().isoformat()
+
+
+def _apply_stripe_subscription(tid: int, obj: dict) -> None:
+    """Mirror a Stripe subscription onto the tenant: the plan follows the price (changed in
+    the customer portal), a scheduled cancellation shows as an end date, and an ended
+    subscription cancels the plan. A stale event for an older subscription is ignored."""
+    tenant = store.get_tenant(tid) or {}
+    current = tenant.get("stripe_subscription_id")
+    if current and obj.get("id") and obj["id"] != current:
+        return
+    if obj.get("status") == "canceled":
+        store.set_tenant_plan(tid, "cancelled")
+        store.set_plan_ends_at(tid, None)
+        return
+    if obj.get("status") not in ("active", "trialing", "past_due"):
+        return
+    items = ((obj.get("items") or {}).get("data") or [])
+    price_id = ((items[0].get("price") or {}).get("id")) if items else None
+    by_price = {v: k for k, v in STRIPE_PRICES.items() if v}
+    if price_id in by_price:
+        store.set_tenant_plan(tid, by_price[price_id])
+    store.set_plan_ends_at(tid, _stripe_sub_ends(obj))
+
+
+def _sync_stripe_subscription(tenant: dict) -> dict:
+    """Read the subscription straight from Stripe when the user comes back from the portal,
+    so the change shows at once even if the webhook is still on its way. Read only."""
+    sub_id = tenant.get("stripe_subscription_id")
+    if not (stripe and sub_id and tenant.get("id")):
+        return tenant
+    try:
+        obj = stripe.Subscription.retrieve(sub_id).to_dict()
+    except Exception as e:
+        log.warning("stripe sync: %s", type(e).__name__)
+        return tenant
+    _apply_stripe_subscription(tenant["id"], obj)
+    return store.get_tenant(tenant["id"]) or tenant
 
 
 def billing_portal(request):
@@ -2161,7 +2202,9 @@ def billing_portal(request):
     if not stripe or not cust:
         return RedirectResponse("/app", status_code=302)
     try:
-        sess = stripe.billing_portal.Session.create(customer=cust, return_url=f"{PUBLIC_BASE}/app")
+        sess = stripe.billing_portal.Session.create(
+            customer=cust, locale="nb", return_url=f"{PUBLIC_BASE}/app?fra=stripe"
+        )
     except Exception:
         return RedirectResponse("/app", status_code=302)
     return RedirectResponse(sess.url, status_code=303)
@@ -2530,6 +2573,16 @@ def _running_subscription(tenant: dict) -> str:
     return ""
 
 
+def _deletion_blocker(tenant: dict) -> str:
+    """What keeps the account from being deleted now. A card subscription that is already
+    cancelled no longer blocks: no more money moves, the customer only gives up the rest
+    of a period they have paid for."""
+    running = _running_subscription(tenant)
+    if running == "stripe" and tenant.get("plan_ends_at"):
+        return ""
+    return running
+
+
 async def site_delete(request):
     """Delete one site and all its data. The user types the domain to confirm."""
     user = _user(request)
@@ -2564,7 +2617,7 @@ async def account_delete(request):
     login_row = store.get_user_by_email(me.get("email") or "") or {}
     if user["uid"] != store.account_owner_id(user["tid"]):
         return RedirectResponse(back.format("ikke-eier"), status_code=302)
-    if _running_subscription(tenant):
+    if _deletion_blocker(tenant):
         return RedirectResponse(back.format("abonnement"), status_code=302)
     typed = str(f.get("confirm") or "").strip().lower()
     if not typed or typed not in (str(tenant.get("name") or "").strip().lower(), me.get("email")):
@@ -4506,7 +4559,7 @@ def _account_delete_card(request, user: dict, tenant: dict, me: dict) -> str:
         "kopiene roterer ut, senest etter 35 dager.</p>"
     )
     owner = store.account_owner_id(user["tid"])
-    running = _running_subscription(tenant)
+    running = _deletion_blocker(tenant)
     if user["uid"] != owner:
         owner_row = store.get_user(owner) if owner else None
         who = escape(owner_row["email"]) if owner_row else "den som opprettet kontoen"
@@ -4568,6 +4621,12 @@ def _account_delete_card(request, user: dict, tenant: dict, me: dict) -> str:
                 f"{pw_field}"
                 '<button class="btn btn-danger">Slett kontoen for godt</button></form>'
             )
+    if user["uid"] == owner and not running and _running_subscription(tenant) == "stripe":
+        body = _note(
+            "info",
+            f"Abonnementet er sagt opp og gjelder til {_no_date(tenant.get('plan_ends_at'))}. "
+            "Sletter du kontoen nå, mister du resten av perioden. Det blir ikke trukket mer.",
+        ) + body
     opened = " open" if code in _KONTO_FLASH or code == "abonnement" else ""
     return (
         f"{flash}<div class='card danger' id=slett-konto><details{opened}>"
@@ -4701,6 +4760,8 @@ def dashboard(request):
         ov_label, ov_days = _PERIODS[ov_period]
         sites = store.overview_stats(user["tid"], ov_days)
         tenant = store.get_tenant(user["tid"]) or {}
+        if request.query_params.get("fra") == "stripe":
+            tenant = _sync_stripe_subscription(tenant)
         def _dot(s):
             # Tilkoblet hvis vi noen gang har sett et event; ellers venter på første besøk.
             if s.get("last_ts"):
@@ -4899,7 +4960,12 @@ def dashboard(request):
         planinfo = ""
         if tenant.get("plan") in ("liten", "vekst", "pro"):
             label = {"liten": "Liten", "vekst": "Vekst", "pro": "Pro"}[tenant["plan"]]
-            if stripe and tenant.get("stripe_customer_id"):
+            if stripe and tenant.get("stripe_customer_id") and tenant.get("plan_ends_at"):
+                portal = (
+                    f" · sagt opp, gjelder til {_no_date(tenant['plan_ends_at'])} · "
+                    '<a href="/billing/portal" style="color:var(--info)">Fortsett abonnementet</a>'
+                )
+            elif stripe and tenant.get("stripe_customer_id"):
                 portal = ' · <a href="/billing/portal" style="color:var(--info)">Administrer abonnement</a>'
             elif tenant.get("invoice_details"):
                 through = escape(str(tenant.get("invoice_paid_through") or "")[:10])
@@ -4918,6 +4984,15 @@ def dashboard(request):
             planinfo = (
                 '<div style="background:var(--ok-bg);color:var(--ok-ink);padding:.5rem .8rem;border-radius:7px;'
                 f'font-size:.9rem;margin:1rem 0"><b>Plan:</b> {label}{portal}</div>'
+            )
+        stripe_flash = ""
+        if (request.query_params.get("fra") == "stripe" and tenant.get("plan_ends_at")
+                and tenant.get("plan") in ("liten", "vekst", "pro")):
+            stripe_flash = _note(
+                "ok",
+                f"<b>Abonnementet er sagt opp.</b> Du beholder {pricing.PLAN_NAMES[tenant['plan']]} til "
+                f"{_no_date(tenant['plan_ends_at'])}, og det blir ikke trukket mer. Ombestemmer du "
+                "deg, trykker du «Fortsett abonnementet».",
             )
         faktura_flash = (
             '<p style="background:var(--ok-bg);color:var(--ok-ink);padding:.5rem .8rem;border-radius:7px;'
@@ -5021,7 +5096,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
 {verify_banner}
 {trial}
 {limit_msg}
-{vipps_flash}{faktura_flash}
+{vipps_flash}{faktura_flash}{stripe_flash}
 {sites_head}
 {sites_block}
 {plan_sec}
