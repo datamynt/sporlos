@@ -14,7 +14,8 @@ FONT = str(ROOT / "scripts" / "schibsted-grotesk.ttf")
 OUTDIR = ROOT / "static" / "brand"
 
 S = 3
-W, H = 560 * S, 140 * S
+W, H = 800 * S, 240 * S  # working canvas; the output is trimmed to the ink
+PAD = 12  # px of air on every side of the finished logo
 INK = (23, 38, 62)
 WHITE = (250, 250, 250)
 ACCENT = (47, 111, 237)
@@ -38,19 +39,27 @@ def disk_mark(img, cx, cy, r, color):
 
 
 def lockup(text_color, name):
+    """The disk is centred on the x-height, the middle of the lowercase letters. Centring
+    it on the font's whole ascender-to-descender box put it ~7 px too high. The result is
+    trimmed to the ink with PAD on every side, so it sits centred wherever it is placed
+    (Stripe, Vipps); a fixed 560 px canvas left 126 px of empty space on the right."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    r = 38 * S
-    cx, cy = 10 * S + r, H // 2
-    disk_mark(img, cx, cy, r, ACCENT)
-    d = ImageDraw.Draw(img)
     f = ImageFont.truetype(FONT, 86 * S)
     f.set_variation_by_axes([800])
-    d.text((cx + r + 24 * S, cy), "sporløs", font=f, fill=text_color, anchor="lm")
-    img = img.resize((W // S, H // S), Image.LANCZOS)
+    r = 38 * S
+    baseline = H * 0.6
+    _, x_top, _, x_bottom = f.getbbox("x", anchor="ls")
+    cx, cy = 2 * r, baseline + (x_top + x_bottom) / 2
+    disk_mark(img, cx, cy, r, ACCENT)
+    ImageDraw.Draw(img).text((cx + r + 24 * S, baseline), "sporløs", font=f, fill=text_color, anchor="ls")
+    left, top, right, bottom = img.getbbox()
+    pad = PAD * S
+    img = img.crop((left - pad, top - pad, right + pad, bottom + pad))
+    img = img.resize((round(img.width / S), round(img.height / S)), Image.LANCZOS)
     OUTDIR.mkdir(parents=True, exist_ok=True)
     out = OUTDIR / name
     img.save(out, "PNG", optimize=True)
-    print(f"skrev {out}")
+    print(f"skrev {out} {img.size}")
 
 
 lockup(INK, "logo-light.png")
