@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 import unittest
 
 _TMP_DB = tempfile.NamedTemporaryFile(prefix="sporlos_test_", suffix=".db", delete=False)
@@ -48,7 +49,8 @@ class WelcomeTest(unittest.TestCase):
     def test_password_signup_is_welcomed_with_a_start_card(self):
         c = TestClient(main.app)
         r = c.post("/signup", data={"company": "Ny AS", "email": "ny@example.no",
-                                    "password": "passord-123"}, follow_redirects=False)
+                                    "password": "passord-123",
+                                    "t": main._signup_stamp(time.time() - 10)}, follow_redirects=False)
         self.assertEqual(r.headers["location"], "/app?ny=1")
         html = c.get("/app?ny=1").text
         self.assertIn("Velkommen til Sporløs!", html)

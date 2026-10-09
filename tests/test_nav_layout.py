@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import tempfile
+import time
 import unittest
 
 _TMP_DB = tempfile.NamedTemporaryFile(prefix="sporlos_navtest_", suffix=".db", delete=False)
@@ -71,7 +72,8 @@ class NavLayoutTest(unittest.TestCase):
         cls.member = TestClient(main.app)
         r = cls.member.post(
             "/signup",
-            data={"company": "Nav Test AS", "email": "nav@example.no", "password": "passord123"},
+            data={"company": "Nav Test AS", "email": "nav@example.no", "password": "passord123",
+                  "t": main._signup_stamp(time.time() - 10)},
             follow_redirects=False,
         )
         assert r.status_code == 302, r.text[:200]
