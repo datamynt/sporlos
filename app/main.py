@@ -249,6 +249,34 @@ _STRIPE_INVOICE_FOOTER = (
 SIGNUP_PER_IP_HOURLY = 5
 SIGNUP_GLOBAL_HOURLY = 40
 
+# Bot-registreringer kom forbi honeypoten i okt. 2026: «Test Company» + tilfeldig
+# webmail, ingen nettsted, aldri bekreftet — og hver av dem fikk oss til å sende
+# bekreftelses-e-post til en død eller fremmed adresse. Et menneske bruker mer enn
+# noen sekunder på skjemaet; en POST uten gyldig skjemastempel har ikke lastet det.
+SIGNUP_MIN_SECONDS = 3
+_SIGNUP_BOT_COMPANIES = {"test company"}
+
+
+def _signup_stamp(now: float | None = None) -> str:
+    """Signert tidsstempel for når registreringsskjemaet ble vist."""
+    ts = str(int(now if now is not None else time.time()))
+    sig = hmac.new(SESSION_SECRET.encode(), f"signup:{ts}".encode(), hashlib.sha256).hexdigest()[:20]
+    return f"{ts}.{sig}"
+
+
+def _signup_bot_reason(f, company: str) -> str:
+    """Hvorfor dette ser ut som en bot — tom streng hvis det ser menneskelig ut."""
+    if (f.get("website") or "").strip():
+        return "honeypot"
+    ts, _, sig = (f.get("t") or "").partition(".")
+    if not ts.isdigit() or not hmac.compare_digest(sig, _signup_stamp(int(ts)).partition(".")[2]):
+        return "stempel"
+    if time.time() - int(ts) < SIGNUP_MIN_SECONDS:
+        return "for-rask"
+    if company.casefold() in _SIGNUP_BOT_COMPANIES:
+        return "firmanavn"
+    return ""
+
 # Tak på /forgot — samme misbruksmønster som /signup (se over), pluss et
 # per-mål-tak: uten det kan en angriper spamme ÉN ekte innboks med
 # tilbakestillings-e-post uendelig, selv fra mange IP-er. 3/time/e-post er
@@ -1506,10 +1534,12 @@ async def signup(request):
         email = (f.get("email") or "").strip().lower()
         pw = f.get("password") or ""
         plan = f.get("plan") if f.get("plan") in _PLAN_LABELS else ""
-        # Honeypot: feltet er skjult for mennesker, men bots fyller alt de finner.
+        # Honeypot, skjemastempel og kjente bot-firmanavn (se _signup_bot_reason).
         # Vi later som det gikk bra — da merker ikke boten at den er stoppet.
-        if (f.get("website") or "").strip():
-            log.warning("signup: honeypot utløst (email=%s)", email)
+        reason = _signup_bot_reason(f, company)
+        if reason:
+            log.warning("signup: bot stoppet (%s, email_hash=%s)", reason,
+                        store.forgot_email_hash(email)[:16])
             return _shell(
                 request,
                 "Sjekk e-posten",
@@ -1560,6 +1590,7 @@ async def signup(request):
         f"""<h1>Opprett konto</h1>{chosen}{eb}
 <form method=post>
   <input type=hidden name=plan value="{escape(plan)}">
+  <input type=hidden name=t value="{_signup_stamp()}">
   <label>Firma</label><input name=company required>
   <label>E-post</label><input name=email type=email required autocomplete=email>
   <label>Passord</label><input name=password type=password required minlength=8 autocomplete=new-password>

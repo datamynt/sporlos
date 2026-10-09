@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 import unittest
 
 _TMP_DB = tempfile.NamedTemporaryFile(prefix="sporlos_test_", suffix=".db", delete=False)
@@ -52,7 +53,8 @@ class DpaTest(unittest.TestCase):
         page = c.get("/signup").text
         self.assertIn("godtar du", page)
         c.post("/signup", data={"company": "Signup AS", "email": "signup@example.no",
-                                "password": "passord-123"})
+                                "password": "passord-123",
+                                "t": main._signup_stamp(time.time() - 10)})
         u = store.get_user_by_email("signup@example.no")
         st = store.dpa_status(u["tenant_id"])
         self.assertEqual(st["dpa_version"], dpa.VERSION)
