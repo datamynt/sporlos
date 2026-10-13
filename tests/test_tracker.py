@@ -89,6 +89,16 @@ class TrackerBehaviourTest(unittest.TestCase):
         for build in self.each_build():
             self.assertEqual(run(build, "webdriver"), [])
 
+    def test_global_privacy_control_and_do_not_track_send_nothing(self):
+        for build in self.each_build():
+            for scenario in ("gpc", "dnt", "dnt-window", "dnt-ms", "gpc-custom"):
+                with self.subTest(scenario=scenario):
+                    self.assertEqual(run(build, scenario), [])
+
+    def test_do_not_track_off_still_counts(self):
+        for build in self.each_build():
+            self.assertEqual([e["n"] for e in run(build, "dnt-off")], ["pageview"])
+
     def test_custom_events_and_ecommerce(self):
         for build in self.each_build():
             _, purchase, signup = run(build, "custom")
@@ -101,3 +111,4 @@ class TrackerBehaviourTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
