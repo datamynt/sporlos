@@ -1,7 +1,8 @@
 /* Sporløs tracker — cookieløs, ingen localStorage, ingen fingerprint.
  * Bygg inn:  <script defer data-site="PUBLIC_ID" src="https://.../sporlos.js"></script>
  * Sender kun: site-id, sti, referrer-kilde + hvitlistede utm_*-kampanjeparametre.
- * Ingen PII, ingen samtykke nødvendig.
+ * Ingen PII, ingen samtykke nødvendig. Sender ingenting ved Global Privacy Control
+ * eller Do Not Track.
  * Åpen kildekode (MIT): https://github.com/datamynt/sporlos-tracker */
 (function () {
   var s = document.currentScript;
@@ -22,6 +23,17 @@
   // Automated browsers (headless test runs, scrapers driving a real Chrome) pass
   // the server's user-agent filter. They are not visitors.
   if (navigator.webdriver) return;
+
+  // A visitor who has asked not to be tracked is not counted: Global Privacy
+  // Control, or Do Not Track (including the old window.doNotTrack and IE's
+  // msDoNotTrack). Nothing is sent, and window.sporlos() becomes a no-op so a
+  // site that calls it for its own events keeps working.
+  if (navigator.globalPrivacyControl === true ||
+      navigator.doNotTrack === "1" || navigator.doNotTrack === "yes" ||
+      window.doNotTrack === "1" || navigator.msDoNotTrack === "1") {
+    window.sporlos = function () {};
+    return;
+  }
 
   // Referrer for the NEXT pageview. The first one is the real document.referrer.
   // After an in-page navigation it is the page we came from on this site, which

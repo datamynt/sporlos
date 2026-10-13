@@ -3435,6 +3435,9 @@ Den er det eneste vi noensinne lagrer i nettleseren din — og kun for innlogged
 personopplysninger. Derfor settes ingen sporings-cookies og det kreves ikke samtykke.
 Vi bruker ingen tredjeparts sporings- eller analyseverktøy, og laster ingen ressurser
 (fonter, scripts) fra tredjepart på offentlige sider.</p>
+<p><b>Reservasjon:</b> Sender nettleseren din signalet Global Privacy Control eller Do Not Track,
+sender Sporløs-skriptet ingenting, og besøket telles ikke. Det gjelder både på sporlos.no og på
+alle nettsteder som bruker Sporløs.</p>
 <p><b>Nettside-assistenten (chat):</b> Hvis du velger å bruke chatten, behandles meldingene
 dine av vår KI-tjeneste for å generere svar. Samtalen lagres ikke hos oss og kobles ikke
 til deg — vi teller kun antall meldinger (anonymt, slettes daglig) for å hindre misbruk.

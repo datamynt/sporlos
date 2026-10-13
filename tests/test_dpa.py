@@ -32,6 +32,12 @@ def tearDownModule():
 
 
 class DpaTest(unittest.TestCase):
+    def test_personvern_says_gpc_and_dnt_are_honoured(self):
+        # tracker/sporlos.js sends nothing for either signal (tests/test_tracker.py).
+        html = TestClient(main.app).get("/personvern").text
+        self.assertIn("Global Privacy Control", html)
+        self.assertIn("Do Not Track", html)
+
     def test_page_is_published_with_its_version(self):
         r = TestClient(main.app).get("/databehandleravtale")
         self.assertEqual(r.status_code, 200)

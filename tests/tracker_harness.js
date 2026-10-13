@@ -36,6 +36,10 @@ const history = {
 };
 
 if (scenario === "webdriver") navigator.webdriver = true;
+if (scenario === "gpc" || scenario === "gpc-custom") navigator.globalPrivacyControl = true;
+if (scenario === "dnt") navigator.doNotTrack = "1";
+if (scenario === "dnt-off") navigator.doNotTrack = "0";
+if (scenario === "dnt-ms") navigator.msDoNotTrack = "1";
 if (scenario === "prerender") document.prerendering = true;
 if (scenario === "utm") location.search = "?utm_source=nyhetsbrev&utm_medium=epost&email=ola@example.no";
 
@@ -45,6 +49,7 @@ const sandbox = {
   isFinite, Math, JSON, String, Array,
 };
 sandbox.window = sandbox;
+if (scenario === "dnt-window") sandbox.doNotTrack = "1";
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(file, "utf8"), sandbox);
 
@@ -70,6 +75,10 @@ switch (scenario) {
     sent.push({ marker: "before-activation" });
     document.prerendering = false;
     fire(listeners.document, "prerenderingchange");
+    break;
+  case "gpc-custom":
+    // The site still calls sporlos() for its own events: no error, nothing sent.
+    sandbox.sporlos("purchase", { revenue: 10, currency: "nok" });
     break;
   case "custom":
     sandbox.sporlos("purchase", {
