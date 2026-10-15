@@ -6,18 +6,25 @@ Alt er aggregater — det finnes ingen rådata å hente, by design (se app/priva
 Designvalg:
   - site identifiseres med public_id (samme som i tracker-snippet)
   - period = 1 | 7 | 30 (kalenderdager t.o.m. i dag, UTC — samme som dashboardet)
+  - month = YYYY-MM (UTC-kalendermåned) i stedet for period, på /stats og /breakdown;
+    brukes av tilse sin månedlige driftsrapport. Rådata holdes i 90 dager, så
+    eldre måneder avvises i stedet for å gi halve tall.
   - land returneres som ISO-koder (maskinvennlig; dashboardet oversetter til norsk)
 """
 
 from __future__ import annotations
 
 import json
+import re
+from datetime import datetime, timedelta, timezone
 
 from starlette.responses import JSONResponse
 
 from app import store
 
 _PERIOD_DAYS = {"1": 1, "7": 7, "30": 30}
+_MONTH_RE = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
+_RAW_RETENTION_DAYS = 90  # = store.retention_sweep default; older months would be partial
 
 # Tak på body — domenet er en kort streng; alt større er søppel eller misbruk.
 _MAX_BODY = 8192
@@ -45,6 +52,23 @@ def _site_and_days(request, key) -> tuple[dict | None, int, JSONResponse | None]
     if period not in _PERIOD_DAYS:
         return None, 0, _err("period må være 1, 7 eller 30", 400)
     return site, _PERIOD_DAYS[period], None
+
+
+def _month(request) -> tuple[str | None, JSONResponse | None]:
+    """?month=YYYY-MM → label, or (None, None) when absent. Rejects months that are
+    in the future or that started before the 90-day raw-data window."""
+    label = request.query_params.get("month")
+    if label is None:
+        return None, None
+    if not _MONTH_RE.match(label):
+        return None, _err("month må være YYYY-MM", 400)
+    now = datetime.now(timezone.utc)
+    if label > now.strftime("%Y-%m"):
+        return None, _err("month kan ikke være i fremtiden", 400)
+    oldest = (now - timedelta(days=_RAW_RETENTION_DAYS)).strftime("%Y-%m-%d")
+    if f"{label}-01" < oldest:
+        return None, _err(f"month må starte innenfor de siste {_RAW_RETENTION_DAYS} dagene", 400)
+    return label, None
 
 
 def sites(request):
@@ -123,6 +147,16 @@ def stats(request):
     site, days, err = _site_and_days(request, key)
     if err:
         return err
+    month, err = _month(request)
+    if err:
+        return err
+    if month:
+        s = store.stats(site["id"], window=store.month_window(month))
+        prev = store.kpis(site["id"], window=store.month_window(month, offset=1))
+        return JSONResponse(
+            {"site": request.query_params.get("site"), "month": month,
+             "stats": s, "previous_period": prev}
+        )
     s = store.stats(site["id"], days)
     prev = store.kpis(site["id"], days, offset=1)
     return JSONResponse(
@@ -158,6 +192,15 @@ def breakdown(request):
         limit = min(1000, max(1, int(request.query_params.get("limit", "100"))))
     except ValueError:
         return _err("limit må være et tall", 400)
+    month, err = _month(request)
+    if err:
+        return err
+    if month:
+        return JSONResponse(
+            {"site": request.query_params.get("site"), "month": month, "prop": prop,
+             "breakdown": store.api_breakdown(site["id"], 0, prop, limit,
+                                              window=store.month_window(month))}
+        )
     return JSONResponse(
         {"site": request.query_params.get("site"), "period_days": days, "prop": prop,
          "breakdown": store.api_breakdown(site["id"], days, prop, limit)}

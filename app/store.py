@@ -1493,10 +1493,12 @@ _API_DIMS = {
 }
 
 
-def api_breakdown(site_id: int, days: int, prop: str, limit: int = 100) -> list[dict]:
+def api_breakdown(
+    site_id: int, days: int, prop: str, limit: int = 100, window: tuple[str, str] | None = None
+) -> list[dict]:
     """Full breakdown for Stats-API-et. `prop` må finnes i _API_DIMS (hvitlistet)."""
     dim = _API_DIMS[prop]
-    start, end = _period_window(days)
+    start, end = window or _period_window(days)
     with _cursor() as cur:
         cur.execute(
             f"SELECT {dim} AS k, COUNT(*) AS n, COUNT(DISTINCT visitor_hash) AS u "
@@ -1658,10 +1660,24 @@ def _period_window(days: int, offset: int = 0) -> tuple[str, str]:
     return start, end
 
 
-def kpis(site_id: int, days: int = 7, offset: int = 0) -> dict:
+def month_window(label: str, offset: int = 0) -> tuple[str, str]:
+    """[start, end)-vindu (UTC) for kalendermåneden "YYYY-MM"; offset=1 gir måneden før.
+
+    UTC on purpose: tilse's monthly operations report uses the same UTC month, so
+    the traffic numbers line up with the uptime numbers in the same report."""
+    y, m = int(label[:4]), int(label[5:7]) - offset
+    while m < 1:
+        y, m = y - 1, m + 12
+    ny, nm = (y + 1, 1) if m == 12 else (y, m + 1)
+    return f"{y:04d}-{m:02d}-01 00:00:00", f"{ny:04d}-{nm:02d}-01 00:00:00"
+
+
+def kpis(
+    site_id: int, days: int = 7, offset: int = 0, window: tuple[str, str] | None = None
+) -> dict:
     """Lett KPI-sett (pv/unike/økter/flukt) for et vindu — brukes til
-    forrige-periode-sammenligning uten å dra hele stats()."""
-    start, end = _period_window(days, offset)
+    forrige-periode-sammenligning uten å dra hele stats(). `window` overstyrer days/offset."""
+    start, end = window or _period_window(days, offset)
     where = f"site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview'"
     args = (site_id, start, end)
     with _cursor() as cur:
@@ -1733,14 +1749,15 @@ def _sessionize(rows) -> tuple[int, int]:
     return sessions, bounces
 
 
-def stats(site_id: int, days: int = 7) -> dict:
+def stats(site_id: int, days: int = 7, window: tuple[str, str] | None = None) -> dict:
     """KPI-er + topp sider/kilder for et periodevindu.
 
     MERK: unike besøkende telles via daglig-roterende hash, så over flere dager
     summeres daglige unike (en gjenganger teller én gang per dag) — samme
     personvern-bevarende oppførsel som Plausible.
+    `window` ([start, end) UTC) overstyrer days, f.eks. month_window("2026-09").
     """
-    start, end = _period_window(days)
+    start, end = window or _period_window(days)
     # Traffic-metrikk teller KUN sidevisninger — egendefinerte hendelser holdes utenfor.
     where = f"site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview'"
     args = (site_id, start, end)

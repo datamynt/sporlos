@@ -2955,7 +2955,9 @@ og AI-verktøy. Det er trygt å dele en nøkkel med en AI-assistent: API-et serv
 <pre>curl -H "Authorization: Bearer sl_..." \\
   "https://sporlos.no/api/v1/stats?site=DIN_SITE_ID&amp;period=7"</pre>
 <p class=muted><code>site</code> er nettstedets public-ID (samme som i sporings-snippeten —
-eller hent alle med <code>/api/v1/sites</code>). <code>period</code> er 1, 7 eller 30 dager.</p>
+eller hent alle med <code>/api/v1/sites</code>). <code>period</code> er 1, 7 eller 30 dager.
+<code>/stats</code> og <code>/breakdown</code> tar også <code>month=ÅÅÅÅ-MM</code> (kalendermåned i UTC,
+innenfor de siste 90 dagene) i stedet for <code>period</code>.</p>
 
 <h2>Endepunkter</h2>
 <table>
