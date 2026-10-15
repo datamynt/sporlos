@@ -97,8 +97,9 @@ def main(argv: list[str]) -> int:
     if cmd == "trial-reminders":
         from app.notify import send_trial_reminders
         days = int(argv[1]) if len(argv) > 1 else 3
-        print(f"trial-varsler sendt: {send_trial_reminders(days)}")
-        return 0
+        sent, failed = send_trial_reminders(days)
+        print(f"trial-varsler sendt: {sent}" + (f", {failed} FEILET" if failed else ""))
+        return 1 if failed else 0
 
     if cmd == "weekly-report":
         from app.notify import send_weekly_reports
@@ -107,8 +108,9 @@ def main(argv: list[str]) -> int:
 
     if cmd == "overage-alerts":
         from app.notify import send_overage_alerts
-        print(f"grense-varsler sendt: {send_overage_alerts()}")
-        return 0
+        sent, failed = send_overage_alerts()
+        print(f"grense-varsler sendt: {sent}" + (f", {failed} FEILET" if failed else ""))
+        return 1 if failed else 0
 
     if cmd == "stalled-alerts":
         from app.notify import send_stalled_alerts
@@ -117,8 +119,9 @@ def main(argv: list[str]) -> int:
 
     if cmd == "vipps-charges":
         from app import vipps
-        print(vipps.sweep())
-        return 0
+        summary, failed = vipps.sweep()
+        print(summary)
+        return 1 if failed else 0
 
     if cmd == "seo-sync":
         from app import seo

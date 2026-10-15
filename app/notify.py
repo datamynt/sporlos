@@ -28,9 +28,9 @@ def send_verification(uid: int, email: str) -> bool:
     )
 
 
-def send_trial_reminders(within_days: int = 3) -> int:
-    """Send påminnelse til trial-tenants som utløper snart. Returnerer antall sendt."""
-    sent = 0
+def send_trial_reminders(within_days: int = 3) -> tuple[int, int]:
+    """Send påminnelse til trial-tenants som utløper snart. Returns (sent, failed)."""
+    sent = failed = 0
     for r in store.trial_ending_tenants(within_days):
         email = r.get("email")
         if not email:
@@ -51,7 +51,9 @@ def send_trial_reminders(within_days: int = 3) -> int:
         if mailer.send(email, "Prøveperioden din på Sporløs går snart ut", body):
             store.mark_trial_reminded(r["id"])
             sent += 1
-    return sent
+        else:
+            failed += 1
+    return sent, failed
 
 
 def send_stalled_alerts() -> int:
@@ -76,11 +78,12 @@ def send_stalled_alerts() -> int:
     return 1 if ok else 0
 
 
-def send_overage_alerts() -> int:
+def send_overage_alerts() -> tuple[int, int]:
     """Vennlig varsel når en tenant passerer planens månedlige visningsgrense.
     Maks én e-post per kalendermåned (overage_notified_month). Data kastes aldri
-    — dette er informasjon + oppgraderings-nudge, ingen avstenging."""
-    sent = 0
+    — dette er informasjon + oppgraderings-nudge, ingen avstenging.
+    Returns (sent, failed)."""
+    sent = failed = 0
     for t in store.overage_candidates():
         pv_lim, _ = store.plan_limits(t.get("plan"))
         if not pv_lim or not t.get("email") or t.get("plan") == "cancelled":
@@ -101,7 +104,9 @@ def send_overage_alerts() -> int:
         if mailer.send(t["email"], "Nettstedene dine vokser – du har passert planens visninger", body):
             store.mark_overage_notified(t["id"])
             sent += 1
-    return sent
+        else:
+            failed += 1
+    return sent, failed
 
 
 def send_weekly_reports(days: int = 7) -> int:
