@@ -348,5 +348,65 @@ class ReminderTextTest(unittest.TestCase):
         self.assertIn("Sporløs", mail[2])
 
 
+class BillingJobsFailLoudlyTest(unittest.TestCase):
+    """A failing Vipps call or mail must give a non-zero exit, so systemd's OnFailure alerts.
+    One tenant's failure must not stop the others."""
+
+    def test_vipps_sweep_counts_failures_and_keeps_going(self):
+        import datetime as dt
+
+        from app import manage
+
+        soon = (dt.date.today() + dt.timedelta(days=1)).isoformat()
+        ids = {}
+        for agid in ("ag-down", "ag-charge-fails", "ag-ok"):
+            tid, _ = store.create_account(f"{agid} AS", f"{agid}@example.no", hash_password("passord-123"))
+            store.set_vipps_pending(tid, agid, "liten")
+            store.activate_vipps(tid, "liten", soon)
+            ids[agid] = tid
+
+        def get_agreement(agid):
+            if agid == "ag-down":
+                raise RuntimeError("503 from Vipps")
+            return {"status": "ACTIVE"}
+
+        charged = []
+
+        def create_charge(tid, agid, plan, due):
+            if agid == "ag-charge-fails":
+                raise RuntimeError("400 from Vipps")
+            charged.append(agid)
+            return "c1"
+
+        real = vipps.configured, vipps.get_agreement, vipps.create_charge
+        vipps.configured, vipps.get_agreement, vipps.create_charge = lambda: True, get_agreement, create_charge
+        try:
+            summary, failed = vipps.sweep()
+            self.assertEqual(failed, 2)
+            self.assertIn("2 FEILET", summary)
+            self.assertIn("ag-ok", charged)
+            # a failed charge must not move the due date, so tomorrow's run retries it
+            self.assertEqual(str(store.get_tenant(ids["ag-charge-fails"])["vipps_charged_through"])[:10], soon)
+            self.assertEqual(manage.main(["vipps-charges"]), 1)
+        finally:
+            vipps.configured, vipps.get_agreement, vipps.create_charge = real
+            for tid in ids.values():
+                store.clear_vipps(tid)
+
+    def test_failed_reminder_mail_gives_non_zero_exit(self):
+        from app import manage
+
+        store.create_account("Feiler AS", "feiler@example.no", hash_password("passord-123"), trial_days=1)
+        real = mailer.send
+        mailer.send = lambda to, subject, body: False
+        try:
+            sent, failed = notify.send_trial_reminders(within_days=3)
+            self.assertGreaterEqual(failed, 1)
+            self.assertEqual(sent, 0)
+            self.assertEqual(manage.main(["trial-reminders"]), 1)
+        finally:
+            mailer.send = real
+
+
 if __name__ == "__main__":
     unittest.main()

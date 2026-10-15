@@ -168,8 +168,11 @@ def next_month(d: dt.date) -> dt.date:
     return dt.date(y, m, min(d.day, 28))
 
 
-def sweep() -> str:
+def sweep() -> tuple[str, int]:
     """Nattlig avstemming + månedstrekk (cron). Trygg å kjøre flere ganger.
+
+    Returns (summary, failures). A tenant that fails is logged and skipped so the
+    others still run; manage.py exits non-zero when failures > 0 so systemd alerts.
 
     - pending-avtaler: aktiver hvis bruker godkjente uten å komme tilbake,
       rydd hvis avtalen utløp uten godkjenning (plan røres ikke).
@@ -181,15 +184,16 @@ def sweep() -> str:
     from app import store  # her for å holde API-klienten import-lett
 
     if not configured():
-        return "vipps ikke konfigurert — hopper over"
+        return "vipps ikke konfigurert — hopper over", 0
     today = dt.date.today()
-    charged = activated = stopped = 0
+    charged = activated = stopped = failed = 0
     for t in store.vipps_tenants():
         agid = t["vipps_agreement_id"]
         try:
             status = get_agreement(agid).get("status", "")
         except Exception as e:
             print(f"  tenant {t['id']}: klarte ikke hente avtale {agid}: {e}")
+            failed += 1
             continue
         if t["vipps_pending_plan"]:
             if status == "ACTIVE":
@@ -212,7 +216,15 @@ def sweep() -> str:
         if (due - today).days <= 2:
             if due <= today:  # forfall rukket å passere (nedetid e.l.) → skyv frem
                 due = today + dt.timedelta(days=2)
-            create_charge(t["id"], agid, t["plan"], due)
+            try:
+                create_charge(t["id"], agid, t["plan"], due)
+            except Exception as e:
+                print(f"  tenant {t['id']}: trekk feilet for {due}: {e}")
+                failed += 1
+                continue
             store.set_vipps_charged_through(t["id"], next_month(due).isoformat())
             charged += 1
-    return f"vipps-sweep: {charged} trekk opprettet, {activated} aktivert, {stopped} avsluttet"
+    summary = f"vipps-sweep: {charged} trekk opprettet, {activated} aktivert, {stopped} avsluttet"
+    if failed:
+        summary += f", {failed} FEILET"
+    return summary, failed
