@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import secrets
+import sys
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -43,12 +44,12 @@ from starlette.staticfiles import StaticFiles
 
 from app import api, assist, blogg, dpa, icons, innlogg, mailer, notify, pricing, store, vipps
 from app.auth import check_token, hash_password, verify_password
-from app.datacenter import is_datacenter
+from app.datacenter import datacenter_asn
 from app.geo import country_no
 from app.geo import lookup as geo_lookup
 from app.pathmask import mask_label, mask_path
 from app.privacy import client_ip, visitor_hash
-from app.useragent import is_bot, parse_ua
+from app.useragent import bot_match, parse_ua
 
 SECRET = os.environ.get("SPORLOS_SALT_SECRET", "dev-secret-change-me")
 SESSION_SECRET = os.environ.get("SPORLOS_SESSION_SECRET") or SECRET
@@ -57,6 +58,18 @@ _DOMAIN = os.environ.get("SPORLOS_DOMAIN", "")
 PUBLIC_BASE = f"https://{_DOMAIN}" if _DOMAIN and "FYLL" not in _DOMAIN else "http://localhost:8000"
 
 log = logging.getLogger("sporlos")
+
+# Why an ingest event was dropped. The app configures no logging, so INFO from the
+# "sporlos" logger never reaches `docker logs`; this logger has its own stdout
+# handler. One line per drop, never stored in the database, never an IP, a UA string
+# or a visitor hash (see _note_drop).
+drop_log = logging.getLogger("sporlos.ingest")
+if not drop_log.handlers:
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    drop_log.addHandler(_h)
+    drop_log.setLevel(logging.INFO)
+    drop_log.propagate = False
 
 # Prod-vakt: nekt oppstart i prod-modus (SPORLOS_HTTPS=true) hvis kritisk konfig mangler.
 # Disse feilet alle STILLE før (kunde-klarhets-revisjon 2026-06-15): default-secret =
@@ -621,8 +634,9 @@ _rate_minute = 0
 _rate_counts: dict[str, int] = {}
 
 
-def _over_rate(vhash: str) -> bool:
-    """Fixed one-minute window per visitor hash, in memory. A script stuck in a
+def _rate_hit(vhash: str) -> int:
+    """Register one event for this visitor hash and return its count in the current
+    one-minute window (fixed window per visitor hash, in memory). A script stuck in a
     loop (or someone replaying a beacon) must not be able to burn through a
     customer's monthly pageview quota. The table is dropped every minute, so it
     holds nothing that outlives the window."""
@@ -634,7 +648,52 @@ def _over_rate(vhash: str) -> bool:
             _rate_counts.clear()
         n = _rate_counts.get(vhash, 0) + 1
         _rate_counts[vhash] = n
-    return n > _MAX_EVENTS_PER_MINUTE
+    return n
+
+
+def _over_rate(vhash: str) -> bool:
+    return _rate_hit(vhash) > _MAX_EVENTS_PER_MINUTE
+
+
+# --- Why was an event dropped? ------------------------------------------------------
+# Ingest answers 204 for bots, datacenter networks and over-rate visitors without
+# storing anything, which made "7 of 13 events stored" impossible to explain. Each
+# drop now leaves ONE log line (stdout, so `docker logs`) and bumps an in-memory
+# counter per (site, reason) since process start. Nothing goes in the database.
+# The line holds only coarse categories that are already stored for real events
+# (device, browser, country), the matched bot token and the ASN number (a network,
+# not a person). NEVER the IP, the UA string or the visitor hash.
+_drop_lock = threading.Lock()
+_drop_counts: dict[tuple[int, str], int] = {}
+
+
+def drop_counts() -> dict[tuple[int, str], int]:
+    """Snapshot of drops per (site_id, reason) since process start."""
+    with _drop_lock:
+        return dict(_drop_counts)
+
+
+def _note_drop(reason: str, site_id, ua: str, ip: str, *, log_it: bool = True, **extra) -> None:
+    try:
+        with _drop_lock:
+            key = (site_id, reason)
+            _drop_counts[key] = _drop_counts.get(key, 0) + 1
+        if not log_it:
+            return
+        device, browser, _os = parse_ua(ua)
+        country, _region = geo_lookup(ip)
+        parts = [
+            f"ingest_drop reason={reason}",
+            f"site={site_id}",
+            f"device={device}",
+            f"browser={browser.replace(' ', '_')}",
+            f"country={(country or '-').replace(' ', '_')}",
+        ]
+        parts += [f"{k}={v}" for k, v in extra.items()]
+        drop_log.info(" ".join(parts))
+    except Exception:
+        # Diagnostics must never turn a dropped event into a 500.
+        log.exception("ingest: drop-logg feilet")
 
 
 def _clean_name(v) -> str:
@@ -680,12 +739,16 @@ def _ingest_store(payload: dict, headers: dict, client_host: str):
 
     ua = headers.get("user-agent", "")
     # Bots/scripts telles ikke — aksepter stille (204) men lagre ingenting.
-    if is_bot(ua):
+    ip = client_ip(headers, fallback=client_host)
+    bot = bot_match(ua)
+    if bot:
+        _note_drop("bot", site["id"], ua, ip, match=bot)
         return PlainTextResponse("", status_code=204)
 
-    ip = client_ip(headers, fallback=client_host)
     # Datasenter-trafikk (crawlere m/ vanlig UA) telles heller ikke.
-    if is_datacenter(ip):
+    asn = datacenter_asn(ip)
+    if asn is not None:
+        _note_drop("datacenter", site["id"], ua, ip, asn=asn)
         return PlainTextResponse("", status_code=204)
     try:
         day_salt = store.daily_salt()
@@ -698,7 +761,10 @@ def _ingest_store(payload: dict, headers: dict, client_host: str):
     country, region = geo_lookup(ip)  # land + fylke, by-nivå brukes aldri
     # ip og ua brukes KUN her (hash + kategorisering + geo) — aldri lagret.
 
-    if _over_rate(vhash):
+    hits = _rate_hit(vhash)
+    if hits > _MAX_EVENTS_PER_MINUTE:
+        # Count every drop, but log only the first one per visitor hash per minute.
+        _note_drop("rate", site["id"], ua, ip, log_it=hits == _MAX_EVENTS_PER_MINUTE + 1)
         return PlainTextResponse("", status_code=204)
 
     name = _clean_name(payload.get("n"))

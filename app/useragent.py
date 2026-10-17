@@ -17,11 +17,20 @@ _BOT = re.compile(
 )
 
 
+def bot_match(ua: str) -> str | None:
+    """Why a UA counts as a bot: "empty" for a blank UA, otherwise the lower-cased
+    regex token that matched (`bot`, `preview`, `curl` ...), or None for a normal
+    browser. The token comes from the fixed pattern above, never from free text
+    in the UA, so it is safe to log (the UA string itself is not)."""
+    if not ua or not ua.strip():
+        return "empty"
+    m = _BOT.search(ua)
+    return m.group(0).lower() if m else None
+
+
 def is_bot(ua: str) -> bool:
     """Tom UA eller kjent bot/script → tell ikke som besøkende."""
-    if not ua or not ua.strip():
-        return True
-    return bool(_BOT.search(ua))
+    return bot_match(ua) is not None
 
 
 def parse_ua(ua: str) -> tuple[str, str, str]:

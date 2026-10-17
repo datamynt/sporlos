@@ -56,15 +56,23 @@ def _get_reader():
     return _reader
 
 
-def is_datacenter(ip: str) -> bool:
-    """True hvis IP-en hører til et kjent hosting/sky-ASN. Usikkert → False."""
+def datacenter_asn(ip: str) -> int | None:
+    """The ASN number when the IP belongs to a listed hosting/cloud network,
+    else None. An ASN identifies a network, not a person; it is what the drop
+    log may show so a wrongly listed network can be spotted."""
     reader = _get_reader()
     if not reader or not ip:
-        return False
+        return None
     try:
         rec = reader.get(ip)
     except Exception:
-        return False
+        return None
     if not rec:
-        return False
-    return rec.get("autonomous_system_number") in _DATACENTER_ASNS
+        return None
+    asn = rec.get("autonomous_system_number")
+    return asn if asn in _DATACENTER_ASNS else None
+
+
+def is_datacenter(ip: str) -> bool:
+    """True hvis IP-en hører til et kjent hosting/sky-ASN. Usikkert → False."""
+    return datacenter_asn(ip) is not None
