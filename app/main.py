@@ -2315,6 +2315,19 @@ def vipps_start(request):
     plan = request.query_params.get("plan", "")
     if not vipps.configured() or plan not in vipps.PLAN_ORE:
         return RedirectResponse("/app", status_code=302)
+    # Starting a new agreement replaces the stored agreement id. That must never orphan an
+    # agreement that is live at Vipps (it would keep running, untracked by the nightly sweep).
+    # This is a plain GET, so it can also be reached by a stale tab or a link.
+    agid = (store.get_tenant(user["tid"]) or {}).get("vipps_agreement_id")
+    if agid:
+        try:
+            status = vipps.get_agreement(agid).get("status", "")
+        except Exception:
+            return RedirectResponse("/app?vipps=feil", status_code=302)
+        if status == "ACTIVE":
+            # Approved but not yet picked up (pending) -> finish that one; otherwise it is the live plan.
+            pending = (store.get_tenant(user["tid"]) or {}).get("vipps_pending_plan")
+            return RedirectResponse("/billing/vipps/retur" if pending else "/app?vipps=ok", status_code=302)
     try:
         ag = vipps.create_agreement(plan, PUBLIC_BASE)
     except Exception:
