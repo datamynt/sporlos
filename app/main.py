@@ -240,6 +240,8 @@ def _stripe_env(base):
 
 STRIPE_SECRET = _stripe_env("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = _stripe_env("STRIPE_WEBHOOK_SECRET") or ""
+if STRIPE_SECRET and not STRIPE_WEBHOOK_SECRET:
+    log.critical("STRIPE_SECRET_KEY is set but STRIPE_WEBHOOK_SECRET is not: webhooks are refused (503).")
 STRIPE_PRICES = {
     "liten": _stripe_env("STRIPE_PRICE_LITEN"),
     "vekst": _stripe_env("STRIPE_PRICE_VEKST"),
@@ -2207,6 +2209,11 @@ async def stripe_webhook(request):
     """Stripe webhook — oppdaterer tenant-plan ved kjøp/oppsigelse. Offentlig (signatur-verifisert)."""
     if not stripe:
         return PlainTextResponse("", status_code=200)
+    if not STRIPE_WEBHOOK_SECRET:
+        # Fail closed. With an empty secret, "verifying" the signature means computing an
+        # HMAC with an empty key, which anyone can do, so every event would be accepted.
+        log.critical("stripe webhook: STRIPE_WEBHOOK_SECRET is not set, refusing all events")
+        return PlainTextResponse("webhook secret not configured", status_code=503)
     payload = await request.body()
     sig = request.headers.get("stripe-signature", "")
     try:

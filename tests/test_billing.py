@@ -86,6 +86,7 @@ def setUpModule():
     main.stripe = _FakeStripe
     main.STRIPE_PRICES = {"liten": "price_liten", "vekst": "price_vekst", "pro": "price_pro"}
     main.STRIPE_TAX_RATE = "txr_mva25"
+    main.STRIPE_WEBHOOK_SECRET = "whsec_test"  # the handler refuses events without one
 
 
 def tearDownModule():
