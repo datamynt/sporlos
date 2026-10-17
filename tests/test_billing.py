@@ -336,6 +336,54 @@ class InvoiceTest(unittest.TestCase):
         self.assertEqual(store.get_tenant(tid)["plan"], "liten")
         self.assertEqual(SENT, [])
 
+    def _order(self, c, **over):
+        data = {"plan": "vekst", "company": "Faktura AS", "org_nr": "936017207", "address": "Gate 1",
+                "postal": "0461 Oslo", "invoice_email": "regnskap@example.no"}
+        data.update(over)
+        return c.post("/betal/faktura", data=data, follow_redirects=False)
+
+    def test_unverified_account_cannot_order(self):
+        tid, uid = store.create_account("Ny AS", "ny-faktura@example.no", hash_password("passord-123"))
+        c = TestClient(main.app)
+        c.post("/login", data={"email": "ny-faktura@example.no", "password": "passord-123"})
+        SENT.clear()
+        r = self._order(c)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Bekreft e-postadressen", r.text)
+        self.assertEqual(SENT, [])
+        self.assertEqual(store.get_tenant(tid)["plan"], "trial")
+
+    def test_line_breaks_in_fields_stay_out_of_mail_headers(self):
+        tid, uid, c = account("linjeskift@example.no")
+        SENT.clear()
+        r = self._order(c, company="Slem AS\r\nBcc: x@example.no")
+        self.assertIn("faktura=ok", r.headers["location"])
+        for to, subject, body in SENT:
+            self.assertNotIn("\n", subject)
+            self.assertNotIn("\r", subject)
+        details = json.loads(store.get_tenant(tid)["invoice_details"])
+        self.assertEqual(details["company"], "Slem AS Bcc: x@example.no")
+        bad = self._order(c, invoice_email="a@example.no\r\nBcc: b@example.no")
+        self.assertEqual(bad.status_code, 200)  # not an address: the form again
+        self.assertIn("Fyll inn alle feltene", bad.text)
+
+    def test_orders_are_capped_per_address_and_per_account(self):
+        tid, uid, c = account("tak@example.no")
+        SENT.clear()
+        for _ in range(main.INVOICES_PER_ADDRESS_HOURLY):
+            self.assertIn("faktura=ok", self._order(c, invoice_email="offer@example.no").headers["location"])
+        n = len(SENT)
+        r = self._order(c, invoice_email="offer@example.no")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("For mange bestillinger", r.text)
+        self.assertEqual(len(SENT), n)  # nothing more went out to that address
+        # other addresses still work, until the per-account cap
+        left = main.INVOICES_PER_ACCOUNT_HOURLY - main.INVOICES_PER_ADDRESS_HOURLY
+        for i in range(left):
+            self.assertIn("faktura=ok", self._order(c, invoice_email=f"annen{i}@example.no").headers["location"])
+        r = self._order(c, invoice_email="enda-en@example.no")
+        self.assertIn("For mange bestillinger", r.text)
+
 
 class ReminderTextTest(unittest.TestCase):
     def test_trial_reminder_is_proper_norwegian(self):

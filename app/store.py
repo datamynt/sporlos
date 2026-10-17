@@ -2932,3 +2932,37 @@ def invite_bump(tenant_id: int, email: str) -> None:
                 f"ON CONFLICT (hour, kind, key) DO UPDATE SET n = forgot_throttle.n + 1",
                 (hour, kind, key),
             )
+
+
+# The annual-invoice order (POST /betal/faktura) mails a confirmation to an address the
+# customer types. Same idea as invites: a cap per account and per target address, in the
+# same hashed hourly buckets.
+def invoice_attempts(tenant_id: int, email: str) -> tuple[int, int]:
+    """(invoice orders from this account, invoice mails to this address) this hour."""
+    _ensure_forgot_throttle()
+    hour = _forgot_hour()
+    keys = (("invoice_tenant", _tenant_key(tenant_id)), ("invoice_email", forgot_email_hash(email)))
+    out = []
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM forgot_throttle WHERE hour < {P}", (hour,))
+        for kind, key in keys:
+            cur.execute(
+                f"SELECT n FROM forgot_throttle WHERE hour = {P} AND kind = {P} AND key = {P}",
+                (hour, kind, key),
+            )
+            r = cur.fetchone()
+            out.append(r["n"] if r else 0)
+    return out[0], out[1]
+
+
+def invoice_bump(tenant_id: int, email: str) -> None:
+    _ensure_forgot_throttle()
+    hour = _forgot_hour()
+    with _cursor() as cur:
+        for kind, key in (("invoice_tenant", _tenant_key(tenant_id)),
+                          ("invoice_email", forgot_email_hash(email))):
+            cur.execute(
+                f"INSERT INTO forgot_throttle (hour, kind, key, n) VALUES ({P}, {P}, {P}, 1) "
+                f"ON CONFLICT (hour, kind, key) DO UPDATE SET n = forgot_throttle.n + 1",
+                (hour, kind, key),
+            )
