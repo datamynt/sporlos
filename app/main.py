@@ -81,8 +81,11 @@ if HTTPS_ONLY:
     # visitor-hash (samtykke-fritaket faller), og tomt domene = hver kunde-snippet + reset-lenke
     # peker på localhost. Disse skal krasje boot høylytt.
     _fatal = []
-    if SECRET == "dev-secret-change-me":
+    # .env.example ships "change-me-..." placeholders. Copied unedited they are public values.
+    if SECRET == "dev-secret-change-me" or SECRET.startswith("change-me"):
         _fatal.append("SPORLOS_SALT_SECRET (visitor-hash + samtykke-fritak)")
+    if SESSION_SECRET.startswith("change-me"):
+        _fatal.append("SPORLOS_SESSION_SECRET (anyone could forge a login cookie)")
     if not _DOMAIN or "FYLL" in _DOMAIN:
         _fatal.append("SPORLOS_DOMAIN (ellers peker snippet + reset-lenker på localhost)")
     if _fatal:
