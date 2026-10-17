@@ -15,9 +15,15 @@ COPY db/ ./db/
 COPY static/ ./static/
 # integrasjoner: appen leser integrations/shopify/sporlos-pixel.js ved oppstart
 COPY integrations/ ./integrations/
+# one-off ops script, run with `docker compose exec app python scripts/purge_bot_signups.py`;
+# only this file: the other scripts/ files are asset generators (fonts, PIL) that don't belong in the image
+COPY scripts/purge_bot_signups.py ./scripts/purge_bot_signups.py
 
 # Kjør som ikke-root
-RUN useradd -m appuser
+# /app/backups: where purge_bot_signups.py --apply writes its pre-delete backup. The compose files
+# bind-mount ./backups over it, so that host directory must exist and be writable by uid 1000
+# (mkdir backups, as the deploy user) before the first `up`; Docker would otherwise create it as root.
+RUN useradd -m appuser && mkdir -p /app/backups && chown appuser:appuser /app/backups
 USER appuser
 
 EXPOSE 8000
