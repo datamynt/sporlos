@@ -40,12 +40,15 @@ def send(to: str, subject: str, body: str) -> bool:
     host = os.environ["SMTP_HOST"]
     port = int(os.environ.get("SMTP_PORT", "587"))
     user, pw = os.environ.get("SMTP_USER"), os.environ.get("SMTP_PASS")
-    msg = EmailMessage()
-    msg["From"] = frm
-    msg["To"] = to
-    msg["Subject"] = subject
-    msg.set_content(body)
     try:
+        # Building the message is inside the try: a CR/LF in a header value (a company
+        # name in a subject, an address) raises ValueError here, and "never raises" is
+        # what every caller relies on.
+        msg = EmailMessage()
+        msg["From"] = frm
+        msg["To"] = to
+        msg["Subject"] = subject
+        msg.set_content(body)
         with smtplib.SMTP(host, port, timeout=20) as s:
             s.starttls(context=ssl.create_default_context())
             if user and pw:  # app-passord-modus; relay (IP-auth) hopper over login
