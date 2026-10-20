@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 import httpx
 
-ISSUER = os.environ.get("DATAMYNT_ID_ISSUER", "https://id.datamynt.no").rstrip("/")
+ISSUER = os.environ.get("DATAMYNT_ID_ISSUER", "https://auth.innlogg.no").rstrip("/")
 _PAT = os.environ.get("DATAMYNT_LOGIN_PAT", "").strip()
 _ORG_ID = os.environ.get("DATAMYNT_LOGIN_ORG_ID", "").strip()
 
