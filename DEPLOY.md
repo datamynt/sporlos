@@ -56,6 +56,14 @@ Dashboard: `https://analytics.dittdomene.no/?site=DIN_PUBLIC_ID`
 - Oppdater: `git pull && docker compose -f docker-compose.prod.yml up -d --build`
 - Backup: `docker compose -f docker-compose.prod.yml exec db pg_dump -U sporlos sporlos > backup.sql`
 
+## Backup directory for one-off scripts
+`purge_bot_signups.py --apply` writes a 0600 backup to `./backups` (bind-mounted at `/app/backups`).
+Create the directory as the deploy user (uid 1000) before the first `up`. Otherwise Docker creates it
+as root, the script cannot write the backup and stops before deleting anything:
+```bash
+mkdir -p backups
+```
+
 ## Søkedata (valgfritt — «Søk og AI»-modulen)
 1. Lag en Google service account, legg JSON-nøkkelen i `./secrets/gsc-sa.json`
    (gitignored; mountes read-only av compose) og gi kontoens e-postadresse
