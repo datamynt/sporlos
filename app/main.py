@@ -2478,14 +2478,24 @@ async def betal_faktura(request):
         return _invoice_form(request, plan, tenant, me,
                              "Du har allerede et abonnement med kort eller Vipps. Skriv til "
                              "post@sporlos.no, så bytter vi til faktura for deg.", f)
+    if not me.get("email_verified"):  # same gate as inviting: we mail an address the customer types
+        return _invoice_form(request, plan, tenant, me,
+                             "Bekreft e-postadressen din først (sjekk innboksen).", f)
     org = re.sub(r"\s", "", str(f.get("org_nr") or ""))
-    fields = {k: str(f.get(k) or "").strip()[:120] for k in
+    # One line each: a line break in a value ends up in a mail header (subject) otherwise.
+    fields = {k: " ".join(str(f.get(k) or "").split())[:120] for k in
               ("company", "address", "postal", "invoice_email", "reference")}
     if not _valid_org_nr(org):
         return _invoice_form(request, plan, tenant, me, "Organisasjonsnummeret ser ikke riktig ut.", f)
     if not all(fields[k] for k in ("company", "address", "postal", "invoice_email")) \
-            or "@" not in fields["invoice_email"]:
+            or not _EMAIL_RE.match(fields["invoice_email"]):
         return _invoice_form(request, plan, tenant, me, "Fyll inn alle feltene.", f)
+    by_account, by_address = store.invoice_attempts(user["tid"], fields["invoice_email"])
+    if by_account >= INVOICES_PER_ACCOUNT_HOURLY or by_address >= INVOICES_PER_ADDRESS_HOURLY:
+        log.warning("invoice: throttled (tenant=%s)", user["tid"])
+        return _invoice_form(request, plan, tenant, me,
+                             "For mange bestillinger akkurat nå. Prøv igjen om en time.", f)
+    store.invoice_bump(user["tid"], fields["invoice_email"])
     ore = pricing.annual_ore(plan)
     today = date.today()
     through = today.replace(year=today.year + 1) if not (today.month == 2 and today.day == 29) \
@@ -2771,6 +2781,8 @@ async def account_delete(request):
 INVITES_PER_ACCOUNT_HOURLY = 10
 INVITES_PER_ADDRESS_HOURLY = 3
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+INVOICES_PER_ACCOUNT_HOURLY = 5
+INVOICES_PER_ADDRESS_HOURLY = 2
 
 
 def _plain(s: str, limit: int = 80) -> str:
