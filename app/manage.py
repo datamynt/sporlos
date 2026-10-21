@@ -5,6 +5,8 @@
     python -m app.manage seo-sync [dager]      # GSC/Bing → search_stats (cron: daglig)
     python -m app.manage retention [dager]     # delete raw events older than 90 days (cron: daily)
     python -m app.manage mask-paths [--apply] [--backup-dir DIR]   # mask stored ID-like paths
+    python -m app.manage purge-dormant         # delete ended accounts (terms §10); dry run
+                                               # unless SPORLOS_RETENTION_ENFORCE=1 (cron: daily)
 """
 
 from __future__ import annotations
@@ -65,6 +67,15 @@ def main(argv: list[str]) -> int:
         deleted, sealed = store.retention_sweep(days)
         print(f"retention: {deleted} events slettet (eldre enn {days} d), "
               f"{sealed} dager forseglet først")
+        return 0
+
+    if cmd == "purge-dormant":
+        # Dry run by default: counts only. Deletes only with SPORLOS_RETENTION_ENFORCE=1.
+        # Prints one JSON line with counts and cutoffs, never ids, names or addresses.
+        import json
+        enforce = os.environ.get("SPORLOS_RETENTION_ENFORCE", "").strip() == "1"
+        res = store.purge_dormant(enforce=enforce)
+        print("purge-dormant " + json.dumps(res, sort_keys=True))
         return 0
 
     if cmd == "mask-paths":

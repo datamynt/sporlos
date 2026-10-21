@@ -64,6 +64,20 @@ as root, the script cannot write the backup and stops before deleting anything:
 mkdir -p backups
 ```
 
+## Retention job (terms §10, DPA §8)
+`python -m app.manage purge-dormant` deletes accounts whose customer relationship has ended:
+never-verified sign-ups with no data after 14 days, expired trials and cancelled plans 84 days
+after the end (inside the 90 days the terms promise), plus expired reset links and invites.
+It is a **dry run unless `SPORLOS_RETENTION_ENFORCE=1`** is set for that run, prints one JSON
+line with counts and cutoffs only (no ids, names or addresses) and writes the same to the
+`retention_runs` table. Accounts with a Vipps agreement, an annual invoice, or a paid, owner
+or agency plan are never touched. Schedule it daily next to `retention`:
+```bash
+docker compose -f docker-compose.prod.yml exec -T app python -m app.manage purge-dormant
+# enforce, once the dry-run counts look right:
+docker compose -f docker-compose.prod.yml exec -T -e SPORLOS_RETENTION_ENFORCE=1 app python -m app.manage purge-dormant
+```
+
 ## Søkedata (valgfritt — «Søk og AI»-modulen)
 1. Lag en Google service account, legg JSON-nøkkelen i `./secrets/gsc-sa.json`
    (gitignored; mountes read-only av compose) og gi kontoens e-postadresse

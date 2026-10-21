@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     vipps_agreement_id TEXT,
     vipps_pending_plan TEXT,
     vipps_charged_through TEXT,
+    cancelled_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS users (
@@ -359,6 +360,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS invoice_details TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS invoice_paid_through TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS plan_ends_at TEXT")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cancelled_at TEXT")
             # New tables (invites, ...) need no line here: the schema file above is all
             # CREATE ... IF NOT EXISTS and runs on every start, which creates them on an
             # existing database too. Same for _SQLITE_SCHEMA below.
@@ -396,6 +398,7 @@ def init_db() -> None:
                 "ALTER TABLE tenants ADD COLUMN invoice_details TEXT",
                 "ALTER TABLE tenants ADD COLUMN invoice_paid_through TEXT",
                 "ALTER TABLE tenants ADD COLUMN plan_ends_at TEXT",
+                "ALTER TABLE tenants ADD COLUMN cancelled_at TEXT",
                 # Etter kolonne-migreringene — samme grunn som i PG-grenen over.
                 "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
                 "WHERE revenue_cents IS NOT NULL",
@@ -682,10 +685,11 @@ def _now_str() -> str:
 def set_invoice_billing(tenant_id: int, plan: str, details: dict, paid_through: str) -> None:
     """Annual invoice: the plan starts now; details (JSON) are what the invoice needs.
     paid_through is the end of the invoiced year, for the renewal."""
+    ensure_retention_schema()
     with _cursor() as cur:
         cur.execute(
-            f"UPDATE tenants SET plan = {P}, invoice_details = {P}, invoice_paid_through = {P} "
-            f"WHERE id = {P}",
+            f"UPDATE tenants SET plan = {P}, invoice_details = {P}, invoice_paid_through = {P}, "
+            f"cancelled_at = NULL WHERE id = {P}",
             (plan, json.dumps(details, ensure_ascii=False), paid_through, tenant_id),
         )
 
@@ -887,7 +891,9 @@ def set_tenant_plan(
     tenant_id: int, plan: str, customer_id: str | None = None, sub_id: str | None = None
 ) -> None:
     """Sett plan (og ev. Stripe-id-er) på en tenant — kalles fra webhook/checkout."""
-    sets, args = [f"plan = {P}"], [plan]
+    ensure_retention_schema()
+    cancelled_sql, cancelled_args = _cancelled_at_sql(plan)
+    sets, args = [f"plan = {P}", cancelled_sql], [plan, *cancelled_args]
     if customer_id is not None:
         sets.append(f"stripe_customer_id = {P}")
         args.append(customer_id)
@@ -923,9 +929,10 @@ def set_vipps_pending(tenant_id: int, agreement_id: str, plan: str) -> None:
 
 def activate_vipps(tenant_id: int, plan: str, charged_through: str) -> None:
     """Avtalen ble ACTIVE — sett plan og neste forfallsdato (første mnd er trukket)."""
+    ensure_retention_schema()
     with _cursor() as cur:
         cur.execute(
-            f"UPDATE tenants SET plan = {P}, vipps_pending_plan = NULL, "
+            f"UPDATE tenants SET plan = {P}, vipps_pending_plan = NULL, cancelled_at = NULL, "
             f"vipps_charged_through = {P} WHERE id = {P}",
             (plan, charged_through, tenant_id),
         )
@@ -942,10 +949,14 @@ def set_vipps_charged_through(tenant_id: int, charged_through: str) -> None:
 def clear_vipps(tenant_id: int, new_plan: str | None = None) -> None:
     """Avtalen er stoppet/utløpt — rydd Vipps-feltene (og ev. sett plan)."""
     sets = "vipps_agreement_id = NULL, vipps_pending_plan = NULL, vipps_charged_through = NULL"
+    if new_plan:
+        ensure_retention_schema()
     with _cursor() as cur:
         if new_plan:
+            cancelled_sql, cancelled_args = _cancelled_at_sql(new_plan)
             cur.execute(
-                f"UPDATE tenants SET {sets}, plan = {P} WHERE id = {P}", (new_plan, tenant_id)
+                f"UPDATE tenants SET {sets}, plan = {P}, {cancelled_sql} WHERE id = {P}",
+                (new_plan, *cancelled_args, tenant_id),
             )
         else:
             cur.execute(f"UPDATE tenants SET {sets} WHERE id = {P}", (tenant_id,))
@@ -2687,31 +2698,234 @@ def delete_tenant(tenant_id: int) -> dict[str, int]:
     Nothing here touches Stripe or Vipps: the caller refuses while a paid
     subscription runs, and invoices live with Stripe/Vipps/Fiken, not here."""
     with _cursor() as cur:
-        cur.execute(f"SELECT id, public_id FROM sites WHERE tenant_id = {P}", (tenant_id,))
-        sites = [dict(r) for r in cur.fetchall()]
-        counts = _delete_sites(cur, [s["id"] for s in sites])
-        cur.execute(f"SELECT id, email FROM users WHERE tenant_id = {P}", (tenant_id,))
-        users = [dict(r) for r in cur.fetchall()]
-        uids = [u["id"] for u in users]
-        emails = [u["email"] for u in users]
-        if uids:
-            ph = ",".join([P] * len(uids))
-            # Explicit: SQLite runs without foreign_keys=ON, so ON DELETE CASCADE is not enforced there.
-            cur.execute(f"DELETE FROM user_identities WHERE user_id IN ({ph})", tuple(uids))
-            counts["user_identities"] = cur.rowcount
-            cur.execute(f"DELETE FROM reset_tokens WHERE email IN ({ph})", tuple(emails))
-            counts["reset_tokens"] = cur.rowcount
-        cur.execute(f"DELETE FROM api_keys WHERE tenant_id = {P}", (tenant_id,))
-        counts["api_keys"] = cur.rowcount
-        cur.execute(f"DELETE FROM invites WHERE tenant_id = {P}", (tenant_id,))
-        counts["invites"] = cur.rowcount
-        cur.execute(f"DELETE FROM users WHERE tenant_id = {P}", (tenant_id,))
-        counts["users"] = cur.rowcount
-        cur.execute(f"DELETE FROM tenants WHERE id = {P}", (tenant_id,))
-        counts["tenants"] = cur.rowcount
+        counts, sites = _delete_tenant(cur, tenant_id)
     for s in sites:
         _site_cache.pop(s["public_id"], None)
     return counts
+
+
+def _delete_tenant(cur, tenant_id: int) -> tuple[dict[str, int], list[dict]]:
+    """The body of delete_tenant on the caller's cursor (one transaction). Returns rows
+    deleted per table and the deleted sites (the caller drops them from the cache)."""
+    cur.execute(f"SELECT id, public_id FROM sites WHERE tenant_id = {P}", (tenant_id,))
+    sites = [dict(r) for r in cur.fetchall()]
+    counts = _delete_sites(cur, [s["id"] for s in sites])
+    cur.execute(f"SELECT id, email FROM users WHERE tenant_id = {P}", (tenant_id,))
+    users = [dict(r) for r in cur.fetchall()]
+    uids = [u["id"] for u in users]
+    emails = [u["email"] for u in users]
+    if uids:
+        ph = ",".join([P] * len(uids))
+        # Explicit: SQLite runs without foreign_keys=ON, so ON DELETE CASCADE is not enforced there.
+        cur.execute(f"DELETE FROM user_identities WHERE user_id IN ({ph})", tuple(uids))
+        counts["user_identities"] = cur.rowcount
+        cur.execute(f"DELETE FROM reset_tokens WHERE email IN ({ph})", tuple(emails))
+        counts["reset_tokens"] = cur.rowcount
+    cur.execute(f"DELETE FROM api_keys WHERE tenant_id = {P}", (tenant_id,))
+    counts["api_keys"] = cur.rowcount
+    cur.execute(f"DELETE FROM invites WHERE tenant_id = {P}", (tenant_id,))
+    counts["invites"] = cur.rowcount
+    cur.execute(f"DELETE FROM users WHERE tenant_id = {P}", (tenant_id,))
+    counts["users"] = cur.rowcount
+    cur.execute(f"DELETE FROM tenants WHERE id = {P}", (tenant_id,))
+    counts["tenants"] = cur.rowcount
+    return counts, sites
+
+
+
+# --- Retention: dormant accounts (terms §10, DPA §8) -----------------------------
+# The terms and the DPA promise that an account's data is deleted within 90 days after
+# the customer relationship ends. Three kinds of account have ended without the customer
+# deleting it themselves:
+#   unverified     never confirmed the e-mail, never recorded a single event, and older
+#                  than RETENTION_UNVERIFIED_DAYS (sign-up bots, typos, abandoned tries);
+#   trial_expired  the free trial ran out RETENTION_ENDED_DAYS ago and no plan was bought;
+#   cancelled      the subscription ended (tenants.cancelled_at) RETENTION_ENDED_DAYS ago.
+# RETENTION_ENDED_DAYS is below 90 so a missed daily run or two still keeps the promise.
+# An account with a Vipps agreement (running or awaiting approval) or an annual invoice is
+# never touched here, nor any paid, owner or agency plan. Deleting an account is
+# delete_tenant: nothing at Stripe, Vipps or Fiken is touched, and invoices (the
+# bookkeeping record) live there, not here. On-chain anchors hold only Merkle roots over
+# daily aggregates (see SITE_TABLES), so there is nothing on chain to delete.
+RETENTION_ENDED_DAYS = 84
+RETENTION_UNVERIFIED_DAYS = 14
+RETENTION_BATCH = 200  # accounts deleted per run at most; the rest wait for the next run
+
+_RETENTION_RUNS_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS retention_runs ("
+    + ("id BIGSERIAL PRIMARY KEY, " if _USE_PG else "id INTEGER PRIMARY KEY AUTOINCREMENT, ")
+    + "ran_at TEXT NOT NULL, enforce INTEGER NOT NULL, cutoffs TEXT NOT NULL, "
+    "counts TEXT NOT NULL)"
+)
+
+_retention_ready = False
+
+
+def ensure_retention_schema() -> None:
+    """Self-healing like ensure_search_schema: deploy runs no `manage init`. Adds
+    tenants.cancelled_at and the retention_runs audit table, and starts the clock for
+    accounts cancelled before the column existed (at the paid-through date when known,
+    else now, so nobody is deleted earlier than the promise allows)."""
+    global _retention_ready
+    if _retention_ready:
+        return
+    with _cursor() as cur:
+        if _USE_PG:
+            cur.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'tenants' AND column_name = 'cancelled_at'"
+            )
+            if not cur.fetchone():
+                cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cancelled_at TEXT")
+        else:
+            cur.execute("PRAGMA table_info(tenants)")
+            if "cancelled_at" not in {r["name"] for r in cur.fetchall()}:
+                cur.execute("ALTER TABLE tenants ADD COLUMN cancelled_at TEXT")
+        cur.execute(_RETENTION_RUNS_SCHEMA)
+        cur.execute(
+            f"UPDATE tenants SET cancelled_at = COALESCE(plan_ends_at, {P}) "
+            f"WHERE plan = 'cancelled' AND cancelled_at IS NULL",
+            (_now_str(),),
+        )
+    _retention_ready = True
+
+
+def _cancelled_at_sql(plan: str | None) -> tuple[str, list]:
+    """SET fragment that keeps tenants.cancelled_at in step with the plan: stamped the
+    first time the plan becomes 'cancelled', cleared when a plan is bought again."""
+    if plan == "cancelled":
+        return f"cancelled_at = COALESCE(cancelled_at, {P})", [_now_str()]
+    return "cancelled_at = NULL", []
+
+
+# Conditions per category, on alias t. No money may be moving for any of them.
+_NO_MONEY = (
+    "t.vipps_agreement_id IS NULL AND t.vipps_pending_plan IS NULL "
+    "AND t.invoice_details IS NULL"
+)
+
+
+def _dormant_conditions() -> dict[str, str]:
+    return {
+        "unverified": (
+            f"t.plan = 'trial' AND t.stripe_subscription_id IS NULL AND {_NO_MONEY} "
+            f"AND t.created_at < {P} "
+            # A sign-up always creates a user; tenants made by `manage create-site` have none.
+            "AND EXISTS (SELECT 1 FROM users u WHERE u.tenant_id = t.id) "
+            "AND NOT EXISTS (SELECT 1 FROM users u WHERE u.tenant_id = t.id "
+            "AND u.email_verified = 1) "
+            "AND NOT EXISTS (SELECT 1 FROM sites s JOIN events e ON e.site_id = s.id "
+            "WHERE s.tenant_id = t.id) "
+            "AND NOT EXISTS (SELECT 1 FROM sites s JOIN daily_rollups r ON r.site_id = s.id "
+            "WHERE s.tenant_id = t.id)"
+        ),
+        "trial_expired": (
+            f"t.plan = 'trial' AND t.stripe_subscription_id IS NULL AND {_NO_MONEY} "
+            f"AND t.trial_ends_at IS NOT NULL AND t.trial_ends_at < {P}"
+        ),
+        "cancelled": (
+            f"t.plan = 'cancelled' AND {_NO_MONEY} "
+            f"AND t.cancelled_at IS NOT NULL AND t.cancelled_at < {P}"
+        ),
+    }
+
+
+def _fmt_ts(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def retention_cutoffs(now: datetime | None = None) -> dict[str, str]:
+    now = now or datetime.now(timezone.utc)
+    ended = _fmt_ts(now - timedelta(days=RETENTION_ENDED_DAYS))
+    return {
+        "unverified": _fmt_ts(now - timedelta(days=RETENTION_UNVERIFIED_DAYS)),
+        "trial_expired": ended,
+        "cancelled": ended,
+        "expired_links": _fmt_ts(now),
+    }
+
+
+def dormant_tenant_ids(now: datetime | None = None) -> dict[str, list[int]]:
+    """Accounts per category that the retention promise says must go now. An account
+    that fits several categories is listed once, under the first."""
+    ensure_retention_schema()
+    cutoffs = retention_cutoffs(now)
+    out: dict[str, list[int]] = {}
+    seen: set[int] = set()
+    with _cursor() as cur:
+        for cat, cond in _dormant_conditions().items():
+            cur.execute(f"SELECT t.id FROM tenants t WHERE {cond} ORDER BY t.id", (cutoffs[cat],))
+            ids = [int(r["id"]) for r in cur.fetchall() if int(r["id"]) not in seen]
+            seen.update(ids)
+            out[cat] = ids
+    return out
+
+
+def purge_dormant(enforce: bool = False, now: datetime | None = None,
+                  batch: int = RETENTION_BATCH) -> dict:
+    """The retention job. Dry run unless enforce: then counts only, nothing changes.
+
+    With enforce, each account is re-checked and deleted in its own transaction (row
+    locked on Postgres), so an account that bought a plan since the selection survives
+    and a crash leaves every account either whole or gone. At most `batch` accounts per
+    run; re-running is safe (what is gone is no longer selected). Expired reset links
+    and invitations (they hold an e-mail address) go too.
+
+    Returns counts only, never ids, names or addresses. One audit row per run in
+    retention_runs (also for a dry run)."""
+    now = now or datetime.now(timezone.utc)
+    cutoffs = retention_cutoffs(now)
+    cands = dormant_tenant_ids(now)
+    conds = _dormant_conditions()
+    counts: dict = {"accounts": {k: len(v) for k, v in cands.items()}}
+    with _cursor() as cur:
+        cur.execute(f"SELECT COUNT(*) AS n FROM reset_tokens WHERE expires_at <= {P}",
+                    (cutoffs["expired_links"],))
+        links = {"reset_tokens": int(cur.fetchone()["n"])}
+        cur.execute(f"SELECT COUNT(*) AS n FROM invites WHERE expires_at <= {P}",
+                    (cutoffs["expired_links"],))
+        links["invites"] = int(cur.fetchone()["n"])
+    counts["expired_links"] = links
+    deleted_rows: dict[str, int] = {}
+    deleted_accounts = 0
+    if enforce:
+        lock = " FOR UPDATE" if _USE_PG else ""
+        for cat, ids in cands.items():
+            for tid in ids:
+                if deleted_accounts >= batch:
+                    break
+                with _cursor() as cur:
+                    cur.execute(
+                        f"SELECT t.id FROM tenants t WHERE t.id = {P} AND {conds[cat]}{lock}",
+                        (tid, cutoffs[cat]),
+                    )
+                    if not cur.fetchone():
+                        continue
+                    rows, sites = _delete_tenant(cur, tid)
+                for s in sites:
+                    _site_cache.pop(s["public_id"], None)
+                for table, n in rows.items():
+                    deleted_rows[table] = deleted_rows.get(table, 0) + max(int(n or 0), 0)
+                deleted_accounts += 1
+        with _cursor() as cur:
+            cur.execute(f"DELETE FROM reset_tokens WHERE expires_at <= {P}",
+                        (cutoffs["expired_links"],))
+            deleted_rows["expired_reset_tokens"] = cur.rowcount
+            cur.execute(f"DELETE FROM invites WHERE expires_at <= {P}",
+                        (cutoffs["expired_links"],))
+            deleted_rows["expired_invites"] = cur.rowcount
+    counts["deleted_accounts"] = deleted_accounts
+    counts["deleted_rows"] = deleted_rows
+    counts["remaining_accounts"] = sum(len(v) for v in cands.values()) - deleted_accounts \
+        if enforce else sum(len(v) for v in cands.values())
+    with _cursor() as cur:
+        cur.execute(
+            f"INSERT INTO retention_runs (ran_at, enforce, cutoffs, counts) "
+            f"VALUES ({P}, {P}, {P}, {P})",
+            (_fmt_ts(now), 1 if enforce else 0, json.dumps(cutoffs, sort_keys=True),
+             json.dumps(counts, sort_keys=True)),
+        )
+    return {"enforce": enforce, "cutoffs": cutoffs, "counts": counts}
 
 
 # --- Users of an account, and invitations to join one ---------------------------
