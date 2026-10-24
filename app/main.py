@@ -2409,10 +2409,13 @@ async def betal(request):
             'text-decoration:none;font-weight:600;margin:.5rem 0">Betal med kort</a>'
         )
     if vipps.configured():
+        # Vipps' own approved button file, unaltered and self-hosted (static/vipps/README.md);
+        # their brand rules: use only the approved buttons, fixed 44 px height.
         knapper += (
-            f'<a href="/billing/vipps/start?plan={plan}" style="display:block;text-align:center;'
-            "background:#ff5b24;color:#fff;padding:.75rem;border-radius:9px;"
-            'text-decoration:none;font-weight:600;margin:.5rem 0">Betal med Vipps</a>'
+            f'<a href="/billing/vipps/start?plan={plan}" style="display:block;margin:.5rem 0;'
+            'line-height:0;text-decoration:none">'
+            '<img src="/static/vipps/vipps-betal-med-no.svg" width="250" height="44" '
+            'alt="Betal med Vipps" style="display:block"></a>'
         )
     knapper += (
         f'<a href="/betal/faktura?plan={plan}" style="display:block;text-align:center;'
