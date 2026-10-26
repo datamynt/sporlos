@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     vipps_pending_plan TEXT,
     vipps_charged_through TEXT,
     cancelled_at TEXT,
+    deletion_warned_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS users (
@@ -370,6 +371,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS invoice_paid_through TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS plan_ends_at TEXT")
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cancelled_at TEXT")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS deletion_warned_at TEXT")
             # New tables (invites, ...) need no line here: the schema file above is all
             # CREATE ... IF NOT EXISTS and runs on every start, which creates them on an
             # existing database too. Same for _SQLITE_SCHEMA below.
@@ -408,6 +410,7 @@ def init_db() -> None:
                 "ALTER TABLE tenants ADD COLUMN invoice_paid_through TEXT",
                 "ALTER TABLE tenants ADD COLUMN plan_ends_at TEXT",
                 "ALTER TABLE tenants ADD COLUMN cancelled_at TEXT",
+                "ALTER TABLE tenants ADD COLUMN deletion_warned_at TEXT",
                 # Etter kolonne-migreringene — samme grunn som i PG-grenen over.
                 "CREATE INDEX IF NOT EXISTS events_site_ecom ON events (site_id) "
                 "WHERE revenue_cents IS NOT NULL",
@@ -698,7 +701,7 @@ def set_invoice_billing(tenant_id: int, plan: str, details: dict, paid_through: 
     with _cursor() as cur:
         cur.execute(
             f"UPDATE tenants SET plan = {P}, invoice_details = {P}, invoice_paid_through = {P}, "
-            f"cancelled_at = NULL WHERE id = {P}",
+            f"cancelled_at = NULL, deletion_warned_at = NULL WHERE id = {P}",
             (plan, json.dumps(details, ensure_ascii=False), paid_through, tenant_id),
         )
 
@@ -942,7 +945,7 @@ def activate_vipps(tenant_id: int, plan: str, charged_through: str) -> None:
     with _cursor() as cur:
         cur.execute(
             f"UPDATE tenants SET plan = {P}, vipps_pending_plan = NULL, cancelled_at = NULL, "
-            f"vipps_charged_through = {P} WHERE id = {P}",
+            f"deletion_warned_at = NULL, vipps_charged_through = {P} WHERE id = {P}",
             (plan, charged_through, tenant_id),
         )
 
@@ -2864,6 +2867,17 @@ def bot_summary(site_id: int, days: int = 7, limit: int = 10) -> dict:
 RETENTION_ENDED_DAYS = 84
 RETENTION_UNVERIFIED_DAYS = 14
 RETENTION_BATCH = 200  # accounts deleted per run at most; the rest wait for the next run
+# Warning before deletion. A customer who leaves keeps the right to take their data with
+# them, so an ended account (trial_expired, cancelled) gets one mail DELETION_WARN_DAYS
+# before it becomes deletable, with a link to download everything. Deletion then waits for
+# that warning: at least DELETION_MIN_NOTICE_DAYS after the mail was sent, and an account
+# nobody could warn (SMTP down) is deleted anyway from RETENTION_HARD_DAYS, because the
+# terms promise deletion within 90 days. Unverified sign-ups have no data and an address
+# nobody confirmed, so they get no warning.
+DELETION_WARN_DAYS = 14
+DELETION_MIN_NOTICE_DAYS = 7
+RETENTION_HARD_DAYS = 89
+WARNED_CATEGORIES = ("trial_expired", "cancelled")
 
 _RETENTION_RUNS_SCHEMA = (
     "CREATE TABLE IF NOT EXISTS retention_runs ("
@@ -2891,10 +2905,14 @@ def ensure_retention_schema() -> None:
             )
             if not cur.fetchone():
                 cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cancelled_at TEXT")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS deletion_warned_at TEXT")
         else:
             cur.execute("PRAGMA table_info(tenants)")
-            if "cancelled_at" not in {r["name"] for r in cur.fetchall()}:
+            cols = {r["name"] for r in cur.fetchall()}
+            if "cancelled_at" not in cols:
                 cur.execute("ALTER TABLE tenants ADD COLUMN cancelled_at TEXT")
+            if "deletion_warned_at" not in cols:
+                cur.execute("ALTER TABLE tenants ADD COLUMN deletion_warned_at TEXT")
         cur.execute(_RETENTION_RUNS_SCHEMA)
         cur.execute(
             f"UPDATE tenants SET cancelled_at = COALESCE(plan_ends_at, {P}) "
@@ -2909,7 +2927,9 @@ def _cancelled_at_sql(plan: str | None) -> tuple[str, list]:
     first time the plan becomes 'cancelled', cleared when a plan is bought again."""
     if plan == "cancelled":
         return f"cancelled_at = COALESCE(cancelled_at, {P})", [_now_str()]
-    return "cancelled_at = NULL", []
+    # A new plan also resets the deletion warning: the next time the account ends it
+    # gets its own warning (deletion_warned_at, see "Warning before deletion" below).
+    return "cancelled_at = NULL, deletion_warned_at = NULL", []
 
 
 # Conditions per category, on alias t. No money may be moving for any of them.
@@ -2975,6 +2995,118 @@ def dormant_tenant_ids(now: datetime | None = None) -> dict[str, list[int]]:
     return out
 
 
+# --- Warning before deletion ------------------------------------------------------
+
+def _as_dt(v) -> datetime | None:
+    """A timestamp column as an aware UTC datetime: str (SQLite, TEXT columns) or
+    datetime (Postgres TIMESTAMPTZ), None when empty or unreadable."""
+    if v in (None, ""):
+        return None
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    try:
+        return datetime.strptime(str(v)[:19].replace("T", " "), "%Y-%m-%d %H:%M:%S").replace(
+            tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def deletion_date(ended_at: datetime, now: datetime, warned_at: datetime | None = None) -> datetime:
+    """When an ended account will be deleted, as far as the schedule can tell today: the
+    cutoff (RETENTION_ENDED_DAYS after the end), but not sooner than the minimum notice
+    after the warning (or after now, when the warning goes out today), and never later
+    than RETENTION_HARD_DAYS after the end."""
+    eligible = ended_at + timedelta(days=RETENTION_ENDED_DAYS)
+    notice = (warned_at or now) + timedelta(days=DELETION_MIN_NOTICE_DAYS)
+    return min(max(eligible, notice), ended_at + timedelta(days=RETENTION_HARD_DAYS))
+
+
+def _ended_at(cat: str, row: dict) -> datetime | None:
+    return _as_dt(row["trial_ends_at"] if cat == "trial_expired" else row["cancelled_at"])
+
+
+def _warned_in_cycle(row: dict, ended_at: datetime) -> datetime | None:
+    """The warning timestamp if it belongs to this ending (sent after the account ended);
+    a warning from an earlier ending, before the account was reactivated, does not count."""
+    w = _as_dt(row.get("deletion_warned_at"))
+    return w if w and w >= ended_at else None
+
+
+_WARN_SELECT = (
+    "SELECT t.id, t.name, t.trial_ends_at, t.cancelled_at, t.deletion_warned_at, "
+    "(SELECT email FROM users WHERE tenant_id = t.id ORDER BY id LIMIT 1) AS email "
+    "FROM tenants t WHERE "
+)
+
+
+def deletion_warning_candidates(now: datetime | None = None) -> list[dict]:
+    """Ended accounts that are within DELETION_WARN_DAYS of becoming deletable (or past
+    it) and have not been warned for this ending. Each: id, name, email, category,
+    ended_at (datetime), delete_on (datetime). Accounts nobody could be mailed at are left out."""
+    ensure_retention_schema()
+    now = now or datetime.now(timezone.utc)
+    cutoff = _fmt_ts(now - timedelta(days=RETENTION_ENDED_DAYS - DELETION_WARN_DAYS))
+    conds = _dormant_conditions()
+    out: list[dict] = []
+    with _cursor() as cur:
+        for cat in WARNED_CATEGORIES:
+            cur.execute(f"{_WARN_SELECT}{conds[cat]} ORDER BY t.id", (cutoff,))
+            for r in cur.fetchall():
+                r = dict(r)
+                ended = _ended_at(cat, r)
+                if ended is None or not r["email"] or _warned_in_cycle(r, ended):
+                    continue
+                out.append({"id": int(r["id"]), "name": r["name"], "email": r["email"],
+                            "category": cat, "ended_at": ended,
+                            "delete_on": deletion_date(ended, now)})
+    return out
+
+
+def mark_deletion_warned(tenant_id: int, now: datetime | None = None) -> None:
+    ensure_retention_schema()
+    with _cursor() as cur:
+        cur.execute(f"UPDATE tenants SET deletion_warned_at = {P} WHERE id = {P}",
+                    (_fmt_ts(now or datetime.now(timezone.utc)), tenant_id))
+
+
+def _awaiting_notice(cur, cat: str, tid: int, now: datetime) -> bool:
+    """True while deletion must wait for the warning (see DELETION_MIN_NOTICE_DAYS)."""
+    if cat not in WARNED_CATEGORIES:
+        return False
+    cur.execute(f"{_WARN_SELECT}t.id = {P}", (tid,))
+    r = cur.fetchone()
+    if not r:
+        return False
+    r = dict(r)
+    ended = _ended_at(cat, r)
+    if ended is None or not r["email"]:
+        return False  # nobody to warn
+    if now >= ended + timedelta(days=RETENTION_HARD_DAYS):
+        return False
+    warned = _warned_in_cycle(r, ended)
+    return not (warned and now >= warned + timedelta(days=DELETION_MIN_NOTICE_DAYS))
+
+
+def deletion_notice(tenant_id: int, now: datetime | None = None) -> dict | None:
+    """For the account page: {"category", "ended_at", "delete_on"} when this account has
+    ended and will be deleted by the retention job, else None."""
+    ensure_retention_schema()
+    now = now or datetime.now(timezone.utc)
+    conds = _dormant_conditions()
+    with _cursor() as cur:
+        for cat in WARNED_CATEGORIES:
+            # "Ended" here, not "deletable": the cutoff is now, so every ended account matches.
+            cur.execute(f"{_WARN_SELECT}t.id = {P} AND {conds[cat]}", (tenant_id, _fmt_ts(now)))
+            r = cur.fetchone()
+            if r:
+                r = dict(r)
+                ended = _ended_at(cat, r)
+                if ended:
+                    return {"category": cat, "ended_at": ended,
+                            "delete_on": deletion_date(ended, now, _warned_in_cycle(r, ended))}
+    return None
+
+
 def purge_dormant(enforce: bool = False, now: datetime | None = None,
                   batch: int = RETENTION_BATCH) -> dict:
     """The retention job. Dry run unless enforce: then counts only, nothing changes.
@@ -2993,6 +3125,11 @@ def purge_dormant(enforce: bool = False, now: datetime | None = None,
     conds = _dormant_conditions()
     counts: dict = {"accounts": {k: len(v) for k, v in cands.items()}}
     with _cursor() as cur:
+        # Accounts whose warning mail has not gone out long enough ago wait (see above).
+        held = {tid for cat, ids in cands.items() for tid in ids
+                if _awaiting_notice(cur, cat, tid, now)}
+    counts["held_for_notice"] = len(held)
+    with _cursor() as cur:
         cur.execute(f"SELECT COUNT(*) AS n FROM reset_tokens WHERE expires_at <= {P}",
                     (cutoffs["expired_links"],))
         links = {"reset_tokens": int(cur.fetchone()["n"])}
@@ -3008,6 +3145,8 @@ def purge_dormant(enforce: bool = False, now: datetime | None = None,
             for tid in ids:
                 if deleted_accounts >= batch:
                     break
+                if tid in held:
+                    continue
                 with _cursor() as cur:
                     cur.execute(
                         f"SELECT t.id FROM tenants t WHERE t.id = {P} AND {conds[cat]}{lock}",

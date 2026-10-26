@@ -87,6 +87,30 @@ docker compose -f docker-compose.prod.yml exec -T app python -m app.manage purge
 docker compose -f docker-compose.prod.yml exec -T -e SPORLOS_RETENTION_ENFORCE=1 app python -m app.manage purge-dormant
 ```
 
+### Warning mail before deletion
+The same command warns first. Expired trials and cancelled plans get **one e-mail to the account
+owner 14 days before they become deletable** (day 70 after the end; `store.DELETION_WARN_DAYS`),
+with a signed download link (valid until the day after the deletion date) and a pointer to
+the plan page. It is sent by `purge-dormant` itself, before the purge, so no extra cron entry is
+needed: with `SPORLOS_RETENTION_ENFORCE=1` it sends, in a dry run it only counts
+(`deletion_warnings.due` in the JSON line). The marker is `tenants.deletion_warned_at`
+(self-healing column, set only when SMTP accepted the mail, cleared when a plan is bought), so
+the mail goes out once per ending and a failed send is retried the next day (exit code 1 when
+any send failed). The purge **waits for the warning**: an ended account is deleted no sooner than
+7 days after its mail (`DELETION_MIN_NOTICE_DAYS`), and an account nobody could warn (SMTP down
+for weeks) is deleted anyway from day 89 (`RETENTION_HARD_DAYS`) because the terms promise 90 days.
+`held_for_notice` in the JSON line counts accounts waiting for their mail. SMTP must be configured
+(`SMTP_HOST`, `MAIL_FROM`), otherwise nothing is warned and deletion falls back to day 89.
+
+### Full export ("Last ned alle data")
+`/app/export/alt?site=<id>` (one site) and `/app/export/konto` (the account) stream a ZIP of CSV
+files built on the fly (`app/export.py`; at most two exports at a time, then 429). They need a
+login, which also works for a cancelled account in its grace period. The warning mail links to
+`/eksport?tid=…&exp=…&t=…`, a signed link (HMAC with the session secret, so changing
+`SPORLOS_SESSION_SECRET` invalidates links already mailed) that shows a button; the download is a
+POST. The API-key API does not offer the export: it is documented as sums only, and the export
+contains the stored event rows.
+
 ## sporlos.no måler seg selv (goals + funnels)
 Selve hendelsene (`signup_submit`, `signup_complete`, `checkout_submit`, `checkout_card|vipps|faktura`,
 `purchase` med omsetning) sendes fra koden. Målene og traktene på sporlos.no-siten (`SPORLOS_DEMO_SITE`,

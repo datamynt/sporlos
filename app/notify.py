@@ -7,9 +7,10 @@ så en feilet sending prøves på nytt neste kjøring.
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app import auth, mailer, store
+from app import export as data_export
 
 
 def _base() -> str:
@@ -54,6 +55,69 @@ def send_trial_reminders(within_days: int = 3) -> tuple[int, int]:
         else:
             failed += 1
     return sent, failed
+
+
+_MONTHS = ["januar", "februar", "mars", "april", "mai", "juni", "juli", "august", "september",
+           "oktober", "november", "desember"]
+
+
+def _no_long_date(dt: datetime) -> str:
+    return f"{dt.day}. {_MONTHS[dt.month - 1]} {dt.year}"
+
+
+def deletion_warning_mail(c: dict, now: datetime) -> tuple[str, str]:
+    """(subject, body) of the mail that goes out store.DELETION_WARN_DAYS before an ended
+    account becomes deletable. `c` is one row of store.deletion_warning_candidates()."""
+    when = _no_long_date(c["delete_on"])
+    ended = _no_long_date(c["ended_at"])
+    why = (f"prøveperioden gikk ut {ended}" if c["category"] == "trial_expired"
+           else f"abonnementet ble avsluttet {ended}")
+    params = data_export.sign_link(c["id"], c["delete_on"] + timedelta(days=1))
+    link = f"{_base()}/eksport?" + "&".join(f"{k}={v}" for k, v in params.items())
+    body = (
+        "Hei,\n\n"
+        f"Kontoen «{c['name']}» på Sporløs er ikke lenger aktiv ({why}). Derfor blir kontoen og "
+        f"alle dataene i den slettet {when}.\n\n"
+        "Dette blir slettet:\n"
+        "- alle nettstedene dine, med statistikk, dagstall, mål, trakter og søkedata\n"
+        "- API-nøklene og alle brukerne på kontoen\n"
+        "Sikkerhetskopiene rulleres ut innen 35 dager etter det.\n\n"
+        "Vil du ta vare på dataene dine?\n"
+        "Last ned alt som en ZIP med regnearkfiler (CSV), også de rå hendelsene som fortsatt er "
+        f"lagret:\n{link}\n"
+        "Lenken virker til kontoen slettes. Du kan også logge inn på "
+        f"{_base()}/login og trykke «Last ned alle data» på kontosiden.\n\n"
+        "Vil du beholde kontoen?\n"
+        f"Velg en plan før {when}, så slettes ingenting og målingen fortsetter:\n{_base()}/app\n\n"
+        "Dette er den eneste e-posten vi sender om slettingen. Spørsmål? Bare svar på denne "
+        "e-posten.\n\nSporløs"
+    )
+    return f"Kontoen din på Sporløs slettes {when}. Last ned dataene dine nå", body
+
+
+def send_deletion_warnings(enforce: bool = False, now: datetime | None = None,
+                           limit: int = store.RETENTION_BATCH) -> dict:
+    """Warn the owner of every ended account that is within store.DELETION_WARN_DAYS of
+    deletion (or past it, if the job is new), once per ending. Runs in `manage
+    purge-dormant`, before the purge. A dry run (enforce False) sends and marks nothing and
+    only counts. The marker is set only when the mail was accepted, so a failed send is tried
+    again the next day, and the purge holds the account until the warning is out.
+
+    Not tied to email_optout: this is a notice about the customer's own data, not a
+    newsletter. Returns counts only."""
+    now = now or datetime.now(timezone.utc)
+    due = store.deletion_warning_candidates(now)
+    res = {"enforce": enforce, "due": len(due), "sent": 0, "failed": 0}
+    if not enforce:
+        return res
+    for c in due[:limit]:
+        subject, body = deletion_warning_mail(c, now)
+        if mailer.send(c["email"], subject, body):
+            store.mark_deletion_warned(c["id"], now)
+            res["sent"] += 1
+        else:
+            res["failed"] += 1
+    return res
 
 
 def send_stalled_alerts() -> int:
