@@ -78,6 +78,15 @@ docker compose -f docker-compose.prod.yml exec -T app python -m app.manage purge
 docker compose -f docker-compose.prod.yml exec -T -e SPORLOS_RETENTION_ENFORCE=1 app python -m app.manage purge-dormant
 ```
 
+## sporlos.no måler seg selv (goals + funnels)
+Selve hendelsene (`signup_submit`, `signup_complete`, `checkout_submit`, `checkout_card|vipps|faktura`,
+`purchase` med omsetning) sendes fra koden. Målene og traktene på sporlos.no-siten (`SPORLOS_DEMO_SITE`,
+standard `6LIACtOSP-S7`) opprettes én gang etter deploy; kommandoen er idempotent (hopper over navn
+som finnes), så den kan kjøres på nytt uten skade:
+```bash
+docker compose -f docker-compose.b550.yml exec -T app python -m app.manage seed-own-goals
+```
+
 ## Søkedata (valgfritt — «Søk og AI»-modulen)
 1. Lag en Google service account, legg JSON-nøkkelen i `./secrets/gsc-sa.json`
    (gitignored; mountes read-only av compose) og gi kontoens e-postadresse

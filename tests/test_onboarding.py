@@ -51,7 +51,9 @@ class WelcomeTest(unittest.TestCase):
         r = c.post("/signup", data={"company": "Ny AS", "email": "ny@example.no",
                                     "password": "passord-123",
                                     "t": main._signup_stamp(time.time() - 10)}, follow_redirects=False)
-        self.assertEqual(r.headers["location"], "/app?ny=1")
+        # Reported once from the tracked /takk, which then carries on to the welcome page.
+        self.assertEqual(r.headers["location"], "/takk")
+        self.assertIn('href="/app?ny=1"', c.get("/takk").text)
         html = c.get("/app?ny=1").text
         self.assertIn("Velkommen til Sporløs!", html)
         self.assertIn("Kom i gang på tre minutter", html)
