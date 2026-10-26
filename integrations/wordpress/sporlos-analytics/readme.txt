@@ -3,7 +3,7 @@ Contributors: datamynt
 Tags: analytics, privacy, cookieless, statistics, gdpr
 Requires at least: 6.3
 Tested up to: 7.0
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -20,6 +20,7 @@ cookie banner**.
 
 * No cookies, nothing written to the browser
 * No IP addresses stored
+* Individual page views are deleted after 90 days; only daily totals are kept
 * Data hosted in Norway on European-owned infrastructure
 * Lightweight script (~1.5 kB) that never slows your site down
 * Page views, sources, UTM campaigns, goals, funnels and more
@@ -60,6 +61,9 @@ parameters. Never the full URL, never cookies, never fingerprints. The script
 source is public: https://github.com/datamynt/sporlos-tracker
 
 == Changelog ==
+
+= 1.0.1 =
+* Wording: the plugin description and readme now match what Sporløs stores (no cookies, no IP addresses, page views deleted after 90 days). No code changes.
 
 = 0.1.0 =
 * First release: script enqueue with defer strategy, settings page, logged-in users excluded by default.

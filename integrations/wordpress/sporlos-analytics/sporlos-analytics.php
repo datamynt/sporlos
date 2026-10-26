@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Sporløs Analytics
  * Plugin URI: https://sporlos.no
- * Description: Cookieløs, samtykke-fri webanalyse fra Sporløs — uten cookie-banner. Legger inn sporings-snippeten på alle offentlige sider.
- * Version: 1.0.0
+ * Description: Cookieløs webanalyse fra Sporløs, uten samtykkebanner. Legger inn sporingskoden på alle offentlige sider.
+ * Version: 1.0.1
  * Author: Datamynt AS
  * Author URI: https://datamynt.no
  * License: GPLv2 or later
