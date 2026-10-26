@@ -49,7 +49,7 @@ class DpaTest(unittest.TestCase):
 
     def test_dpa_describes_the_actual_processing(self):
         # Every hit is a pseudonymous event row, deleted after 90 days
-        # (store.retention_sweep); only daily totals stay (daily_rollups).
+        # (store.retention_sweep); only daily totals stay (daily_rollups, daily_breakdowns).
         import inspect
 
         days = inspect.signature(store.retention_sweep).parameters["days"].default

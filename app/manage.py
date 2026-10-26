@@ -4,6 +4,8 @@
     python -m app.manage create-site "Datamynt" merdata.no
     python -m app.manage seo-sync [dager]      # GSC/Bing → search_stats (cron: daglig)
     python -m app.manage retention [dager]     # delete raw events older than 90 days (cron: daily)
+    python -m app.manage backfill-breakdowns [--apply]   # one-off: per-day breakdowns for
+                                               # every day still in events; dry run without --apply
     python -m app.manage mask-paths [--apply] [--backup-dir DIR]   # mask stored ID-like paths
     python -m app.manage purge-dormant         # warn (14 days ahead) and delete ended accounts
                                                # (terms §10); dry run unless
@@ -112,6 +114,19 @@ def main(argv: list[str]) -> int:
         deleted, sealed = store.retention_sweep(days)
         print(f"retention: {deleted} events slettet (eldre enn {days} d), "
               f"{sealed} dager forseglet først")
+        return 0
+
+    if cmd == "backfill-breakdowns":
+        # One-off after deploy: daily_breakdowns for every past day still in the raw
+        # data, so those days keep their detail after retention. Dry run without
+        # --apply; idempotent (each day is recomputed and replaced). Counts only.
+        from app import history
+        res = history.backfill(apply="--apply" in argv[1:])
+        verb = "computed" if res["applied"] else "would compute (dry run, pass --apply)"
+        print(f"backfill-breakdowns: {verb} {res['site_days']} site-days across "
+              f"{res['sites']} sites ({res['first_day']} .. {res['last_day']}), "
+              f"{res['already_present']} already present"
+              + (f", {res['rows_written']} rows written" if res["applied"] else ""))
         return 0
 
     if cmd == "purge-dormant":

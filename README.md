@@ -68,7 +68,9 @@ addresses? Set `SPORLOS_COUNT_PRIVATE_IPS=1` to count them.
    kundens egen eksport («Last ned alle data», bak innlogging eller signert lenke): kunden eier
    dataene sine og får de lagrede hendelsene (høyst 90 dager) uten besøks-hash.
 4. **Kort lagring.** Hver hendelse lagres som egen rad (pseudonym, med dagens
-   besøks-hash) og slettes etter 90 dager. Etter det finnes bare dagstall.
+   besøks-hash) og slettes etter 90 dager. Etter det finnes bare dagstall uten hash
+   (totaler og fordelinger per side, kilde, land, enhet osv.), som beholdes så lenge
+   kontoen finnes og slettes med den.
 
 ## Lisens
 
@@ -84,7 +86,8 @@ Sporløs is consent-free, cookieless web analytics built in Norway. No cookies,
 no stored IPs, no fingerprinting — visitors are counted via a one-way hash of IP
 and user agent with a salt that is replaced and deleted every night, so visits
 cannot be linked across days. Single events are deleted after 90 days; only daily
-totals are kept. No consent banner is required under Norwegian/EU ePrivacy rules,
+totals without the hash are kept (per site and per page, source, country, device and
+so on), for as long as the account exists. No consent banner is required under Norwegian/EU ePrivacy rules,
 so visitors who would have clicked "reject" are measured too (visitors with Do Not
 Track or Global Privacy Control are not counted). Daily aggregates can optionally be sealed with a
 cryptographic hash anchored to a public ledger, making the numbers tamper-

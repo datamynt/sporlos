@@ -51,8 +51,10 @@ kobles på tvers av dager eller nettsteder.
 
 Hver sidevisning lagres som en egen rad i 90 dager: side, kilde, land og fylke, enhetstype, nettleser,
 operativsystem, eventuelle UTM-kampanjeverdier, dagens besøks-hash og, ved kjøp, beløp, produktnavn og
-betalingsmåte. Etter 90 dager slettes radene, og bare dagstallene er igjen. Dette er pseudonyme
-opplysninger, holdt så få og så kortvarige som mulig. Derfor har vi også en databehandleravtale.
+betalingsmåte. Etter 90 dager slettes radene. Da er bare dagstall igjen, uten besøkskoden: summer
+per dag for nettstedet og per side, kilde, kampanje, land og fylke, enhet, nettleser, operativsystem,
+hendelse og kjøp. Dagstallene beholdes så lenge kontoen finnes, og slettes med den. Radene med
+besøks-hash er pseudonyme opplysninger, holdt så få og så kortvarige som mulig. Derfor har vi også en databehandleravtale.
 
 **Følgene for deg som kunde:**
 - ✅ **Ingen cookie-banner** nødvendig for analysen

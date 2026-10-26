@@ -188,6 +188,24 @@ CREATE TABLE IF NOT EXISTS bot_daily (
     PRIMARY KEY (site_id, day, bot_class, agent, path)
 );
 
+-- Per-day breakdowns kept for the life of the account (app/history.py has the dims).
+-- Counts only: no visitor hash, no per-visitor row. `visitors` = distinct hashes that
+-- day. Written by the nightly rollup, never touched by retention_sweep; deleted with
+-- the site or the account (store.SITE_TABLES). At most history.CAP keys per dim/day.
+CREATE TABLE IF NOT EXISTS daily_breakdowns (
+    site_id       BIGINT NOT NULL REFERENCES sites(id),
+    day           DATE NOT NULL,
+    dim           TEXT NOT NULL,
+    key           TEXT NOT NULL DEFAULT '',
+    currency      TEXT NOT NULL DEFAULT '',
+    n             BIGINT NOT NULL DEFAULT 0,
+    visitors      BIGINT,
+    revenue_cents BIGINT,
+    PRIMARY KEY (site_id, day, dim, key, currency)
+);
+-- Tiny partial index: has_ecommerce() asks whether a site ever had an order.
+CREATE INDEX IF NOT EXISTS daily_breakdowns_ecom ON daily_breakdowns (site_id) WHERE dim = 'ecom';
+
 -- BSV-anchre av rollups. Beviser at tallene ikke er etterjustert.
 CREATE TABLE IF NOT EXISTS anchors (
     id          BIGSERIAL PRIMARY KEY,

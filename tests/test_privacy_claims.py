@@ -85,6 +85,12 @@ class PrivacyClaimsTest(unittest.TestCase):
         for path in ("/personvern", "/sporsmal", "/vilkar"):
             self.assertIn(f"{days} dager", self.html[path], path)
         self.assertIn("bare dagstall", self.html["/personvern"])
+        # The per-day breakdowns (store daily_breakdowns) outlive the 90 days: say so,
+        # and that they go with the account.
+        for path in ("/personvern", "/sporsmal", "/vilkar"):
+            self.assertIn("kontoen finnes", self.html[path], path)
+            self.assertRegex(self.html[path], r"uten (besøks-hash|besøkskoden|hash)", path)
+        self.assertIn("fordelt på side", self.html["/personvern"])
 
     def test_personvern_states_what_is_stored(self):
         html = self.html["/personvern"]

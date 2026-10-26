@@ -550,7 +550,10 @@ _FAQ = [
         "Så lite som mulig. Ingen IP-adresser og ingen cookies. Hver sidevisning lagres i 90 dager "
         "med side, kilde, land og fylke, enhetstype, nettleser, operativsystem, eventuelle "
         "UTM-kampanjeverdier og en besøks-hash som byttes hver natt. Ved kjøp også beløp, "
-        "produktnavn og betalingsmåte. Etter 90 dager er bare dagstallene igjen. Geografisk "
+        "produktnavn og betalingsmåte. Etter 90 dager slettes enkeltregistreringene. Da er bare "
+        "dagstall igjen, uten besøkskoden: summer per dag for nettstedet og per side, kilde, "
+        "kampanje, land og fylke, enhet, nettleser, operativsystem, hendelse og kjøp. Dagstallene "
+        "beholdes så lenge kontoen finnes, og slettes sammen med den. Geografisk "
         "stopper vi bevisst på fylkesnivå. Hele tilnærmingen er beskrevet åpent i "
         "personvernerklæringen, og sporingsskriptet er åpen kildekode, så du kan sjekke selv.",
     ),
@@ -3251,16 +3254,21 @@ og besøks-hashen byttes hver natt, så ingen kan følges over tid
 <pre>curl -H "Authorization: Bearer sl_..." \\
   "https://sporlos.no/api/v1/stats?site=DIN_SITE_ID&amp;period=7"</pre>
 <p class=muted><code>site</code> er nettstedets offentlige ID (den samme som i sporingskoden,
-eller hent alle med <code>/api/v1/sites</code>). <code>period</code> er 1, 7 eller 30 dager.
-<code>/stats</code> og <code>/breakdown</code> tar også <code>month=ÅÅÅÅ-MM</code> (kalendermåned i UTC,
-innenfor de siste 90 dagene) i stedet for <code>period</code>.</p>
+eller hent alle med <code>/api/v1/sites</code>). <code>period</code> er 1, 7, 30, 90, 180 eller 365 dager.
+<code>/stats</code> og <code>/breakdown</code> tar også <code>month=ÅÅÅÅ-MM</code> (kalendermåned i UTC)
+i stedet for <code>period</code>, også for måneder lenger tilbake enn 90 dager.</p>
+<p class=muted>Enkelthendelsene slettes etter 90 dager. Eldre dager leses fra dagssummene vi
+beholder per side, kilde, land, fylke, enhet, nettleser, operativsystem, kampanje, hendelse og kjøp.
+Hver dag har de 500 største verdiene per dimensjon; totalene er alltid hele. Unike besøkende er
+summen av unike per dag. Dagssummene finnes fra 90 dager før funksjonen ble slått på; for dager
+før det finnes bare totalene (sidevisninger, besøkende, besøk og fluktfrekvens).</p>
 
 <h2>Endepunkter</h2>
 <table>
 <tr><td><code>GET /api/v1/sites</code></td><td>nettstedene dine (domene og nettsted-ID)</td></tr>
 <tr><td><code>POST /api/v1/sites</code></td><td>opprett ett nettsted: <code>{{"domain": "dittdomene.no"}}</code>. Idempotent: samme domene gir samme nettsted-ID (200) i stedet for en duplikat (201 = ny)</td></tr>
 <tr><td><code>GET /api/v1/stats</code></td><td>nøkkeltall (unike besøkende, sidevisninger, besøk, fluktfrekvens) og topplister, med forrige periode til sammenligning</td></tr>
-<tr><td><code>GET /api/v1/timeseries</code></td><td>per dag (per time når period=1)</td></tr>
+<tr><td><code>GET /api/v1/timeseries</code></td><td>per dag (per time når period=1, per uke fra period=90)</td></tr>
 <tr><td><code>GET /api/v1/breakdown</code></td><td>full liste per dimensjon: <code>prop=pages|sources|countries|regions|devices|browsers|os</code> (+ <code>limit</code>, maks 1000)</td></tr>
 <tr><td><code>GET /api/v1/goals</code></td><td>mål med konverteringsrate</td></tr>
 <tr><td><code>GET /api/v1/events</code></td><td>egne hendelser</td></tr>
@@ -3690,7 +3698,9 @@ når du oppretter konto.</p>
 <p><b>Analysedataene for ditt nettsted er dine.</b> Du kan når som helst laste ned alt vi har lagret
 (en ZIP med CSV-filer i tjenesten, per nettsted eller for hele kontoen). Vi selger eller deler dem
 aldri med tredjepart. Enkeltregistreringer (sidevisninger og hendelser) slettes uansett etter 90
-dager; etter det finnes bare dagstall. Ved opphør av kundeforholdet slettes kontoen og
+dager; etter det finnes bare dagstall uten besøkskoden (summer per dag, også fordelt på side, kilde,
+land, enhet og lignende). Dagstallene beholdes så lenge kontoen finnes, og slettes når du sletter
+nettstedet eller kontoen. Ved opphør av kundeforholdet slettes kontoen og
 analysedataene innen 90 dager. Vi sender deg én e-post 14 dager før, med lenke til nedlasting av alt.</p>
 
 <h2>11. Tilgjengelighet og ansvar</h2>
@@ -3772,9 +3782,13 @@ art. 6 nr. 1 b) og for support. Vi sender ikke markedsføring uten samtykke.</p>
 <p><b>Lagringstider:</b> Kontoopplysninger lagres så lenge du er kunde, og slettes innen rimelig
 tid etter at kundeforholdet opphører (regnskapsplikt kan kreve lengre lagring av fakturadata).
 Enkeltregistreringer fra analysen (sidevisninger og hendelser, med besøks-hash) slettes etter
-90 dager. Etter det finnes bare dagstall per nettsted (sidevisninger, besøkende, besøk og
-fluktfrekvens), uten hash. Dagstallene kan forsegles med en kryptografisk hash i en offentlig
-blokkjede; bare hashen av dagstallene publiseres. Ved opphør av kundeforholdet slettes
+90 dager. Etter det finnes bare dagstall, uten besøkskoden: per nettsted (sidevisninger, besøkende,
+besøk og fluktfrekvens) og fordelt på side, inngangs- og utgangsside, kilde, UTM-kampanje, land, fylke,
+enhetstype, nettleser, operativsystem, egne hendelser og kjøp (ordrer og beløp per kilde,
+betalingsmåte og produkt). Besøkende er der bare et antall per dag. Dagstallene beholdes så lenge
+kontoen finnes, og slettes når nettstedet eller kontoen slettes. Totalene per dag kan forsegles med
+en kryptografisk hash i en offentlig blokkjede; bare hashen av totalene publiseres. Ved opphør av
+kundeforholdet slettes
 kontoen og analysedataene 84 dager etter at prøveperioden gikk ut eller abonnementet ble avsluttet,
 og dermed innen 90 dager. Vi sender eieren av kontoen én e-post 14 dager før, med en lenke til å
 laste ned alt. Velger du en plan før det, slettes ingenting.</p>
@@ -4137,6 +4151,16 @@ async def sitemap(request):
 
 
 _PERIODS = {"1": ("i dag", 1), "7": ("7 dager", 7), "30": ("30 dager", 30), "90": ("90 dager", 90)}
+# Longer than the raw events are kept: the site dashboards read the older days from the
+# stored per-day breakdowns (app/history.py). Kept out of _PERIODS so the overview,
+# the CSV export and the SEO page stay on what they can compute from raw events.
+_LONG_PERIODS = {"180": ("6 måneder", 180), "365": ("12 måneder", 365)}
+_DASH_PERIODS = {**_PERIODS, **_LONG_PERIODS}
+_LONG_HINT = (
+    '<p class=hint style="margin:.2rem 0 .9rem">Dager eldre enn 90 dager vises fra lagrede '
+    "dagssummer per side, kilde, land, enhet og så videre. Enkelthendelsene er slettet. Trakter "
+    "og navigasjonsstier trenger enkelthendelsene og viser derfor bare de siste 90 dagene.</p>"
+)
 
 # Visningsnavn for AI-assistent-referrers (store.AI_SOURCES) — host uten www.
 _AI_NAMES = {
@@ -4640,8 +4664,10 @@ def _stat_table(items, key, icon=None):
 _SESSION_TITLE = "Et besøk slutter etter 30 minutter uten aktivitet."
 _BOUNCE_TITLE = "Andel besøk med bare én sidevisning. Lavere er bedre."
 _DEPTH_TITLE = "Gjennomsnittlig antall sider per besøk."
-_VS_LABEL = {"1": "i går", "7": "de 7 dagene før", "30": "de 30 dagene før", "90": "de 90 dagene før"}
-_PERIOD_PHRASE = {"1": "i dag", "7": "siste 7 dager", "30": "siste 30 dager", "90": "siste 90 dager"}
+_VS_LABEL = {"1": "i går", "7": "de 7 dagene før", "30": "de 30 dagene før", "90": "de 90 dagene før",
+             "180": "de 6 månedene før", "365": "de 12 månedene før"}
+_PERIOD_PHRASE = {"1": "i dag", "7": "siste 7 dager", "30": "siste 30 dager", "90": "siste 90 dager",
+                  "180": "siste 6 måneder", "365": "siste 12 måneder"}
 
 
 def _visitors_label(days: int) -> str:
@@ -4898,9 +4924,9 @@ def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, ti
     dashboards (/p/<site>) never get it, so a customer's revenue and conversions do not
     become public because they shared their traffic numbers."""
     period = request.query_params.get("period", "7")
-    if period not in _PERIODS:
+    if period not in _DASH_PERIODS:
         period = "7"
-    label, days = _PERIODS[period]
+    label, days = _DASH_PERIODS[period]
 
     s = store.stats(site["id"], days)
     # Flagg slås opp på engelsk navn FØR oversettelse til norsk visningsnavn
@@ -4956,7 +4982,7 @@ def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, ti
 
     tabs = " ".join(
         f'<a href="{base_path}?period={k}" class="{"on" if k == period else ""}">{escape(v[0])}</a>'
-        for k, v in _PERIODS.items()
+        for k, v in _DASH_PERIODS.items()
     )
 
     return HTMLResponse(
@@ -4988,6 +5014,7 @@ padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
 <p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende {_PERIOD_PHRASE[period]}, sammenlignet med {_VS_LABEL[period]}</p>
 {chart}
 </div>
+{_LONG_HINT if period in _LONG_PERIODS else ""}
 <div class=grid>
   <div class=card><h3>Topp sider</h3>{_stat_table(s['top_paths'], 'path')}</div>
   <div class=card><h3>Topp kilder</h3><p class=hint>Hvor trafikken kommer fra. «direkte» betyr at adressen ble skrevet inn eller åpnet fra et bokmerke.</p>{_stat_table(s['top_sources'], 'src')}</div>
@@ -5907,9 +5934,11 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
         )
 
     period = request.query_params.get("period", "7")
-    if period not in _PERIODS:
+    if period not in _DASH_PERIODS:
         period = "7"
-    label, days = _PERIODS[period]
+    label, days = _DASH_PERIODS[period]
+    # CSV export reads raw events only (at most 90 days back).
+    export_period = period if period in _PERIODS else "90"
 
     s = store.stats(site["id"], days)
     # Flagg slås opp på engelsk navn FØR oversettelse til norsk visningsnavn
@@ -5929,7 +5958,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
     # Periodevelger
     tabs = " ".join(
         f'<a href="/app?site={escape(public_id)}&period={k}" class="{"on" if k == period else ""}">{escape(v[0])}</a>'
-        for k, v in _PERIODS.items()
+        for k, v in _DASH_PERIODS.items()
     )
 
     chart = _area_chart(series, days=days)
@@ -6216,12 +6245,13 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
 {verify_banner}
 <div class=head><h1>{escape(site['domain'])}</h1><div class=tabs>{tabs}</div></div>
 {kpiband}
+{_LONG_HINT if period in _LONG_PERIODS else ""}
 {onboard_card}
-<p class=muted style="font-size:.8rem;margin:.3rem 0 .9rem">Last ned CSV (regneark):
-  <a href="/app/export?site={escape(public_id)}&period={period}&what=tidsserie">tidsserie</a> ·
-  <a href="/app/export?site={escape(public_id)}&period={period}&what=sider">sider</a> ·
-  <a href="/app/export?site={escape(public_id)}&period={period}&what=kilder">kilder</a> ·
-  <a href="/app/export?site={escape(public_id)}&period={period}&what=land">land</a>
+<p class=muted style="font-size:.8rem;margin:.3rem 0 .9rem">Last ned CSV (regneark{", siste 90 dager" if export_period != period else ""}):
+  <a href="/app/export?site={escape(public_id)}&period={export_period}&what=tidsserie">tidsserie</a> ·
+  <a href="/app/export?site={escape(public_id)}&period={export_period}&what=sider">sider</a> ·
+  <a href="/app/export?site={escape(public_id)}&period={export_period}&what=kilder">kilder</a> ·
+  <a href="/app/export?site={escape(public_id)}&period={export_period}&what=land">land</a>
   · <a href="/app/export/alt?site={escape(public_id)}" title="Alt vi har lagret om nettstedet, som ZIP">Last ned alle data (ZIP)</a>
   · <a href="#" id=barstoggle>Vis/skjul søyler</a></p>
 <div class=grid>

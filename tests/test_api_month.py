@@ -90,12 +90,21 @@ class ApiMonthTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["period_days"], 30)
 
-    def test_rejects_bad_future_and_too_old_months(self):
+    def test_rejects_bad_and_future_months(self):
         future = (datetime.now(timezone.utc) + timedelta(days=40)).strftime("%Y-%m")
-        too_old = (datetime.now(timezone.utc) - timedelta(days=130)).strftime("%Y-%m")
-        for bad in ("2026-13", "2026-9", "sept", future, too_old):
+        for bad in ("2026-13", "2026-9", "sept", future):
             with self.subTest(month=bad):
                 self.assertEqual(self._get("/api/v1/stats", month=bad).status_code, 400)
+
+    def test_months_past_the_raw_window_are_read_from_stored_days(self):
+        # Raw events go after 90 days; older months come from daily_breakdowns
+        # (tests/test_history.py covers the numbers). Here: accepted, not rejected.
+        old = (datetime.now(timezone.utc) - timedelta(days=130)).strftime("%Y-%m")
+        for path in ("/api/v1/stats", "/api/v1/breakdown"):
+            with self.subTest(path=path):
+                r = self._get(path, month=old)
+                self.assertEqual(r.status_code, 200)
+                self.assertEqual(r.json()["month"], old)
 
     def test_month_window_crosses_the_year(self):
         self.assertEqual(store.month_window("2026-12"), ("2026-12-01 00:00:00", "2027-01-01 00:00:00"))
