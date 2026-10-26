@@ -18,6 +18,12 @@ The rules are generic (no per-site patterns). A segment is ID-like if it holds:
     random data does and a readable slug does not,
   * an e-mail address.
 
+One positional rule is added on top: a segment with a digit in it that comes
+right after an order or receipt segment (`order-received`, `view-order`,
+`ordre`, `kvittering`, ...). Shop systems put short sequential order numbers
+there (WooCommerce: `/checkout/order-received/1234/`), and those are
+identifiers even though they are short.
+
 Readable slugs (`/guide/esim-tyrkia`, `/pakker/TR`), short numbers and dates
 are kept. The whole segment becomes `:id`, not just the matching run, so a
 token wrapped in other text cannot leave half of itself behind. Masking is
@@ -38,6 +44,14 @@ _URLSAFE_TOKEN = re.compile(r"[A-Za-z0-9_-]{16,}")
 _EMAIL = re.compile(r"[^@/\s]+(?:@|%40)[^@/\s]+\.[A-Za-z]{2,}", re.I)
 _SEPARATORS = re.compile(r"[-_]")
 _WORD = re.compile(r"[^/\s]+")
+
+# Segments after which the next segment is an order or receipt number. Exact,
+# case-insensitive matches only, so `/ordreskjema/2` and `/order-info/2026` stay.
+_ORDER_SLUGS = frozenset({
+    "order", "orders", "order-received", "view-order", "order-pay", "order-status",
+    "receipt", "receipts", "invoice", "invoices", "ordre", "ordrer", "ordre-mottatt",
+    "bestilling", "bestillinger", "kvittering", "kvitteringer", "faktura", "fakturaer",
+})
 
 _MIN_HEX = 12
 _MIN_MIXED_RUN = 16
@@ -102,12 +116,19 @@ def mask_path(path: str) -> str:
 
     >>> mask_path("/order/3f2a9b1c7d4e5f60/receipt.pdf")
     '/order/:id/receipt.pdf'
+    >>> mask_path("/checkout/order-received/1234/")
+    '/checkout/order-received/:id/'
     >>> mask_path("/guide/esim-tyrkia")
     '/guide/esim-tyrkia'
     """
     if not isinstance(path, str) or not path:
         return path
-    return "/".join(MASK if is_id_like(s) else s for s in path.split("/"))
+    segs = path.split("/")
+    out = []
+    for i, s in enumerate(segs):
+        after_order = i > 0 and segs[i - 1].lower() in _ORDER_SLUGS and _has_digit(s)
+        out.append(MASK if after_order or is_id_like(s) else s)
+    return "/".join(out)
 
 
 def mask_label(text: str | None) -> str | None:
