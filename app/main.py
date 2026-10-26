@@ -15,6 +15,7 @@ import base64
 import contextlib
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -753,6 +754,27 @@ def _clean_path(v) -> str:
     return mask_path(v[:512])
 
 
+def _is_private_ip(ip: str) -> bool:
+    """True when `ip` can never be a real visitor of a public service: private
+    (RFC1918, ULA fc00::/7), loopback, link-local, CGNAT, reserved and
+    similar. An IPv4-mapped IPv6 address is judged by the IPv4 inside it. An
+    unparseable value is NOT private (we only drop what we can positively
+    identify)."""
+    try:
+        addr = ipaddress.ip_address((ip or "").strip())
+    except ValueError:
+        return False
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        addr = addr.ipv4_mapped
+    return not addr.is_global
+
+
+def _count_private_ips() -> bool:
+    """SPORLOS_COUNT_PRIVATE_IPS=1: self-hosters on an intranet, where every
+    visitor has a private address, keep counting them. Read per call."""
+    return os.environ.get("SPORLOS_COUNT_PRIVATE_IPS", "").strip().lower() in ("1", "true", "yes")
+
+
 def _ingest_store(payload: dict, headers: dict, client_host: str):
     public_id = payload.get("s")
     if not isinstance(public_id, str) or len(public_id) > 64:
@@ -785,6 +807,12 @@ def _ingest_store(payload: dict, headers: dict, client_host: str):
     if asn is not None:
         _note_drop("datacenter", site["id"], ua, ip, asn=asn)
         botcount.note(site["id"], "datacenter", datacenter_name(asn), "")
+        return PlainTextResponse("", status_code=204)
+    # A private source address (hairpin NAT from the operator's own network, a
+    # health check on the loopback) is never a real visitor of a hosted service.
+    # Humans, not robots: dropped without a trace, so NOT counted in bot_daily.
+    if _is_private_ip(ip) and not _count_private_ips():
+        _note_drop("private", site["id"], ua, ip)
         return PlainTextResponse("", status_code=204)
     botcount.maybe_flush()
     try:

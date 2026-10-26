@@ -53,6 +53,11 @@ docker compose -f docker-compose.prod.yml exec app python -m app.manage init
 Betaling (Stripe/Vipps), e-post, KI-assistent og forsegling er alle gated på
 miljøvariabler — tomt felt betyr at funksjonen er av, og alt annet virker.
 
+Events from private source addresses (RFC1918, loopback, link-local, ULA) are dropped by
+default: on a public install they are the operator's own network reaching the site through
+hairpin NAT, not visitors. Running Sporløs on an intranet where all visitors have private
+addresses? Set `SPORLOS_COUNT_PRIVATE_IPS=1` to count them.
+
 ## Personvern-prinsippene (ufravikelige)
 
 1. **Aldri rå-IP eller cookie lagret.** Kun daglig-saltet enveis-hash.
