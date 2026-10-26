@@ -47,6 +47,21 @@ class DpaTest(unittest.TestCase):
         self.assertIn('href="/databehandleravtale"', TestClient(main.app).get("/").text)
         self.assertIn("/databehandleravtale", TestClient(main.app).get("/sitemap.xml").text)
 
+    def test_dpa_describes_the_actual_processing(self):
+        # Every hit is a pseudonymous event row, deleted after 90 days
+        # (store.retention_sweep); only daily totals stay (daily_rollups).
+        import inspect
+
+        days = inspect.signature(store.retention_sweep).parameters["days"].default
+        html = dpa.HTML
+        self.assertNotIn("anonyme", html)
+        self.assertNotIn("ikke samle inn personopplysninger", html)
+        self.assertIn("pseudonyme", html)
+        self.assertIn(f"etter {days} dager", html)
+        for field in ("UTM", "hendelsesnavn", "beløp", "betalingsmåte", "produktlinjer"):
+            self.assertIn(field, html)
+        self.assertIn("Chat-assistenten på sporlos.no er ikke en del av tjenesten", html)
+
     def test_no_legal_page_is_marked_as_a_draft(self):
         c = TestClient(main.app)
         for path in ("/vilkar", "/personvern", "/databehandleravtale"):

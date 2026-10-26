@@ -10,11 +10,11 @@ Facts in the appendices must match how the service actually runs (privacy.py,
 the backup chain on b550, the subprocessor list on /personvern).
 """
 
-VERSION = "1"
-VALID_FROM = "2026-09-30"
+VERSION = "2"
+VALID_FROM = "2026-10-26"
 
 HTML = """<h1>Databehandleravtale</h1>
-<p class=muted>Versjon 1 · gjelder fra 30.09.2026 · <a href="#" onclick="window.print();return false">Skriv ut eller lagre som PDF</a></p>
+<p class=muted>Versjon 2 · gjelder fra 26.10.2026 · <a href="#" onclick="window.print();return false">Skriv ut eller lagre som PDF</a></p>
 
 <p>Denne databehandleravtalen («Avtalen») regulerer Datamynts behandling av personopplysninger
 på vegne av Kunden når Kunden bruker webanalysetjenesten Sporløs.</p>
@@ -33,9 +33,10 @@ eksemplar på <a href="mailto:post@sporlos.no">post@sporlos.no</a>.</p>
 foran denne.</p>
 
 <h2>3. Bakgrunn og formål</h2>
-<p>Sporløs er laget for å <b>ikke samle inn personopplysninger</b>: tjenesten bruker ingen
-informasjonskapsler, lagrer ikke IP-adresser og bruker ingen vedvarende identifikatorer. Avtalen
-gir likevel Kunden fulle garantier etter GDPR art. 28 for den begrensede behandlingen som skjer
+<p>Sporløs er laget for å <b>samle inn så få personopplysninger som mulig</b>: tjenesten bruker
+ingen informasjonskapsler, lagrer ikke IP-adresser og bruker ingen vedvarende identifikatorer
+(besøks-hashen gjelder bare for ett døgn). Hendelsesdataene som lagres, er pseudonyme
+personopplysninger. Avtalen gir Kunden garantiene etter GDPR art. 28 for denne behandlingen
 (se Bilag A), slik at Kunden kan dokumentere etterlevelse.</p>
 
 <h2>4. Datamynts plikter (GDPR art. 28 nr. 3)</h2>
@@ -101,20 +102,29 @@ forespørsel.</p>
 
 <h2>Bilag A — Behandlingens art, formål og omfang</h2>
 <table>
-<tr><td><b>Formål</b></td><td>Aggregert webanalyse (besøksstatistikk) for Kundens nettsted(er)</td></tr>
-<tr><td><b>Behandlingens art</b></td><td>Innsamling av anonyme hendelsesdata. IP-adresse og nettleserinformasjon (User-Agent)
-brukes flyktig til a) en daglig-roterende enveis-hash for å telle unike besøkende og b) oppslag av land og fylke.
-IP-adresse og User-Agent <b>lagres aldri</b>.</td></tr>
+<tr><td><b>Formål</b></td><td>Webanalyse (besøksstatistikk i form av summer og andeler) for Kundens nettsted(er)</td></tr>
+<tr><td><b>Behandlingens art</b></td><td>Innsamling og lagring av pseudonyme hendelsesdata, én rad per sidevisning
+eller hendelse. IP-adresse og nettleserinformasjon (User-Agent) brukes bare i øyeblikket til a) en enveis-hash med et
+tilfeldig dagssalt, for å telle unike besøkende og besøk, b) oppslag av land og fylke, c) grov enhets-, nettleser- og
+OS-type og d) å skille ut roboter og trafikk fra datasentre, som ikke registreres som besøk.
+IP-adresse og User-Agent <b>lagres aldri</b>. Sporingsskriptet sender ingenting når nettleseren sender
+Do Not Track eller Global Privacy Control.</td></tr>
 <tr><td><b>Registrerte</b></td><td>Besøkende på Kundens nettsted</td></tr>
-<tr><td><b>Opplysninger</b></td><td>Sidesti, henvisningskilde (vertsnavn), grov enhets-, nettleser- og OS-type, land og fylke,
-daglig-roterende hash. <b>Ingen direkte identifikatorer, ingen informasjonskapsler, ingen posisjon under fylkesnivå.</b></td></tr>
-<tr><td><b>Varighet</b></td><td>Tjenesteavtalens løpetid. Hashen lages med et tilfeldig salt som byttes og forkastes
-hvert døgn, så besøk kan ikke kobles på tvers av dager.</td></tr>
+<tr><td><b>Opplysninger</b></td><td>Per hendelse: tidspunkt, hendelsesnavn, side (sti uten spørrestreng), henvisningskilde
+(vertsnavn), UTM-kampanjeverdier (kilde, medium, kampanje), grov enhets-, nettleser- og OS-type, land og fylke, og
+dagens besøks-hash. Ved kjøp, når Kunden sender det: beløp, valuta, betalingsmåte og produktlinjer (navn, antall,
+enhetspris). <b>Ingen direkte identifikatorer, ingen informasjonskapsler, ingen posisjon under fylkesnivå, ingen
+ordre-ID eller kundedata.</b></td></tr>
+<tr><td><b>Varighet</b></td><td>Enkeltregistreringene, med besøks-hash, slettes automatisk etter 90 dager. Etter det
+beholdes bare dagstall per nettsted (sidevisninger, besøkende, besøk og fluktfrekvens), uten hash, så lenge
+tjenesteavtalen løper. Hashen lages med et tilfeldig salt som byttes og slettes hvert døgn, så besøk kan ikke
+kobles på tvers av dager.</td></tr>
 </table>
 
 <h2>Bilag B — Sikkerhetstiltak (GDPR art. 32)</h2>
 <ul>
-<li>Ingen lagring av IP-adresser. Dagens salt er tilfeldig og forkastes etter døgnet.</li>
+<li>Ingen lagring av IP-adresser. Dagens salt er tilfeldig og slettes etter døgnet.</li>
+<li>Enkeltregistreringer slettes automatisk etter 90 dager; bare dagstall uten hash beholdes.</li>
 <li>Ingen informasjonskapsler, vedvarende identifikatorer eller fingerprinting hos de besøkende.</li>
 <li>Geografi bevisst begrenset til land og fylke, ikke by, for å hindre re-identifisering.</li>
 <li>All trafikk over TLS (HTTPS). Databasen er ikke eksponert mot internett.</li>
@@ -128,4 +138,8 @@ prøve hver natt.</li>
 
 <h2>Bilag C — Underleverandører</h2>
 <p>Ingen. Drift og sikkerhetskopier skjer på Datamynts egne maskiner i Oslo.</p>
+<p>Dagstallene kan forsegles ved at en kryptografisk hash av dem publiseres i en offentlig blokkjede.
+Hashen inneholder ingen personopplysninger, og ingen enkeltregistreringer publiseres.</p>
+<p>Chat-assistenten på sporlos.no er ikke en del av tjenesten etter denne Avtalen. Den brukes bare på
+sporlos.no og behandler ingen opplysninger om besøkende på Kundens nettsted.</p>
 """
