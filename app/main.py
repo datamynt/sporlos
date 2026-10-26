@@ -4140,7 +4140,11 @@ background:var(--bg);white-space:nowrap;flex:none}
 .hint{color:var(--muted);font-size:.78rem;margin:.1rem 0 .45rem}
 /* Robot section: its own dashed box, never to be mistaken for the visitor numbers */
 .bots{border-style:dashed}
-.bstat{display:flex;gap:1.4rem;flex-wrap:wrap;margin:.4rem 0 1rem}
+.bstat{display:flex;gap:.5rem 1.4rem;flex-wrap:wrap;margin:.4rem 0 1rem}
+/* Goal and funnel tables: the name column takes what the two number columns leave, and wraps
+   instead of being cut off on a phone. */
+table.gf th:not(:first-child),table.gf td:not(:first-child){width:4rem}
+table.gf td:first-child{white-space:normal;overflow-wrap:break-word}
 .bstat b{display:block;font-size:1.3rem;font-variant-numeric:tabular-nums}
 .bstat b.tot{font-size:1.45rem}
 .bstat small{color:var(--muted);font-size:.78rem}
@@ -4278,11 +4282,12 @@ def _bot_name(agent: str, cls: str) -> str:
     return f"ukjent («{agent}»)"
 
 
-def _bots_html(site_id: int, days: int, label: str) -> str:
+def _bots_html(site_id: int, days: int, label: str, *, always: bool = False) -> str:
     """«Roboter og KI-agenter» on the site dashboard. Shown once a site has had any
-    robot counted (all time, like e-commerce), so quiet sites get no empty box."""
+    robot counted (all time, like e-commerce), so quiet sites get no empty box.
+    `always=True` (the public demo) shows the section regardless."""
     botcount.flush()  # fresh numbers: ingest buffers robot hits for up to a minute
-    if not store.has_bots(site_id):
+    if not always and not store.has_bots(site_id):
         return ""
     b = store.bot_summary(site_id, days, limit=10)
 
@@ -4332,6 +4337,184 @@ def _bots_html(site_id: int, days: int, label: str) -> str:
         + '<p style="color:var(--muted);font-size:.78rem;margin:.7rem 0 0">Forbehold: Sporløs ser bare '
         "roboter som kjører JavaScript. De fleste KI-crawlere gjør ikke det, så de er undertalt her — "
         "en integrasjon på serversiden ville sett alle.</p>"
+    )
+
+
+def _goals_html(goals, public_id, *, editable=True):
+    """«Mål / konverteringer». Shared by the owner dashboard (editable: delete
+    buttons and the add form) and the public demo page (read-only: no forms)."""
+    goal_rows = "".join(
+        f'<tr><td>{escape(g["name"])} <small style="color:var(--muted)">'
+        f'({escape(g["match_type"])}: {escape(g["match_value"])})</small></td>'
+        f'<td>{g["completions"]}</td><td>{g["rate"]}%</td>'
+        + (
+            f'<td><form method=post action="/app/goals/delete" style="display:inline">'
+            f'<input type=hidden name=site value="{escape(public_id)}">'
+            f'<input type=hidden name=goal_id value="{g["id"]}">'
+            '<button title="Slett" style="background:none;border:0;color:var(--err);cursor:pointer">✕</button>'
+            "</form></td>"
+            if editable else ""
+        )
+        + "</tr>"
+        for g in goals
+    )
+    empty_cells = "<td></td><td></td><td></td>" if editable else "<td></td><td></td>"
+    form = (
+        '<form method=post action="/app/goals" style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0;font-size:.9rem">'
+        f'<input type=hidden name=site value="{escape(public_id)}">'
+        '<input name=name placeholder="Navn (f.eks. Påmelding)" required style="flex:1;min-width:8rem;padding:.4rem;border:1px solid #ccc;border-radius:6px">'
+        '<select name=match_type style="padding:.4rem;border:1px solid #ccc;border-radius:6px"><option value=event>Hendelse</option><option value=path>Sti</option></select>'
+        '<input name=match_value placeholder="signup eller /takk" required style="flex:1;min-width:8rem;padding:.4rem;border:1px solid #ccc;border-radius:6px">'
+        '<button style="background:#1a1a1a;color:#fff;border:0;padding:0 .8rem;border-radius:6px;cursor:pointer">Legg til mål</button>'
+        "</form>"
+    )
+    return (
+        "<h3>Mål / konverteringer</h3>"
+        '<p class=hint>Et mål teller besøk som når noe du bryr deg om: en side '
+        "(f.eks. <code>/takk</code>) eller en hendelse (f.eks. <code>signup</code>). "
+        "Rate = andel av alle besøk i perioden.</p>"
+        f"<table class=gf><tr><th>Mål</th><th>Fullført</th><th>Rate</th>{'<th></th>' if editable else ''}</tr>"
+        f"{goal_rows or '<tr><td>ingen mål enda</td>' + empty_cells + '</tr>'}</table>"
+        + (form if editable else "")
+    )
+
+
+def _funnels_html(funnels, public_id, *, editable=True):
+    """«Funnels». Shared by the owner dashboard and the read-only public demo."""
+    frows = ""
+    for fu in funnels:
+        steprows = "".join(
+            f'<tr><td>{i + 1}. {escape(st["value"])} '
+            f'<small style="color:var(--muted)">({escape(st["type"])})</small></td>'
+            f'<td>{st["count"]}</td><td>{st["rate"]}%</td></tr>'
+            for i, st in enumerate(fu["steps"])
+        )
+        frows += (
+            f'<div style="margin:.8rem 0"><b>{escape(fu["name"])}</b> '
+            + (
+                '<form method=post action="/app/funnels/delete" style="display:inline">'
+                f'<input type=hidden name=site value="{escape(public_id)}">'
+                f'<input type=hidden name=funnel_id value="{fu["id"]}">'
+                '<button title="Slett" style="background:none;border:0;color:var(--err);cursor:pointer">✕</button></form>'
+                if editable else ""
+            )
+            + f"<table class=gf>{steprows}</table></div>"
+        )
+    if not frows:
+        frows = (
+            '<p style="color:var(--muted);font-size:.9rem">Ingen funnels enda. '
+            "Eksempel: <code>/</code> → <code>/priser</code> → <code>signup</code> "
+            "viser hvor mange som går hele veien — og hvor de faller fra.</p>"
+        )
+    form = (
+        '<form method=post action="/app/funnels" style="margin:.5rem 0;font-size:.9rem">'
+        f'<input type=hidden name=site value="{escape(public_id)}">'
+        '<input name=name placeholder="Navn (f.eks. Kjøpstrakt)" required '
+        'style="padding:.4rem;border:1px solid #ccc;border-radius:6px;width:100%;box-sizing:border-box;margin-bottom:.4rem">'
+        '<textarea name=steps required rows=4 placeholder="Ett steg per linje, i rekkefolge:&#10;/&#10;/priser&#10;signup" '
+        'style="width:100%;box-sizing:border-box;padding:.4rem;border:1px solid #ccc;border-radius:6px;font:inherit"></textarea>'
+        '<button style="background:#1a1a1a;color:#fff;border:0;padding:.4rem .8rem;border-radius:6px;cursor:pointer;margin-top:.4rem">Lag funnel</button>'
+        '<div style="color:var(--muted);font-size:.8rem">Linjer som starter med / = sti, ellers = hendelse. Min. 2 steg.</div>'
+        "</form>"
+    )
+    return (
+        "<h3>Funnels</h3>"
+        '<p class=hint>En funnel følger besøk gjennom en stegvis rekke sider/hendelser '
+        "og viser frafallet mellom hvert steg.</p>"
+        f"{frows}"
+        + (form if editable else "")
+    )
+
+
+def _ecom_html(site_id, days, *, always=False):
+    """«E-handel». On the owner dashboard the section exists only for sites that have
+    ever measured a purchase (all time). `always=True` (the public demo) shows it
+    regardless, with a plain empty line when the period has no orders."""
+    # All-time gate: a quiet week must not make the section vanish, and sites that are
+    # not shops get no noise.
+    if not (always or store.has_ecommerce(site_id)):
+        return ""
+    ec = store.ecommerce_stats(site_id, days)
+    ec_prev = store.ecommerce_stats(site_id, days, offset=1)
+    # Dominerende valuta styrer KPI-er og tabeller — valutaer blandes aldri.
+    dom = ec["by_currency"][0]["currency"] if ec["by_currency"] else "NOK"
+    row = next((r for r in ec["by_currency"] if r["currency"] == dom), None)
+    prow = next((r for r in ec_prev["by_currency"] if r["currency"] == dom), None)
+    rev = row["revenue_cents"] if row else 0
+    orders = row["orders"] if row else 0
+    prev_rev = prow["revenue_cents"] if prow else 0
+    prev_orders = prow["orders"] if prow else 0
+    aov = round(rev / orders) if orders else 0
+    prev_aov = round(prev_rev / prev_orders) if prev_orders else 0
+
+    if orders:
+        stat = (
+            '<div style="display:flex;gap:.6rem 1.8rem;flex-wrap:wrap;margin:.4rem 0 1rem">'
+            f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_kr(rev, dom)}</div>'
+            f'<small style="color:var(--muted)">omsetning</small> {_delta(rev, prev_rev)}</div>'
+            f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_n(orders)}</div>'
+            f'<small style="color:var(--muted)">ordrer</small> {_delta(orders, prev_orders)}</div>'
+            f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_kr(aov, dom)}</div>'
+            f'<small style="color:var(--muted)">snittordre</small> {_delta(aov, prev_aov)}</div>'
+            "</div>"
+        )
+        prod_rows = "".join(
+            f"<tr><td>{escape(p['name'])}</td>"
+            f"<td style='text-align:right;color:var(--muted)'>{_fmt_n(p['qty'])}</td>"
+            f"<td style='text-align:right'>{_fmt_kr(p['revenue_cents'], dom)}</td></tr>"
+            for p in store.top_products(site_id, days, dom)
+        )
+        src_rows = "".join(
+            f"<tr><td>{escape(sr['src'])}</td>"
+            f"<td style='text-align:right;color:var(--muted)'>{_fmt_n(sr['orders'])}</td>"
+            f"<td style='text-align:right'>{_fmt_kr(sr['revenue_cents'], dom)}</td></tr>"
+            for sr in store.revenue_by_source(site_id, days, dom)
+        )
+        # Betalingsmåte-tabellen vises kun når minst ett kjøp faktisk sendte
+        # feltet — sites uten payment i purchase-kallet får ikke en ren «ukjent»-tabell.
+        pay = store.revenue_by_payment(site_id, days, dom)
+        pay_html = ""
+        if any(pr["method"] != "ukjent" for pr in pay):
+            pay_rows = "".join(
+                f"<tr><td>{escape(pr['method'])}</td>"
+                f"<td style='text-align:right;color:var(--muted)'>{_fmt_n(pr['orders'])}</td>"
+                f"<td style='text-align:right'>{_fmt_kr(pr['revenue_cents'], dom)}</td></tr>"
+                for pr in pay
+            )
+            pay_html = (
+                "<div><table><tr><th>Betalingsmåte</th><th style='text-align:right'>Ordrer</th>"
+                f"<th style='text-align:right'>Omsetning</th></tr>{pay_rows}</table></div>"
+            )
+        tables = (
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem">'
+            "<div><table><tr><th>Produkt</th><th style='text-align:right'>Antall</th>"
+            f"<th style='text-align:right'>Omsetning</th></tr>"
+            f"{prod_rows or '<tr><td>kjøp uten produktlinjer</td><td></td><td></td></tr>'}</table></div>"
+            "<div><table><tr><th>Kilde</th><th style='text-align:right'>Ordrer</th>"
+            f"<th style='text-align:right'>Omsetning</th></tr>{src_rows}</table>"
+            '<p style="color:var(--muted);font-size:.78rem;margin:.4rem 0 0">Kilde = besøkerens '
+            "første kilde i samme døgn (UTC) — hashen roterer ved midnatt, så attribusjon "
+            "krysser aldri døgn.</p>"
+            "</div>"
+            f"{pay_html}"
+            "</div>"
+        )
+        other_orders = ec["orders"] - orders
+        if other_orders:
+            tables += (
+                f'<p style="color:var(--muted);font-size:.8rem">+ {other_orders} '
+                "ordrer i andre valutaer — full liste i API-et.</p>"
+            )
+        body = stat + tables
+    else:
+        body = '<p style="color:var(--muted);font-size:.9rem">Ingen kjøp i perioden.</p>'
+    return (
+        "<h3>E-handel</h3>"
+        "<p class=hint>Kjøp sendes med <code>sporlos('purchase', {…})</code> — kun beløp, "
+        "produktnavn og betalingsmåte, uten ordre-ID eller kundedata. Nettleser-rapporterte tall: "
+        "veiledende, ikke avregningsgrunnlag. "
+        '<a href="/utviklere">Slik sender du kjøp</a>.</p>'
+        + body
     )
 
 
@@ -4591,8 +4774,14 @@ def _sparkline(series, width=96, height=26):
     )
 
 
-def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, title, description, canonical):
-    """Delt renderer for offentlige statistikk-sider (/demo + /p/<site>). Read-only."""
+def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, title, description,
+                       canonical, show_product=False):
+    """Delt renderer for offentlige statistikk-sider (/demo + /p/<site>). Read-only.
+
+    `show_product` is passed ONLY by demo(): it adds goals, funnels, e-commerce and the
+    robot section (what a customer gets beyond traffic). Customers' own opt-in public
+    dashboards (/p/<site>) never get it, so a customer's revenue and conversions do not
+    become public because they shared their traffic numbers."""
     period = request.query_params.get("period", "7")
     if period not in _PERIODS:
         period = "7"
@@ -4635,6 +4824,18 @@ def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, ti
         camp_html = (
             '<div class="card block"><h3>Kampanjer (UTM)</h3>'
             f"<table><tr><th>Kilde / kampanje</th><th>Unike</th><th>Visn.</th></tr>{camp_rows}</table></div>"
+        )
+
+    product_html = ""
+    if show_product:
+        product_html = "".join(
+            f'<div class="{cls}">{body}</div>'
+            for cls, body in (
+                ("card block", _goals_html(store.goal_stats(site["id"], days), public_id, editable=False)),
+                ("card block", _funnels_html(store.funnel_stats(site["id"], days), public_id, editable=False)),
+                ("card block", _ecom_html(site["id"], days, always=True)),
+                ("card block bots", _bots_html(site["id"], days, label, always=True)),
+            )
         )
 
     tabs = " ".join(
@@ -4684,6 +4885,7 @@ padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
 </div>
 {nav_html}
 {camp_html}
+{product_html}
 <div class="card block">{verify_html}</div>
 <div class="card block" style="text-align:center;padding:2rem">
   <p style="margin:0 0 1rem;font-size:1.05rem"><b>Vil du ha dette for ditt nettsted — uten cookie-banner?</b></p>
@@ -4792,6 +4994,7 @@ def demo(request):
         title="Live demo — ekte tall for sporlos.no | Sporløs",
         description="Sporløs i drift: ekte, levende statistikk for sporlos.no — cookieløst og uten samtykke. Slik ser dashbordet ut.",
         canonical="https://sporlos.no/demo",
+        show_product=True,
     )
 
 
@@ -5577,71 +5780,8 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
   </div>
 </div>"""
 
-    # Mål / konverteringer
-    goal_rows = "".join(
-        f'<tr><td>{escape(g["name"])} <small style="color:var(--muted)">'
-        f'({escape(g["match_type"])}: {escape(g["match_value"])})</small></td>'
-        f'<td>{g["completions"]}</td><td>{g["rate"]}%</td>'
-        f'<td><form method=post action="/app/goals/delete" style="display:inline">'
-        f'<input type=hidden name=site value="{escape(public_id)}">'
-        f'<input type=hidden name=goal_id value="{g["id"]}">'
-        '<button title="Slett" style="background:none;border:0;color:var(--err);cursor:pointer">✕</button>'
-        "</form></td></tr>"
-        for g in goals
-    )
-    goals_html = (
-        "<h3>Mål / konverteringer</h3>"
-        '<p class=hint>Et mål teller besøk som når noe du bryr deg om: en side '
-        "(f.eks. <code>/takk</code>) eller en hendelse (f.eks. <code>signup</code>). "
-        "Rate = andel av alle besøk i perioden.</p>"
-        f"<table><tr><th>Mål</th><th>Fullført</th><th>Rate</th><th></th></tr>"
-        f"{goal_rows or '<tr><td>ingen mål enda</td><td></td><td></td><td></td></tr>'}</table>"
-        '<form method=post action="/app/goals" style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0;font-size:.9rem">'
-        f'<input type=hidden name=site value="{escape(public_id)}">'
-        '<input name=name placeholder="Navn (f.eks. Påmelding)" required style="flex:1;min-width:8rem;padding:.4rem;border:1px solid #ccc;border-radius:6px">'
-        '<select name=match_type style="padding:.4rem;border:1px solid #ccc;border-radius:6px"><option value=event>Hendelse</option><option value=path>Sti</option></select>'
-        '<input name=match_value placeholder="signup eller /takk" required style="flex:1;min-width:8rem;padding:.4rem;border:1px solid #ccc;border-radius:6px">'
-        '<button style="background:#1a1a1a;color:#fff;border:0;padding:0 .8rem;border-radius:6px;cursor:pointer">Legg til mål</button>'
-        "</form>"
-    )
-    # Funnels (steg m/ drop-off)
-    frows = ""
-    for fu in funnels:
-        steprows = "".join(
-            f'<tr><td>{i + 1}. {escape(st["value"])} '
-            f'<small style="color:var(--muted)">({escape(st["type"])})</small></td>'
-            f'<td>{st["count"]}</td><td>{st["rate"]}%</td></tr>'
-            for i, st in enumerate(fu["steps"])
-        )
-        frows += (
-            f'<div style="margin:.8rem 0"><b>{escape(fu["name"])}</b> '
-            '<form method=post action="/app/funnels/delete" style="display:inline">'
-            f'<input type=hidden name=site value="{escape(public_id)}">'
-            f'<input type=hidden name=funnel_id value="{fu["id"]}">'
-            '<button title="Slett" style="background:none;border:0;color:var(--err);cursor:pointer">✕</button></form>'
-            f"<table>{steprows}</table></div>"
-        )
-    if not frows:
-        frows = (
-            '<p style="color:var(--muted);font-size:.9rem">Ingen funnels enda. '
-            "Eksempel: <code>/</code> → <code>/priser</code> → <code>signup</code> "
-            "viser hvor mange som går hele veien — og hvor de faller fra.</p>"
-        )
-    funnels_html = (
-        "<h3>Funnels</h3>"
-        '<p class=hint>En funnel følger besøk gjennom en stegvis rekke sider/hendelser '
-        "og viser frafallet mellom hvert steg.</p>"
-        f"{frows}"
-        '<form method=post action="/app/funnels" style="margin:.5rem 0;font-size:.9rem">'
-        f'<input type=hidden name=site value="{escape(public_id)}">'
-        '<input name=name placeholder="Navn (f.eks. Kjøpstrakt)" required '
-        'style="padding:.4rem;border:1px solid #ccc;border-radius:6px;width:100%;box-sizing:border-box;margin-bottom:.4rem">'
-        '<textarea name=steps required rows=4 placeholder="Ett steg per linje, i rekkefolge:&#10;/&#10;/priser&#10;signup" '
-        'style="width:100%;box-sizing:border-box;padding:.4rem;border:1px solid #ccc;border-radius:6px;font:inherit"></textarea>'
-        '<button style="background:#1a1a1a;color:#fff;border:0;padding:.4rem .8rem;border-radius:6px;cursor:pointer;margin-top:.4rem">Lag funnel</button>'
-        '<div style="color:var(--muted);font-size:.8rem">Linjer som starter med / = sti, ellers = hendelse. Min. 2 steg.</div>'
-        "</form>"
-    )
+    goals_html = _goals_html(goals, public_id)
+    funnels_html = _funnels_html(funnels, public_id)
     nav_rows = "".join(
         f'<tr><td title="{escape(tr["from"])} → {escape(tr["to"])}">'
         f'{escape(tr["from"])} → {escape(tr["to"])}</td><td>{tr["n"]}</td></tr>'
@@ -5683,92 +5823,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
             f"<th style='text-align:right;color:var(--muted);font-size:.85rem'>Visn.</th></tr>{camp_rows}</table>"
         )
 
-    # E-handel — seksjonen finnes kun for sites som faktisk har målt kjøp (all-time),
-    # så en rolig uke ikke får seksjonen til å forsvinne, og ikke-butikker slipper støy.
-    ecom_html = ""
-    if store.has_ecommerce(site["id"]):
-        ec = store.ecommerce_stats(site["id"], days)
-        ec_prev = store.ecommerce_stats(site["id"], days, offset=1)
-        # Dominerende valuta styrer KPI-er og tabeller — valutaer blandes aldri.
-        dom = ec["by_currency"][0]["currency"] if ec["by_currency"] else "NOK"
-        row = next((r for r in ec["by_currency"] if r["currency"] == dom), None)
-        prow = next((r for r in ec_prev["by_currency"] if r["currency"] == dom), None)
-        rev = row["revenue_cents"] if row else 0
-        orders = row["orders"] if row else 0
-        prev_rev = prow["revenue_cents"] if prow else 0
-        prev_orders = prow["orders"] if prow else 0
-        aov = round(rev / orders) if orders else 0
-        prev_aov = round(prev_rev / prev_orders) if prev_orders else 0
-
-        if orders:
-            stat = (
-                '<div style="display:flex;gap:1.8rem;flex-wrap:wrap;margin:.4rem 0 1rem">'
-                f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_kr(rev, dom)}</div>'
-                f'<small style="color:var(--muted)">omsetning</small> {_delta(rev, prev_rev)}</div>'
-                f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_n(orders)}</div>'
-                f'<small style="color:var(--muted)">ordrer</small> {_delta(orders, prev_orders)}</div>'
-                f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_kr(aov, dom)}</div>'
-                f'<small style="color:var(--muted)">snittordre</small> {_delta(aov, prev_aov)}</div>'
-                "</div>"
-            )
-            prod_rows = "".join(
-                f"<tr><td>{escape(p['name'])}</td>"
-                f"<td style='text-align:right;color:var(--muted)'>{_fmt_n(p['qty'])}</td>"
-                f"<td style='text-align:right'>{_fmt_kr(p['revenue_cents'], dom)}</td></tr>"
-                for p in store.top_products(site["id"], days, dom)
-            )
-            src_rows = "".join(
-                f"<tr><td>{escape(sr['src'])}</td>"
-                f"<td style='text-align:right;color:var(--muted)'>{_fmt_n(sr['orders'])}</td>"
-                f"<td style='text-align:right'>{_fmt_kr(sr['revenue_cents'], dom)}</td></tr>"
-                for sr in store.revenue_by_source(site["id"], days, dom)
-            )
-            # Betalingsmåte-tabellen vises kun når minst ett kjøp faktisk sendte
-            # feltet — sites uten payment i purchase-kallet får ikke en ren «ukjent»-tabell.
-            pay = store.revenue_by_payment(site["id"], days, dom)
-            pay_html = ""
-            if any(pr["method"] != "ukjent" for pr in pay):
-                pay_rows = "".join(
-                    f"<tr><td>{escape(pr['method'])}</td>"
-                    f"<td style='text-align:right;color:var(--muted)'>{_fmt_n(pr['orders'])}</td>"
-                    f"<td style='text-align:right'>{_fmt_kr(pr['revenue_cents'], dom)}</td></tr>"
-                    for pr in pay
-                )
-                pay_html = (
-                    "<div><table><tr><th>Betalingsmåte</th><th style='text-align:right'>Ordrer</th>"
-                    f"<th style='text-align:right'>Omsetning</th></tr>{pay_rows}</table></div>"
-                )
-            tables = (
-                '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem">'
-                "<div><table><tr><th>Produkt</th><th style='text-align:right'>Antall</th>"
-                f"<th style='text-align:right'>Omsetning</th></tr>"
-                f"{prod_rows or '<tr><td>kjøp uten produktlinjer</td><td></td><td></td></tr>'}</table></div>"
-                "<div><table><tr><th>Kilde</th><th style='text-align:right'>Ordrer</th>"
-                f"<th style='text-align:right'>Omsetning</th></tr>{src_rows}</table>"
-                '<p style="color:var(--muted);font-size:.78rem;margin:.4rem 0 0">Kilde = besøkerens '
-                "første kilde i samme døgn (UTC) — hashen roterer ved midnatt, så attribusjon "
-                "krysser aldri døgn.</p>"
-                "</div>"
-                f"{pay_html}"
-                "</div>"
-            )
-            other_orders = ec["orders"] - orders
-            if other_orders:
-                tables += (
-                    f'<p style="color:var(--muted);font-size:.8rem">+ {other_orders} '
-                    "ordrer i andre valutaer — full liste i API-et.</p>"
-                )
-            body = stat + tables
-        else:
-            body = f'<p style="color:var(--muted);font-size:.9rem">Ingen kjøp målt i {label.lower()}.</p>'
-        ecom_html = (
-            "<h3>E-handel</h3>"
-            "<p class=hint>Kjøp sendes med <code>sporlos('purchase', {…})</code> — kun beløp, "
-            "produktnavn og betalingsmåte, uten ordre-ID eller kundedata. Nettleser-rapporterte tall: "
-            "veiledende, ikke avregningsgrunnlag. "
-            '<a href="/utviklere">Slik sender du kjøp</a>.</p>'
-            + body
-        )
+    ecom_html = _ecom_html(site["id"], days)
 
     # Søk (SEO/GEO) — vises når siten noen gang har fått søkedata (all-time, samme
     # gate-filosofi som e-handel) eller har AI-henvisninger i perioden. Søketall
@@ -5812,7 +5867,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
             if g["position"] and gp["position"] else ""
         )
         sok_stat = (
-            '<div style="display:flex;gap:1.8rem;flex-wrap:wrap;margin:.4rem 0 1rem">'
+            '<div style="display:flex;gap:.6rem 1.8rem;flex-wrap:wrap;margin:.4rem 0 1rem">'
             f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_n(g["clicks"])}</div>'
             f'<small style="color:var(--muted)">klikk fra Google</small> {_delta(g["clicks"], gp["clicks"])}</div>'
             f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_n(g["impressions"])}</div>'
