@@ -47,9 +47,55 @@ function utm(search) {
   return out;
 }
 
+// Samtykke-/personverntilstand fra Shopify. init.customerPrivacy gir starttilstanden,
+// visitorConsentCollected holder den oppdatert.
+var privacy = null;
+try { privacy = (typeof init !== "undefined" && init && init.customerPrivacy) || null; } catch (e) {}
+try {
+  if (typeof customerPrivacy !== "undefined" && customerPrivacy && customerPrivacy.subscribe) {
+    customerPrivacy.subscribe("visitorConsentCollected", function (e) {
+      if (e && e.customerPrivacy) privacy = e.customerPrivacy;
+    });
+  }
+} catch (e) {}
+
+// En besøkende som har bedt om å ikke bli sporet telles ikke: Global Privacy Control
+// eller Do Not Track. Samme regel som tracker/sporlos.js (personvernerklæringen lover
+// det for alle nettsteder som bruker Sporløs). Signalene leses fra det Shopify gir oss:
+//  - global `navigator` (egendefinert pixel kjører i «lax sandbox» med ekte navigator),
+//  - event.context.navigator (i dag kun userAgent/language/cookieEnabled — flaggene er
+//    ikke dokumentert der, men vi sjekker i tilfelle Shopify legger dem til),
+//  - Shopifys Customer Privacy API: Shopify honorerer GPC ved å sette
+//    saleOfDataAllowed = false, så et eksplisitt `false` der regnes også som reservasjon.
+// Flagg som ikke finnes i sandboxen leses som «ikke satt»; kan vi ikke observere dem,
+// er det eneste vi dekker Shopify-signalet. Se README → Personvern.
+function optedOut(ctx) {
+  var navs = [];
+  try { if (typeof navigator !== "undefined" && navigator) navs.push(navigator); } catch (e) {}
+  if (ctx && ctx.navigator) navs.push(ctx.navigator);
+  for (var i = 0; i < navs.length; i++) {
+    var n = navs[i];
+    if (n.globalPrivacyControl === true ||
+        n.doNotTrack === "1" || n.doNotTrack === "yes" || n.msDoNotTrack === "1") return true;
+  }
+  try {
+    if (typeof window !== "undefined" && window && window.doNotTrack === "1") return true;
+  } catch (e) {}
+  return !!(privacy && privacy.saleOfDataAllowed === false);
+}
+
+// Automatiserte nettlesere flagges wd:1; serveren teller dem som robot, aldri som person.
+function automated(ctx) {
+  try {
+    if (typeof navigator !== "undefined" && navigator && navigator.webdriver === true) return true;
+  } catch (e) {}
+  return !!(ctx && ctx.navigator && ctx.navigator.webdriver === true);
+}
+
 function send(name, ctx, extra) {
   if (!SITE_ID || SITE_ID === "DITT_SITE_ID_HER") return;  // ikke konfigurert ennå
   try {
+    if (optedOut(ctx)) return;  // GPC / DNT: ingenting sendes
     var doc = (ctx && ctx.document) || {};
     var loc = doc.location || {};
     var u = utm(loc.search);
@@ -62,6 +108,7 @@ function send(name, ctx, extra) {
       um: u.medium || null,
       uc: u.campaign || null
     };
+    if (automated(ctx)) b.wd = 1;
     if (extra) for (var k in extra) b[k] = extra[k];
     var body = JSON.stringify(b);
     // Ingen Content-Type-header => «simple request» => ingen CORS-preflight.

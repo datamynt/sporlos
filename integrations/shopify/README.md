@@ -39,6 +39,26 @@ analyse, ikke en revenue-tracker.
 - Kun sti, referrer-kilde og hvitlistede `utm_*` sendes — aldri hele query-strengen.
 - Serveren lagrer aldri rå-IP; besøkende telles via en daglig-roterende enveis-hash.
 - Derfor: ingen cookie-banner nødvendig for Sporløs.
+- **Global Privacy Control og Do Not Track respekteres:** en besøkende som har slått på
+  GPC eller DNT telles aldri — pixelen sender ingenting (samme regel som
+  `tracker/sporlos.js`). Automatiserte nettlesere (`navigator.webdriver`) flagges `wd:1`
+  og telles som robot, ikke som person.
+
+#### Hva sandboxen lar oss se av GPC/DNT
+
+Shopifys `event.context.navigator` har bare `userAgent`, `language`, `languages` og
+`cookieEnabled` — **ikke** `globalPrivacyControl`, `doNotTrack` eller `webdriver`. Pixelen
+dekker derfor signalet slik:
+
+| Kilde | Dekket |
+|---|---|
+| Global `navigator` i den egendefinerte pixelens lax sandbox (`globalPrivacyControl`, `doNotTrack`, `msDoNotTrack`, `window.doNotTrack`) | Ja, best effort. Ikke dokumentert av Shopify; flagg som ikke finnes leses som «ikke satt». |
+| `event.context.navigator` (samme flagg) | Sjekkes, men Shopify eksponerer dem ikke i dag. |
+| Shopify Customer Privacy API (`init.customerPrivacy` + `visitorConsentCollected`): `saleOfDataAllowed === false` | Ja. Shopify honorerer GPC ved å sette dette i regioner med opt-out, så det er det pålitelige GPC-signalet. DNT har ingen tilsvarende Shopify-flagg. |
+| Analyse-samtykke (`analyticsProcessingAllowed`) | Brukes **ikke**: Sporløs er samtykke-fri, og kjøpmannen styrer ellers når pixelen lastes via pixelens tillatelse i Shopify-admin. |
+
+Merk: app-pixelen (Fase 2) kjører i en Web Worker (strict sandbox) der DNT ikke finnes på
+`WorkerNavigator`; der er `saleOfDataAllowed` det som dekker GPC.
 
 ### ⚠️ Merk om Shopifys «Optimized»-modus
 
