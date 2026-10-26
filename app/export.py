@@ -160,7 +160,7 @@ SITE_FILES: list[tuple[str, str]] = [
     ("roboter.csv", "Roboter og KI-agenter, talt for seg (aldri blandet med besøkende): dag, klasse, agent, side, antall."),
     ("sokestatistikk.csv", "Søkedata fra Google Search Console og Bing, hvis du har koblet dem til: klikk, visninger og posisjon."),
     ("forankringer.csv", "Forankringer av dagstallene i BSV-kjeden (kun fingeravtrykk, aldri data), der vi har dem."),
-    ("raadata_hendelser.csv", "De rå hendelsene som fortsatt er lagret (høyst 90 dager): tidspunkt (UTC), navn, side, kilde, land, region, enhet, nettleser, OS, UTM og ev. omsetning. UTEN besøkerens fingeravtrykk (visitor_hash)."),
+    ("raadata_hendelser.csv", "De rå hendelsene som fortsatt er lagret (høyst 90 dager): tidspunkt (UTC), navn, side, kilde, land, region, enhet, nettleser, OS, UTM og ev. omsetning. UTEN besøkskoden (visitor_hash)."),
     ("raadata_varelinjer.csv", "Varelinjene til kjøpene i raadata_hendelser.csv (koble med hendelse_id)."),
 ]
 
@@ -497,7 +497,7 @@ def readme_text(scope: str, label: str, now: datetime, site_folders: dict[str, s
         "- Rå hendelser lagres i 90 dager. Eldre rader er slått sammen til dagstall, og de ligger i",
         "  daglige_tall.csv for hele historikken. Fordelingene (sider, kilder, land osv.) er regnet ut",
         "  fra de rå hendelsene, så de dekker de siste 90 dagene.",
-        "- Besøkerens fingeravtrykk (visitor_hash) er IKKE med. Det er en enveis-hash som skifter hver",
+        "- Besøkskoden (visitor_hash) er IKKE med. Det er en enveis-hash som skifter hver",
         "  dag og som vi bruker for å telle unike besøkende. Du får hendelsene uten den.",
         "- Passord, API-nøkler og tilkoblinger til Google-kontoen din er ikke med.",
         "",

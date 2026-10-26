@@ -703,7 +703,7 @@ class PublicTextMatchesTheCodeTest(unittest.TestCase):
         self.assertIn("Last ned alle data", personvern)
         self.assertIn(f"{ended} dager etter at prøveperioden gikk ut eller abonnementet ble avsluttet", personvern)
         self.assertIn(f"én e-post {warn} dager før", personvern)
-        self.assertIn("uten besøkernes fingeravtrykk", personvern)
+        self.assertIn("uten besøkskoden", personvern)
         self.assertIn("Kan jeg ta med meg dataene mine hvis jeg slutter?", faq)
         self.assertIn(f"én e-post {warn} dager før kontoen slettes", faq)
         self.assertIn(f"slettes {ended} dager etter", faq)

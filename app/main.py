@@ -540,7 +540,7 @@ _FAQ = [
         "Ja. Under «Konto» trykker du «Last ned alle data» og får en ZIP med regnearkfiler (CSV): "
         "tidsserier, sider, kilder, land, mål, e-handel, roboter, dagstallene for hele historikken "
         "med bevis for forseglingen, og de rå hendelsene som fortsatt er lagret (høyst 90 dager, "
-        "uten besøkernes fingeravtrykk). Det samme finnes for hvert nettsted. Slutter du, kan du "
+        "uten besøkskoden). Det samme finnes for hvert nettsted. Slutter du, kan du "
         "fortsatt logge inn og laste ned, og vi sender én e-post 14 dager før kontoen slettes, "
         "med en lenke til nedlastingen. Kontoen og dataene slettes 84 dager etter at prøveperioden "
         "gikk ut eller abonnementet ble avsluttet. Velger du en plan før det, slettes ingenting.",
@@ -3784,7 +3784,7 @@ Kopier i de nattlige sikkerhetskopiene forsvinner når kopiene roterer ut, senes
 <h2>5. Dine rettigheter</h2>
 <p>Du har rett til innsyn, retting, sletting og dataportabilitet. Alt vi har lagret kan du laste ned
 selv som en ZIP med CSV-filer («Last ned alle data», per nettsted eller for hele kontoen; de rå
-hendelsene følger med uten besøkernes fingeravtrykk), og nettsteder eller hele kontoen kan du slette
+hendelsene følger med uten besøkskoden), og nettsteder eller hele kontoen kan du slette
 selv under «Konto» når du er logget inn. Ellers
 kontakt oss på post@sporlos.no. Du kan klage til Datatilsynet (datatilsynet.no).</p>
 
@@ -5295,8 +5295,8 @@ def _export_card(tenant_id: int) -> str:
         f"{warn}<div class=card id=eksport><b>Last ned alle data</b>"
         '<p class=fine style="margin:.4rem 0 .8rem">Alt vi har lagret om kontoen og alle nettstedene dine, '
         "som en ZIP med regnearkfiler (CSV): tidsserier, sider, kilder, land, mål, e-handel, roboter, "
-        "dagstall med BSV-bevis og de rå hendelsene som fortsatt er lagret (siste 90 dager, uten "
-        "besøkernes fingeravtrykk). En README forklarer hver fil.</p>"
+        "dagstall med forseglingsbevis og de rå hendelsene som fortsatt er lagret (siste 90 dager, uten "
+        "besøkskoden). En README forklarer hver fil.</p>"
         '<a class=btn href="/app/export/konto">Last ned alle data (ZIP)</a>'
         '<p class=fine style="margin:.7rem 0 0">Vil du bare ha ett nettsted, åpner du det og trykker '
         "«Last ned alle data» der.</p></div>"
