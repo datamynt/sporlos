@@ -54,6 +54,12 @@ class MaskPathTest(unittest.TestCase):
             "/unsubscribe/ola.nordmann@example.no": "/unsubscribe/:id",
             "/unsubscribe/ola%40example.no": "/unsubscribe/:id",
             f"/a/{HEX16}/b/{UUID}/c": "/a/:id/b/:id/c",
+            "/checkout/order-received/1234/": "/checkout/order-received/:id/",
+            "/kasse/ordre-mottatt/87/": "/kasse/ordre-mottatt/:id/",
+            "/my-account/view-order/1234": "/my-account/view-order/:id",
+            "/Order/42": "/Order/:id",
+            "/kvittering/A-1007": "/kvittering/:id",
+            "/account/orders/5001/": "/account/orders/:id/",
         }
         for raw, want in cases.items():
             with self.subTest(raw=raw):
@@ -68,6 +74,7 @@ class MaskPathTest(unittest.TestCase):
             "/guide/esim-tyrkia-10gb-30-dager", "/internationalization", "/@handle",
             "/mp3-to-wav-converter-2025", "/artikler/slik-virker-det.html", "/v2/api/stats",
             "/s%C3%B8k/%C3%A6%C3%B8%C3%A5", "/sider/side-2",
+            "/checkout/order-received/", "/order/status", "/ordreskjema/2", "/order-info/2026",
         ):
             with self.subTest(path=p):
                 self.assertEqual(mask_path(p), p)
