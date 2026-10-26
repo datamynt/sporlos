@@ -35,9 +35,9 @@ const history = {
   },
 };
 
-if (scenario === "webdriver") navigator.webdriver = true;
-if (scenario === "gpc" || scenario === "gpc-custom") navigator.globalPrivacyControl = true;
-if (scenario === "dnt") navigator.doNotTrack = "1";
+if (scenario.startsWith("webdriver")) navigator.webdriver = true;
+if (scenario === "gpc" || scenario === "gpc-custom" || scenario === "webdriver-gpc") navigator.globalPrivacyControl = true;
+if (scenario === "dnt" || scenario === "webdriver-dnt") navigator.doNotTrack = "1";
 if (scenario === "dnt-off") navigator.doNotTrack = "0";
 if (scenario === "dnt-ms") navigator.msDoNotTrack = "1";
 if (scenario === "prerender") document.prerendering = true;
@@ -78,6 +78,11 @@ switch (scenario) {
     break;
   case "gpc-custom":
     // The site still calls sporlos() for its own events: no error, nothing sent.
+    sandbox.sporlos("purchase", { revenue: 10, currency: "nok" });
+    break;
+  case "webdriver":
+  case "webdriver-gpc":
+  case "webdriver-dnt":
     sandbox.sporlos("purchase", { revenue: 10, currency: "nok" });
     break;
   case "custom":

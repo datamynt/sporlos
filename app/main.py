@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
@@ -42,14 +43,22 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from app import api, assist, blogg, dpa, icons, innlogg, mailer, notify, pricing, store, vipps
+from app import api, assist, blogg, botcount, dpa, icons, innlogg, mailer, notify, pricing, store, vipps
 from app.auth import check_token, hash_password, verify_password
-from app.datacenter import datacenter_asn
+from app.datacenter import datacenter_asn, datacenter_name
 from app.geo import country_no
 from app.geo import lookup as geo_lookup
 from app.pathmask import mask_label, mask_path
 from app.privacy import client_ip, visitor_hash
-from app.useragent import bot_match, parse_ua
+from app.useragent import (
+    BOT_CLASS_SHORT,
+    BOT_CLASSES,
+    bot_match,
+    classify_ua,
+    is_named_agent,
+    parse_ua,
+    signed_agent,
+)
 
 SECRET = os.environ.get("SPORLOS_SALT_SECRET", "dev-secret-change-me")
 SESSION_SECRET = os.environ.get("SPORLOS_SESSION_SECRET") or SECRET
@@ -701,6 +710,21 @@ def _note_drop(reason: str, site_id, ua: str, ip: str, *, log_it: bool = True, *
         log.exception("ingest: drop-logg feilet")
 
 
+def _classify_hit(payload: dict, headers: dict, ua: str) -> tuple[str, str] | None:
+    """(class, agent) when this beacon is not from a person, else None (datacenter
+    networks are checked separately, after this). Precedence: a UA that names a known
+    robot > Web Bot Auth signature > the tracker's webdriver flag > a bare bot token."""
+    by_ua = classify_ua(ua)
+    if by_ua and is_named_agent(by_ua[1]):
+        return by_ua
+    signed = signed_agent(headers)
+    if signed:
+        return ("agent", signed)
+    if payload.get("wd") in (1, True, "1"):
+        return ("agent", "webdriver")
+    return by_ua
+
+
 def _clean_name(v) -> str:
     """Event name: a short string, or it is a pageview. A name is free text, so an
     ID-like word in it (an order number, say) is masked like a path segment."""
@@ -743,18 +767,26 @@ def _ingest_store(payload: dict, headers: dict, client_host: str):
         return JSONResponse({"error": "unknown site"}, status_code=404)
 
     ua = headers.get("user-agent", "")
-    # Bots/scripts telles ikke — aksepter stille (204) men lagre ingenting.
+    # Bots, scripts and AI agents are not visitors: answer 204, store nothing in
+    # events, and count the hit in the separate robot count (bot_daily) instead.
     ip = client_ip(headers, fallback=client_host)
-    bot = bot_match(ua)
-    if bot:
-        _note_drop("bot", site["id"], ua, ip, match=bot)
+    hit = _classify_hit(payload, headers, ua)
+    if hit:
+        cls, agent = hit
+        reason = "agent" if cls == "agent" else "bot"
+        _note_drop(reason, site["id"], ua, ip, match=bot_match(ua) or "-",
+                   cls=cls, agent=agent.replace(" ", "_"))
+        path = _clean_path(payload.get("p", "/")) if cls in store.BOT_PATH_CLASSES else ""
+        botcount.note(site["id"], cls, agent, path)
         return PlainTextResponse("", status_code=204)
 
     # Datasenter-trafikk (crawlere m/ vanlig UA) telles heller ikke.
     asn = datacenter_asn(ip)
     if asn is not None:
         _note_drop("datacenter", site["id"], ua, ip, asn=asn)
+        botcount.note(site["id"], "datacenter", datacenter_name(asn), "")
         return PlainTextResponse("", status_code=204)
+    botcount.maybe_flush()
     try:
         day_salt = store.daily_salt()
     except Exception:
@@ -3073,6 +3105,7 @@ innenfor de siste 90 dagene) i stedet for <code>period</code>.</p>
 <tr><td><code>GET /api/v1/goals</code></td><td>mål/konverteringer med rate</td></tr>
 <tr><td><code>GET /api/v1/events</code></td><td>egendefinerte hendelser</td></tr>
 <tr><td><code>GET /api/v1/ecommerce</code></td><td>e-handel: ordrer + omsetning per valuta, toppprodukter, omsetning per kilde og per betalingsmåte (beløp i øre)</td></tr>
+<tr><td><code>GET /api/v1/bots</code></td><td>roboter, KI-crawlere og KI-agenter — talt for seg, aldri med i besøkstallene: treff per klasse, toppliste over roboter og hvilke sider KI-crawlere leser</td></tr>
 <tr><td><code>GET /api/v1/anchors</code></td><td>forseglede dags-aggregater: sha256-hash + blokkjede-txid — bevis på at historiske tall ikke er endret i etterkant</td></tr>
 </table>
 <p class=muted>Alle svar er JSON. Land returneres som ISO-koder. Feil gir
@@ -3994,6 +4027,13 @@ font-variant-numeric:tabular-nums}
 border-radius:999px;padding:.22rem .65rem .22rem .45rem;font-size:.7rem;color:var(--muted);
 background:var(--bg);white-space:nowrap;flex:none}
 .hint{color:var(--muted);font-size:.78rem;margin:.1rem 0 .45rem}
+/* Robot section: its own dashed box, never to be mistaken for the visitor numbers */
+.bots{border-style:dashed}
+.bstat{display:flex;gap:1.4rem;flex-wrap:wrap;margin:.4rem 0 1rem}
+.bstat b{display:block;font-size:1.3rem;font-variant-numeric:tabular-nums}
+.bstat b.tot{font-size:1.45rem}
+.bstat small{color:var(--muted);font-size:.78rem}
+.bots td.cls{color:var(--muted);font-size:.8rem;white-space:nowrap;width:6.5rem}
 .tomt{border:1.5px dashed var(--line);border-radius:12px;padding:1.6rem 1.2rem;text-align:center;
 position:relative;overflow:hidden;margin:1rem 0}
 .tomt svg.vm{position:absolute;right:-24px;bottom:-30px;width:130px;color:var(--accent);opacity:.06}
@@ -4113,6 +4153,75 @@ _CHART_JS = """<script>
   });
 })();
 </script>"""
+
+
+def _bot_name(agent: str, cls: str) -> str:
+    """Display name for a bot_daily agent: canonical names as they are, the bare
+    tokens (an unnamed robot) spelled out in Norwegian."""
+    if agent == "empty":
+        return "tom user-agent"
+    if agent == "webdriver":
+        return "automatisert nettleser (webdriver)"
+    if cls in ("datacenter", "agent") or is_named_agent(agent):
+        return agent
+    return f"ukjent («{agent}»)"
+
+
+def _bots_html(site_id: int, days: int, label: str) -> str:
+    """«Roboter og KI-agenter» on the site dashboard. Shown once a site has had any
+    robot counted (all time, like e-commerce), so quiet sites get no empty box."""
+    botcount.flush()  # fresh numbers: ingest buffers robot hits for up to a minute
+    if not store.has_bots(site_id):
+        return ""
+    b = store.bot_summary(site_id, days, limit=10)
+
+    def rows(items, name, cls_col):
+        mx = max((i["n"] for i in items), default=0) or 1
+        out = ""
+        for i in items:
+            pct = i["n"] / mx * 100
+            k = name(i)
+            out += (
+                f'<tr><td title="{escape(k)}" style="background:linear-gradient(90deg,'
+                f'var(--bar) {pct:.0f}%,transparent {pct:.0f}%);border-radius:4px;padding-left:.45rem">'
+                f"{escape(k)}</td>"
+                + (f'<td class=cls>{escape(BOT_CLASS_SHORT.get(i["class"], i["class"]))}</td>' if cls_col else "")
+                + f'<td style="text-align:right">{_fmt_n(i["n"])}</td></tr>'
+            )
+        return out
+
+    if b["total"]:
+        stat = (
+            '<div class=bstat>'
+            f'<div><b class=tot>{_fmt_n(b["total"])}</b><small>treff fra roboter</small></div>'
+            + "".join(
+                f'<div><b>{_fmt_n(c["n"])}</b><small>{escape(BOT_CLASSES.get(c["class"], c["class"]))}</small></div>'
+                for c in b["classes"]
+            )
+            + "</div>"
+        )
+        agent_rows = rows(b["agents"], lambda i: _bot_name(i["agent"], i["class"]), True)
+        path_rows = rows(b["ai_paths"], lambda i: i["path"], False)
+        body = stat + (
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem">'
+            "<div><table><tr><th>Robot</th><th>Type</th><th style='text-align:right'>Treff</th></tr>"
+            f"{agent_rows}</table></div>"
+            "<div><table><tr><th>Sider KI-crawlere leser</th><th style='text-align:right'>Treff</th></tr>"
+            f"{path_rows or '<tr><td>ingen KI-crawlere i perioden</td><td></td></tr>'}</table></div>"
+            "</div>"
+        )
+    else:
+        body = f'<p style="color:var(--muted);font-size:.9rem">Ingen roboter registrert i {escape(label.lower())}.</p>'
+    return (
+        '<h3 id=roboter>Roboter og KI-agenter</h3>'
+        "<p class=hint>Trafikk som ikke er mennesker: søkemotorer, KI-crawlere, KI-agenter, "
+        "lenkeforhåndsvisninger og skript. Holdt helt utenfor besøkstallene over, og talt i treff "
+        "(sidevisninger), ikke unike — roboter får ingen besøkshash.</p>"
+        + body
+        + '<p style="color:var(--muted);font-size:.78rem;margin:.7rem 0 0">Forbehold: Sporløs ser bare '
+        "roboter som kjører JavaScript. De fleste KI-crawlere gjør ikke det, så de er undertalt her — "
+        "en integrasjon på serversiden ville sett alle.</p>"
+    )
 
 
 def _stat_table(items, key, icon=None):
@@ -5670,6 +5779,10 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
         for b in (ecom_html, sok_html, campaigns_html, goals_html, funnels_html, nav_html, events_html, verify_html)
         if b
     )
+    # Robots: their own dashed box, after everything about people.
+    bots_html = _bots_html(site["id"], days, label)
+    if bots_html:
+        blocks += f'<div class="card block bots">{bots_html}</div>'
 
     # Opt-in offentlig dashboard (delbar lenke, som /demo) — av som standard
     pub_on = bool((store.get_public_site(public_id) or {}).get("public_dash"))
@@ -5912,6 +6025,7 @@ routes = [
     Route("/api/v1/events", api.events),
     Route("/api/v1/ecommerce", api.ecommerce),
     Route("/api/v1/anchors", api.anchors),
+    Route("/api/v1/bots", api.bots),
     Route("/app/sites", create_site_post, methods=["POST"]),
     Route("/app/sites/delete", site_delete, methods=["POST"]),
     Route("/app/goals", goal_create, methods=["POST"]),
@@ -6008,4 +6122,13 @@ async def _handle_404(request, exc):
     return _not_found_page(request)
 
 
-app = Starlette(routes=routes, middleware=middleware, exception_handlers={404: _handle_404})
+@contextlib.asynccontextmanager
+async def _lifespan(app):
+    yield
+    # Robot counts wait in memory for up to a minute; write them before exiting.
+    await asyncio.to_thread(botcount.flush)
+
+
+app = Starlette(
+    routes=routes, middleware=middleware, exception_handlers={404: _handle_404}, lifespan=_lifespan
+)

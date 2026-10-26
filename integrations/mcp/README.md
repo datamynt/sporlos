@@ -45,5 +45,6 @@ Self-host? Sett `SPORLOS_API_BASE=https://analytics.dittdomene.no`.
 | `get_goals` | mål/konverteringer |
 | `get_events` | egendefinerte hendelser |
 | `get_anchors` | forseglede dags-aggregater (sha256 + txid) |
+| `get_bots` | roboter og KI-agenter, talt for seg: per klasse, toppliste, sider KI-crawlere leser |
 
 Prøv: *«Hent siste 30 dager for nettstedet mitt og forklar hva som driver trafikken.»*

@@ -85,9 +85,25 @@ class TrackerBehaviourTest(unittest.TestCase):
             self.assertEqual(events[0], {"marker": "before-activation"})
             self.assertEqual([e.get("n") for e in events[1:]], ["pageview"])
 
-    def test_automated_browsers_send_nothing(self):
+    def test_automated_browsers_are_flagged_not_silent(self):
+        """navigator.webdriver: every beacon carries wd:1 so the server counts a robot."""
         for build in self.each_build():
-            self.assertEqual(run(build, "webdriver"), [])
+            events = run(build, "webdriver")
+            self.assertEqual([e["n"] for e in events], ["pageview", "purchase"])
+            self.assertTrue(all(e.get("wd") == 1 for e in events))
+
+    def test_people_never_carry_the_webdriver_flag(self):
+        for build in self.each_build():
+            for scenario in ("plain", "spa", "custom"):
+                with self.subTest(scenario=scenario):
+                    self.assertTrue(all("wd" not in e for e in run(build, scenario)))
+
+    def test_privacy_signals_win_over_the_webdriver_flag(self):
+        """An automated browser with GPC or DNT still sends nothing at all."""
+        for build in self.each_build():
+            for scenario in ("webdriver-gpc", "webdriver-dnt"):
+                with self.subTest(scenario=scenario):
+                    self.assertEqual(run(build, scenario), [])
 
     def test_global_privacy_control_and_do_not_track_send_nothing(self):
         for build in self.each_build():

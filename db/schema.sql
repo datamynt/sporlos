@@ -171,6 +171,22 @@ CREATE TABLE IF NOT EXISTS search_stats (
     PRIMARY KEY (site_id, day, source, dim, key)
 );
 
+-- Non-human traffic (robots, AI crawlers, AI agents), counted apart from people.
+-- Aggregate only: no IP, no UA string, no hash. One row per site/day/class/agent/path;
+-- ingest buffers hits in memory and adds them here (app/main.py _note_bot). `bot_class`
+-- is one of app/useragent.BOT_CLASSES; `agent` a canonical name or a generic token;
+-- `path` (masked) only for ai/search/agent, capped per site and day (store.BOT_PATH_CAP).
+-- Nothing from here ever reaches `events`. Kept 90 days (store.retention_sweep).
+CREATE TABLE IF NOT EXISTS bot_daily (
+    site_id     BIGINT NOT NULL REFERENCES sites(id),
+    day         DATE NOT NULL,
+    bot_class   TEXT NOT NULL,
+    agent       TEXT NOT NULL DEFAULT '',
+    path        TEXT NOT NULL DEFAULT '',
+    n           BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (site_id, day, bot_class, agent, path)
+);
+
 -- BSV-anchre av rollups. Beviser at tallene ikke er etterjustert.
 CREATE TABLE IF NOT EXISTS anchors (
     id          BIGSERIAL PRIMARY KEY,

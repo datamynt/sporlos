@@ -72,6 +72,7 @@ DEFAULT_END = "2026-07-22"
 # even present in the SQLite mirror — it's dead schema, not wired up. Left
 # out here on purpose; nothing to purge there since it's always empty.
 _SITE_SCOPED_TABLES = [
+    "bot_daily",  # robot counts per site (FK to sites)
     "event_items",
     "events",
     "search_stats",

@@ -106,6 +106,7 @@ def seed_site(tid: int, domain: str) -> dict:
                           "proof": "[]", "txid": "cd" * 32, "anchored_at": "2026-09-02 00:00:00"}])
     store.upsert_search_rows([(sid, "2026-09-01", "google", "total", "", 3, 40, 7.5)])
     store.set_search_connection(sid, "encrypted-token", "sc-domain:" + domain, "owner@example.no")
+    store.add_bot_counts({(sid, "2026-09-01", "ai", "GPTBot", "/"): 4})
     with store._cursor() as cur:
         cur.execute("INSERT INTO anchors (site_id, rollup_hash) VALUES (?, ?)", (sid, "ef" * 32))
     return site
