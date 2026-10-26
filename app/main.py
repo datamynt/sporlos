@@ -4862,7 +4862,13 @@ def _area_chart(series, width=880, height=170, days=7):
     line = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts)
     area = f"{line} L{pts[-1][0]:.1f},{height - pad_bot} L{pts[0][0]:.1f},{height - pad_bot} Z"
     # Aksen holdes kort (uke-spenn bryter over to linjer på mobil) — detaljene bor i hoveren.
-    if unit == "week":
+    if unit == "week" and days > 90:
+        # A year of weeks starts and ends on the same week number; month + year says which.
+        def _mnd(d):  # «nov. 2025», «mai 2026»
+            name = _MND[d.month]
+            return f"{name if len(name) <= 4 else name[:3] + '.'} {d.year}"
+        first, last = _mnd(win_start), _mnd(today)
+    elif unit == "week":
         first = escape(_fmt_bucket(series[0]["bucket"], unit).split(" · ")[0])
         last = escape(_fmt_bucket(series[-1]["bucket"], unit).split(" · ")[0])
     else:

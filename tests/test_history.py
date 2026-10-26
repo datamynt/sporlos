@@ -59,6 +59,11 @@ def tearDownModule():
 
 
 def _wipe():
+    with store._cursor() as cur:  # a shared Postgres may hold other test modules' accounts
+        cur.execute("SELECT id FROM tenants")
+        ids = [int(r["id"]) for r in cur.fetchall()]
+    for tid in ids:
+        store.delete_tenant(tid)
     with store._cursor() as cur:
         for t in ("event_items", "events", "daily_rollups", "daily_breakdowns", "bot_daily",
                   "goals", "funnels", "api_keys", "sites", "tenants"):
