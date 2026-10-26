@@ -60,9 +60,9 @@ fått uten.</p>
 <p>Her er vi part i saken, og det skal vi være ærlige om: Sporløs lever av akkurat
 dette. Vår tilnærming er å telle i stedet for å følge — hvor mange som besøker
 siden, hvilke sider som leses, hvor folk kommer fra. Uten cookies, uten
-fingerprinting, og uten at rå IP-adresse noen gang lagres: den besøkende er en
-daglig-saltet enveis-hash som ikke kan føres tilbake til en person, og som
-nullstilles hver natt. Dataene bor i Norge, og koden er
+fingerprinting, og uten at rå IP-adresse noen gang lagres: den besøkende blir en
+enveis-hash med et salt som byttes og slettes hver natt, så den ikke kan føres
+tilbake til en person. Dataene bor i Norge, og koden er
 <a href="https://github.com/datamynt/sporlos" rel="noopener">åpen (AGPL)</a>,
 så påstandene kan etterprøves.</p>
 <p>Konsekvensen er at analysen ikke trenger samtykke — og dermed ikke banner. Ikke

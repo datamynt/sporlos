@@ -12,8 +12,8 @@ Cookieless, consent-free web analytics — no cookie banner needed. Privacy-firs
 
 == Description ==
 
-Sporløs measures your website without cookies, without storing IP addresses and
-without collecting any personal data. Because nothing is ever stored or read on
+Sporløs measures your website without cookies and without storing IP addresses,
+and it keeps as little data as possible. Because nothing is ever stored or read on
 the visitor's device, no consent is required under the EU ePrivacy rules and the
 Norwegian Electronic Communications Act — which means **you can remove your
 cookie banner**.
@@ -40,8 +40,8 @@ self-hosted Sporløs server. The service interface is currently in Norwegian.
 
 = Do I need a cookie banner? =
 
-No. Sporløs never stores anything on the visitor's device and collects no
-personal data, so consent is not required.
+No. Sporløs never stores or reads anything on the visitor's device, so consent
+is not required.
 
 = Are logged-in users tracked? =
 

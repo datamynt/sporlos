@@ -3,8 +3,9 @@
 MCP-server som gir AI-assistenter (Claude, ChatGPT m.fl.) read-only tilgang til
 Sporløs-tallene dine via [Stats-API-et](https://sporlos.no/utviklere).
 
-Trygt by design: API-et serverer kun aggregater — enkeltpersoner kan ikke slås
-opp, fordi rådataene ikke finnes (ingen IP, ingen cookie, daglig-roterende hash).
+Trygt by design: API-et gir bare summer, aldri enkeltregistreringer. Det finnes
+ingen IP-adresser eller cookies å slå opp, og besøks-hashen byttes hver natt, så
+ingen kan følges over tid.
 
 ## Oppsett
 
