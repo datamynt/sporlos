@@ -66,6 +66,9 @@ def account(*, verified: bool = True, created: datetime | None = None,
     tid, uid = store.create_account(f"Firma {_n[0]}", f"u{_n[0]}@example.no", "x")
     if verified:
         store.set_email_verified(uid)
+    # Warned long ago by default: the purge holds an ended account until its warning mail has
+    # gone out (tests/test_export_and_warning.py covers that); these tests are about the cutoffs.
+    cols.setdefault("deletion_warned_at", ts(NOW - timedelta(days=30)))
     _set(tid, created_at=ts(created or NOW - timedelta(days=200)),
          trial_ends_at=ts(trial_ends or NOW + timedelta(days=10)), **cols)
     return tid

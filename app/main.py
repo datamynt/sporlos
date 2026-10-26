@@ -40,11 +40,13 @@ from starlette.responses import (
     PlainTextResponse,
     RedirectResponse,
     Response,
+    StreamingResponse,
 )
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from app import api, assist, blogg, botcount, dpa, icons, innlogg, mailer, notify, pricing, store, vipps
+from app import export as data_export
 from app.auth import check_token, hash_password, verify_password
 from app.datacenter import datacenter_asn, datacenter_name
 from app.geo import country_no
@@ -532,6 +534,16 @@ _FAQ = [
         "Hvert dagstall forsegles med en kryptografisk hash som forankres i en uavhengig, offentlig "
         "logg. Endres tallet i ettertid, stemmer ikke seglet. Det er nyttig når du skal dokumentere "
         "besøkstall for styret, annonsører eller tilskuddsgivere. Forseglingen er med i alle planer.",
+    ),
+    (
+        "Kan jeg ta med meg dataene mine hvis jeg slutter?",
+        "Ja. Under «Konto» trykker du «Last ned alle data» og får en ZIP med regnearkfiler (CSV): "
+        "tidsserier, sider, kilder, land, mål, e-handel, roboter, dagstallene for hele historikken "
+        "med bevis for forseglingen, og de rå hendelsene som fortsatt er lagret (høyst 90 dager, "
+        "uten besøkernes fingeravtrykk). Det samme finnes for hvert nettsted. Slutter du, kan du "
+        "fortsatt logge inn og laste ned, og vi sender én e-post 14 dager før kontoen slettes, "
+        "med en lenke til nedlastingen. Kontoen og dataene slettes 84 dager etter at prøveperioden "
+        "gikk ut eller abonnementet ble avsluttet. Velger du en plan før det, slettes ingenting.",
     ),
     (
         "Lagrer dere noe om mine besøkende?",
@@ -3675,10 +3687,11 @@ forbrukerkjøpsloven.</p>
 cookies og ingen ID som kan kobles på tvers av dager. Se <a href="/personvern">personvernerklæringen</a>;
 for næringsdrivende gjelder i tillegg <a href="/databehandleravtale">databehandleravtalen</a>, som du godtar
 når du oppretter konto.</p>
-<p><b>Analysedataene for ditt nettsted er dine.</b> Du kan når som helst eksportere dem (CSV i
-tjenesten). Vi selger eller deler dem aldri med tredjepart. Enkeltregistreringer (sidevisninger og
-hendelser) slettes uansett etter 90 dager; etter det finnes bare dagstall. Ved opphør av
-kundeforholdet slettes innsamlede analysedata innen 90 dager.</p>
+<p><b>Analysedataene for ditt nettsted er dine.</b> Du kan når som helst laste ned alt vi har lagret
+(en ZIP med CSV-filer i tjenesten, per nettsted eller for hele kontoen). Vi selger eller deler dem
+aldri med tredjepart. Enkeltregistreringer (sidevisninger og hendelser) slettes uansett etter 90
+dager; etter det finnes bare dagstall. Ved opphør av kundeforholdet slettes kontoen og
+analysedataene innen 90 dager. Vi sender deg én e-post 14 dager før, med lenke til nedlasting av alt.</p>
 
 <h2>11. Tilgjengelighet og ansvar</h2>
 <p>Vi tilstreber høy oppetid og tar jevnlige sikkerhetskopier. Planlagt vedlikehold som påvirker
@@ -3762,13 +3775,17 @@ Enkeltregistreringer fra analysen (sidevisninger og hendelser, med besøks-hash)
 90 dager. Etter det finnes bare dagstall per nettsted (sidevisninger, besøkende, besøk og
 fluktfrekvens), uten hash. Dagstallene kan forsegles med en kryptografisk hash i en offentlig
 blokkjede; bare hashen av dagstallene publiseres. Ved opphør av kundeforholdet slettes
-analysedataene innen 90 dager.</p>
+kontoen og analysedataene 84 dager etter at prøveperioden gikk ut eller abonnementet ble avsluttet,
+og dermed innen 90 dager. Vi sender eieren av kontoen én e-post 14 dager før, med en lenke til å
+laste ned alt. Velger du en plan før det, slettes ingenting.</p>
 <p>Sletter du et nettsted eller hele kontoen selv, forsvinner dataene fra tjenesten med en gang.
 Kopier i de nattlige sikkerhetskopiene forsvinner når kopiene roterer ut, senest etter 35 dager.</p>
 
 <h2>5. Dine rettigheter</h2>
-<p>Du har rett til innsyn, retting, sletting og dataportabilitet. Statistikken kan du laste ned som
-CSV, og nettsteder eller hele kontoen kan du slette selv under «Konto» når du er logget inn. Ellers
+<p>Du har rett til innsyn, retting, sletting og dataportabilitet. Alt vi har lagret kan du laste ned
+selv som en ZIP med CSV-filer («Last ned alle data», per nettsted eller for hele kontoen; de rå
+hendelsene følger med uten besøkernes fingeravtrykk), og nettsteder eller hele kontoen kan du slette
+selv under «Konto» når du er logget inn. Ellers
 kontakt oss på post@sporlos.no. Du kan klage til Datatilsynet (datatilsynet.no).</p>
 
 <h2>6. Analyse på vegne av kunder</h2>
@@ -5173,6 +5190,119 @@ def export_csv(request):
     )
 
 
+# --- Full export ("Last ned alle data"): a ZIP of CSV files, see app/export.py -----------
+def _zip_response(stream, filename: str):
+    """Stream a ZIP built on the fly. 429 while two exports already run. The ZIP is already
+    compressed, so the gzip middleware is told to leave it alone (content-encoding set)."""
+    guarded = data_export.start(stream)
+    if guarded is None:
+        return PlainTextResponse("Det pågår flere eksporter akkurat nå. Prøv igjen om et minutt.",
+                                 status_code=429, headers={"retry-after": "60"})
+    return StreamingResponse(
+        guarded, media_type="application/zip",
+        headers={"content-disposition": f'attachment; filename="{filename}"',
+                 "cache-control": "no-store", "content-encoding": "identity"},
+    )
+
+
+def _export_name(label: str) -> str:
+    return f"sporlos-{_safe_filename(label)}-alle-data-{datetime.now(timezone.utc):%Y-%m-%d}.zip"
+
+
+def export_all_site(request):
+    """Everything stored for one of your own sites, as a ZIP (also for an ended account)."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    site = store.resolve_site(request.query_params.get("site") or "")
+    if not site or site["tenant_id"] != user["tid"]:
+        return PlainTextResponse("not found", status_code=404)
+    return _zip_response(data_export.site_zip(site), _export_name(site["domain"]))
+
+
+def export_all_account(request):
+    """Everything stored for your whole account (all its sites), as a ZIP."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    tenant = store.get_tenant(user["tid"]) or {}
+    return _zip_response(data_export.account_zip(user["tid"]), _export_name(tenant.get("name") or "konto"))
+
+
+def _export_link_tenant(params) -> tuple[int | None, bool]:
+    """(account id, expired) for the signed link in the warning mail."""
+    args = (params.get("tid") or "", params.get("exp") or "", params.get("t") or "")
+    tid = data_export.verify_link(*args)
+    if tid is not None and not store.get_tenant(tid):
+        tid = None
+    return tid, tid is None and data_export.link_expired(*args)
+
+
+def export_link(request):
+    """The page the link in the warning mail opens: shows the account and a button. The
+    download itself is a POST, so a mail scanner opening the link starts nothing."""
+    tid, expired = _export_link_tenant(request.query_params)
+    if tid is None:
+        msg = ("Lenken har gått ut. Logg inn, så finner du «Last ned alle data» på kontosiden."
+               if expired else
+               "Lenken er ugyldig, eller kontoen er allerede slettet. Er kontoen din i live, "
+               "finner du «Last ned alle data» på kontosiden når du er logget inn.")
+        return _shell(
+            request, "Last ned dataene dine",
+            f'<h1>Last ned dataene dine</h1><p class=muted>{msg}</p>'
+            '<p class=muted><a href="/login">Logg inn</a></p>',
+            status_code=410 if expired else 404,
+        )
+    tenant = store.get_tenant(tid) or {}
+    notice = store.deletion_notice(tid)
+    when = (f"<p class=muted>Kontoen slettes {_no_date(notice['delete_on'])}, hvis du ikke velger en plan.</p>"
+            if notice else "")
+    q = request.query_params
+    hidden = "".join(f'<input type=hidden name={k} value="{escape(q.get(k) or "")}">' for k in ("tid", "exp", "t"))
+    return _shell(
+        request, "Last ned dataene dine",
+        f"<h1>Last ned dataene dine</h1><p class=muted>Alt vi har lagret på kontoen "
+        f"<b>{escape(str(tenant.get('name') or ''))}</b>, som en ZIP med regnearkfiler (CSV). "
+        "En README i ZIP-en forklarer hver fil.</p>"
+        f"{when}"
+        f'<form method=post action="/eksport">{hidden}<button>Last ned alle data (ZIP)</button></form>'
+        '<p class=muted><a href="/login">Logg inn</a></p>',
+    )
+
+
+async def export_link_download(request):
+    f = await request.form()
+    tid, expired = _export_link_tenant(f)
+    if tid is None:
+        return PlainTextResponse("Lenken er ugyldig eller har gått ut.", status_code=410 if expired else 404)
+    tenant = store.get_tenant(tid) or {}
+    return _zip_response(data_export.account_zip(tid), _export_name(tenant.get("name") or "konto"))
+
+
+def _export_card(tenant_id: int) -> str:
+    """«Last ned alle data» on the account page, with the deletion date when the account
+    has ended and the retention job will delete it."""
+    notice = store.deletion_notice(tenant_id)
+    warn = ""
+    if notice:
+        what = "prøveperioden gikk ut" if notice["category"] == "trial_expired" else "abonnementet ble avsluttet"
+        warn = _note(
+            "err",
+            f"Kontoen er ikke aktiv ({what} {_no_date(notice['ended_at'])}). Vi sletter den og alle "
+            f"dataene {_no_date(notice['delete_on'])}, hvis du ikke velger en plan. Last ned alt først.",
+        )
+    return (
+        f"{warn}<div class=card id=eksport><b>Last ned alle data</b>"
+        '<p class=fine style="margin:.4rem 0 .8rem">Alt vi har lagret om kontoen og alle nettstedene dine, '
+        "som en ZIP med regnearkfiler (CSV): tidsserier, sider, kilder, land, mål, e-handel, roboter, "
+        "dagstall med BSV-bevis og de rå hendelsene som fortsatt er lagret (siste 90 dager, uten "
+        "besøkernes fingeravtrykk). En README forklarer hver fil.</p>"
+        '<a class=btn href="/app/export/konto">Last ned alle data (ZIP)</a>'
+        '<p class=fine style="margin:.7rem 0 0">Vil du bare ha ett nettsted, åpner du det og trykker '
+        "«Last ned alle data» der.</p></div>"
+    )
+
+
 # Danger zone (delete a site / the account): the .card frame with a red-toned border
 # and a red button. The button red is fixed, not --err: --err turns light pink in
 # dark mode, and white text on it would be unreadable.
@@ -5215,8 +5345,8 @@ def _account_delete_card(request, user: dict, tenant: dict, me: dict) -> str:
     company = escape(str(tenant.get("name") or ""))
     intro = (
         f"<p class=fine>Sletter kontoen <b>{company}</b> for godt: alle nettsteder med all statistikk, "
-        "API-nøklene og alle brukerne. Det kan ikke angres. Vil du ta vare på tallene, last ned CSV "
-        "fra hvert nettsted først.</p>"
+        "API-nøklene og alle brukerne. Det kan ikke angres. Vil du ta vare på tallene, trykk "
+        '<a href="#eksport">«Last ned alle data»</a> først.</p>'
         "<p class=fine>Sikkerhetskopiene slettes ikke én og én. Dataene forsvinner fra dem når "
         "kopiene roterer ut, senest etter 35 dager.</p>"
     )
@@ -5371,16 +5501,13 @@ def _site_delete_card(request, site: dict, public_id: str) -> str:
     domain = escape(site["domain"])
     failed = request.query_params.get("slett") == "feil"
     err = _note("err", f"Skriv <b>{domain}</b> nøyaktig for å bekrefte.") if failed else ""
-    csv = " · ".join(
-        f'<a href="/app/export?site={pid}&period=90&what={w}">{w}</a>'
-        for w in ("tidsserie", "sider", "kilder", "land")
-    )
+    csv = f'<a href="/app/export/alt?site={pid}">Last ned alle data (ZIP)</a>'
     return (
         f"<div class='card block danger' id=slett><details{' open' if failed else ''}>"
         f"<summary>Slett nettstedet</summary>{err}"
         f"<p class=hint>Sletter <b>{domain}</b> og alt vi har lagret om det: hendelser, dagstall, "
         "mål, funnels og søkedata. Det kan ikke angres, og sporingskoden slutter å telle.</p>"
-        f"<p class=hint>Vil du ta vare på tallene, last ned CSV først (siste 90 dager): {csv}.</p>"
+        f"<p class=hint>Vil du ta vare på tallene, last ned alt først: {csv}.</p>"
         "<p class=hint>Forseglingen i den offentlige loggen inneholder bare fingeravtrykk av "
         "dagstall og sier ingenting om nettstedet. Den trenger ikke slettes.</p>"
         '<form method=post action="/app/sites/delete">'
@@ -5613,6 +5740,7 @@ def dashboard(request):
             )
 
         users_html = _users_card(request, user, me or {})
+        export_html = _export_card(user["tid"])
         delete_html = _account_delete_card(request, user, tenant, me or {})
         deleted_site = request.session.pop("deleted_site", None)
         deleted_flash = (
@@ -5766,6 +5894,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
 <h2 class=sec>API-tilgang</h2>
 {api_html}
 <h2 class=sec>Konto</h2>
+{export_html}
 {users_html}
 {pw_flash}
 {password_html}
@@ -6093,6 +6222,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
   <a href="/app/export?site={escape(public_id)}&period={period}&what=sider">sider</a> ·
   <a href="/app/export?site={escape(public_id)}&period={period}&what=kilder">kilder</a> ·
   <a href="/app/export?site={escape(public_id)}&period={period}&what=land">land</a>
+  · <a href="/app/export/alt?site={escape(public_id)}" title="Alt vi har lagret om nettstedet, som ZIP">Last ned alle data (ZIP)</a>
   · <a href="#" id=barstoggle>Vis/skjul søyler</a></p>
 <div class=grid>
   <div class=card><h3>Topp sider</h3>{table(s['top_paths'], 'path')}</div>
@@ -6269,6 +6399,10 @@ routes = [
     Route("/app/seo/callback", gsc_callback),
     Route("/app/seo/disconnect", gsc_disconnect, methods=["POST"]),
     Route("/app/export", export_csv),
+    Route("/app/export/alt", export_all_site),
+    Route("/app/export/konto", export_all_account),
+    Route("/eksport", export_link),
+    Route("/eksport", export_link_download, methods=["POST"]),
     Route("/app/api-keys", api_key_create, methods=["POST"]),
     Route("/app/api-keys/revoke", api_key_revoke, methods=["POST"]),
     Route("/app/password", change_password, methods=["POST"]),

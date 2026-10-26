@@ -64,7 +64,9 @@ addresses? Set `SPORLOS_COUNT_PRIVATE_IPS=1` to count them.
 1. **Aldri rå-IP eller cookie lagret.** Kun daglig-saltet enveis-hash.
    Dette er hele samtykke-fritaket — brytes det, er produktet ulovlig som GA.
 2. **Geografi stopper på fylkesnivå.** By-nivå + lav trafikk = re-identifiserbart.
-3. **Aggregater ut, aldri rådata.** API-et og dashbordet serverer kun tellinger.
+3. **Aggregater ut, aldri rådata.** API-et og dashbordet serverer kun tellinger. Eneste unntak er
+   kundens egen eksport («Last ned alle data», bak innlogging eller signert lenke): kunden eier
+   dataene sine og får de lagrede hendelsene (høyst 90 dager) uten besøks-hash.
 4. **Kort lagring.** Hver hendelse lagres som egen rad (pseudonym, med dagens
    besøks-hash) og slettes etter 90 dager. Etter det finnes bare dagstall.
 

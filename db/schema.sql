@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     vipps_pending_plan     TEXT,           -- plan som venter på godkjenning i Vipps-appen
     vipps_charged_through  TEXT,           -- 'YYYY-MM-DD' neste forfall som IKKE er trukket ennå
     cancelled_at           TEXT,           -- 'YYYY-MM-DD HH:MM:SS' UTC the plan became 'cancelled' (retention clock)
+    deletion_warned_at     TEXT,           -- 'YYYY-MM-DD HH:MM:SS' UTC the warning mail before deletion was sent (store.py)
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

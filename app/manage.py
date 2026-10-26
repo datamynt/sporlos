@@ -5,8 +5,9 @@
     python -m app.manage seo-sync [dager]      # GSC/Bing → search_stats (cron: daglig)
     python -m app.manage retention [dager]     # delete raw events older than 90 days (cron: daily)
     python -m app.manage mask-paths [--apply] [--backup-dir DIR]   # mask stored ID-like paths
-    python -m app.manage purge-dormant         # delete ended accounts (terms §10); dry run
-                                               # unless SPORLOS_RETENTION_ENFORCE=1 (cron: daily)
+    python -m app.manage purge-dormant         # warn (14 days ahead) and delete ended accounts
+                                               # (terms §10); dry run unless
+                                               # SPORLOS_RETENTION_ENFORCE=1 (cron: daily)
     python -m app.manage seed-own-goals        # goals + funnels on sporlos.no's own site; idempotent
 """
 
@@ -116,11 +117,17 @@ def main(argv: list[str]) -> int:
     if cmd == "purge-dormant":
         # Dry run by default: counts only. Deletes only with SPORLOS_RETENTION_ENFORCE=1.
         # Prints one JSON line with counts and cutoffs, never ids, names or addresses.
+        # The warning mail goes first (same flag: a dry run only counts what it would send),
+        # so the purge already sees who has been warned. A failed send makes the exit code 1
+        # after the purge has run.
         import json
+        from app.notify import send_deletion_warnings
         enforce = os.environ.get("SPORLOS_RETENTION_ENFORCE", "").strip() == "1"
+        warned = send_deletion_warnings(enforce=enforce)
         res = store.purge_dormant(enforce=enforce)
+        res["deletion_warnings"] = warned
         print("purge-dormant " + json.dumps(res, sort_keys=True))
-        return 0
+        return 1 if warned["failed"] else 0
 
     if cmd == "mask-paths":
         # One-off for events stored before ingest masked ID-like segments. Dry run
