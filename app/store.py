@@ -182,6 +182,15 @@ CREATE TABLE IF NOT EXISTS search_stats (
     position REAL,
     PRIMARY KEY (site_id, day, source, dim, key)
 );
+CREATE TABLE IF NOT EXISTS bot_daily (
+    site_id INTEGER NOT NULL REFERENCES sites(id),
+    day TEXT NOT NULL,
+    bot_class TEXT NOT NULL,
+    agent TEXT NOT NULL DEFAULT '',
+    path TEXT NOT NULL DEFAULT '',
+    n INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (site_id, day, bot_class, agent, path)
+);
 CREATE TABLE IF NOT EXISTS invites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL REFERENCES tenants(id),
@@ -1548,6 +1557,9 @@ def retention_sweep(days: int = 90) -> tuple[int, int]:
         cur.execute(f"DELETE FROM event_items WHERE ts < {P}", (cutoff,))
         cur.execute(f"DELETE FROM events WHERE ts < {P}", (cutoff,))
         deleted = cur.rowcount
+        # Robot counts are aggregates (no personal data), pruned on the same clock so
+        # the table stays bounded; dashboard and API read at most 30 days back.
+        cur.execute(f"DELETE FROM bot_daily WHERE day < {P}", (cutoff_day,))
     return deleted, len(missing)
 
 
@@ -2639,6 +2651,7 @@ SITE_TABLES = (
     "search_stats",
     "search_connections",
     "anchors",
+    "bot_daily",
 )
 
 
@@ -2731,6 +2744,107 @@ def _delete_tenant(cur, tenant_id: int) -> tuple[dict[str, int], list[dict]]:
     counts["tenants"] = cur.rowcount
     return counts, sites
 
+
+
+# --- Robots and AI agents (bot_daily) -------------------------------------------------
+# Ingest never stores a non-human hit in `events`; it adds one to an aggregate row here
+# instead. See db/schema.sql for the table and app/useragent.BOT_CLASSES for classes.
+BOT_PATH_CLASSES = frozenset({"ai", "search", "agent"})
+# Distinct non-empty paths per site per day. Beyond it a hit on a NEW path counts under
+# path '' (the class/agent total stays right; only the page breakdown stops growing),
+# so nobody can grow the table without bound by posting random paths.
+BOT_PATH_CAP = 200
+
+
+def add_bot_counts(counts: dict[tuple, int]) -> None:
+    """Add buffered robot hits: {(site_id, 'YYYY-MM-DD', class, agent, path): n}.
+
+    Additive (upsert-increment), so several processes or a re-flush after a crash
+    never overwrite each other. Keys are sorted so concurrent flushes lock rows in the
+    same order on Postgres."""
+    if not counts:
+        return
+    paths_today: dict[tuple, int] = {}
+    with _cursor() as cur:
+        for (site_id, day, cls, agent, path), n in sorted(counts.items()):
+            if path and cls not in BOT_PATH_CLASSES:
+                path = ""
+            if path:
+                cur.execute(
+                    f"""UPDATE bot_daily SET n = n + {P} WHERE site_id = {P} AND day = {P}
+                          AND bot_class = {P} AND agent = {P} AND path = {P}""",
+                    (n, site_id, day, cls, agent, path),
+                )
+                if cur.rowcount:
+                    continue
+                key = (site_id, day)
+                if key not in paths_today:
+                    cur.execute(
+                        f"""SELECT COUNT(*) AS c FROM bot_daily
+                            WHERE site_id = {P} AND day = {P} AND path <> ''""",
+                        (site_id, day),
+                    )
+                    paths_today[key] = int(cur.fetchone()["c"])
+                if paths_today[key] >= BOT_PATH_CAP:
+                    path = ""
+                else:
+                    paths_today[key] += 1
+            cur.execute(
+                f"""INSERT INTO bot_daily (site_id, day, bot_class, agent, path, n)
+                    VALUES ({P}, {P}, {P}, {P}, {P}, {P})
+                    ON CONFLICT (site_id, day, bot_class, agent, path)
+                    DO UPDATE SET n = bot_daily.n + excluded.n""",
+                (site_id, day, cls, agent, path, n),
+            )
+
+
+def _bot_days(days: int) -> tuple[str, str]:
+    """Inclusive [first, last] day (UTC) for the last `days` calendar days incl. today,
+    the same window as _period_window."""
+    today = datetime.now(timezone.utc).date()
+    return (today - timedelta(days=days - 1)).isoformat(), today.isoformat()
+
+
+def has_bots(site_id: int) -> bool:
+    """Has this site ever had a robot counted? Gates the dashboard section."""
+    with _cursor() as cur:
+        cur.execute(f"SELECT 1 FROM bot_daily WHERE site_id = {P} LIMIT 1", (site_id,))
+        return cur.fetchone() is not None
+
+
+def bot_summary(site_id: int, days: int = 7, limit: int = 10) -> dict:
+    """Robot hits for the period: total, per class, top agents, and the pages AI
+    crawlers fetched. `n` counts hits (beacons), not visitors: robots get no hash."""
+    first, last = _bot_days(days)
+    where = f"site_id = {P} AND day >= {P} AND day <= {P}"
+    args = (site_id, first, last)
+    limit = int(limit)
+    with _cursor() as cur:
+        cur.execute(
+            f"""SELECT bot_class AS c, SUM(n) AS n FROM bot_daily WHERE {where}
+                GROUP BY bot_class ORDER BY SUM(n) DESC, bot_class""",
+            args,
+        )
+        classes = [{"class": r["c"], "n": int(r["n"])} for r in cur.fetchall()]
+        cur.execute(
+            f"""SELECT bot_class AS c, agent AS a, SUM(n) AS n FROM bot_daily WHERE {where}
+                GROUP BY bot_class, agent ORDER BY SUM(n) DESC, agent LIMIT {limit}""",
+            args,
+        )
+        agents = [{"agent": r["a"], "class": r["c"], "n": int(r["n"])} for r in cur.fetchall()]
+        cur.execute(
+            f"""SELECT path AS p, SUM(n) AS n FROM bot_daily
+                WHERE {where} AND bot_class = 'ai' AND path <> ''
+                GROUP BY path ORDER BY SUM(n) DESC, path LIMIT {limit}""",
+            args,
+        )
+        ai_paths = [{"path": r["p"], "n": int(r["n"])} for r in cur.fetchall()]
+    return {
+        "total": sum(c["n"] for c in classes),
+        "classes": classes,
+        "agents": agents,
+        "ai_paths": ai_paths,
+    }
 
 
 # --- Retention: dormant accounts (terms §10, DPA §8) -----------------------------

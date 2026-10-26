@@ -21,24 +21,25 @@ _reader = None  # None=ikke prøvd, False=utilgjengelig, ellers reader-objekt
 
 # Kuratert liste over rene hosting/sky-ASN — ikke utfyllende, men dekker
 # de store kildene til «direkte desktop-trafikk fra USA rett på /».
-_DATACENTER_ASNS = frozenset({
-    16509,   # Amazon AWS
-    14618,   # Amazon AWS (us-east)
-    396982,  # Google Cloud (IKKE 15169 — der ligger også ekte brukere bak Google-proxyer)
-    8075,    # Microsoft Azure
-    14061,   # DigitalOcean
-    24940,   # Hetzner
-    213230,  # Hetzner Cloud
-    16276,   # OVH
-    63949,   # Linode / Akamai Connected Cloud
-    20473,   # Vultr / Choopa
-    31898,   # Oracle Cloud
-    45102,   # Alibaba Cloud
-    132203,  # Tencent Cloud
-    12876,   # Scaleway
-    51167,   # Contabo
-    197540,  # netcup
-})
+_DATACENTER_NAMES: dict[int, str] = {
+    16509: "AWS",            # Amazon AWS
+    14618: "AWS",            # Amazon AWS (us-east)
+    396982: "Google Cloud",  # IKKE 15169 — der ligger også ekte brukere bak Google-proxyer
+    8075: "Microsoft Azure",
+    14061: "DigitalOcean",
+    24940: "Hetzner",
+    213230: "Hetzner",       # Hetzner Cloud
+    16276: "OVH",
+    63949: "Linode",         # Linode / Akamai Connected Cloud
+    20473: "Vultr",          # Vultr / Choopa
+    31898: "Oracle Cloud",
+    45102: "Alibaba Cloud",
+    132203: "Tencent Cloud",
+    12876: "Scaleway",
+    51167: "Contabo",
+    197540: "netcup",
+}
+_DATACENTER_ASNS = frozenset(_DATACENTER_NAMES)
 
 
 def _get_reader():
@@ -71,6 +72,11 @@ def datacenter_asn(ip: str) -> int | None:
         return None
     asn = rec.get("autonomous_system_number")
     return asn if asn in _DATACENTER_ASNS else None
+
+
+def datacenter_name(asn: int) -> str:
+    """Provider name for a listed ASN (what the bot count stores as `agent`)."""
+    return _DATACENTER_NAMES.get(asn, f"AS{asn}")
 
 
 def is_datacenter(ip: str) -> bool:

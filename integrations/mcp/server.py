@@ -87,5 +87,14 @@ def get_anchors(site: str) -> dict:
     return _get("/api/v1/anchors", site=site)
 
 
+@mcp.tool()
+def get_bots(site: str, period: int = 7, limit: int = 20) -> dict:
+    """Roboter, KI-crawlere og KI-agenter, talt for seg (aldri med i besøkstallene):
+    treff per klasse (ai, agent, search, social, monitor, script, datacenter, other),
+    toppliste over roboter, og hvilke sider KI-crawlere leser. Telles bare når
+    roboten kjører JavaScript, så tallene er et minimum."""
+    return _get("/api/v1/bots", site=site, period=period, limit=limit)
+
+
 if __name__ == "__main__":
     mcp.run()

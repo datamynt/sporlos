@@ -2,7 +2,8 @@
  * Bygg inn:  <script defer data-site="PUBLIC_ID" src="https://.../sporlos.js"></script>
  * Sender kun: site-id, sti, referrer-kilde + hvitlistede utm_*-kampanjeparametre.
  * Ingen PII, ingen samtykke nødvendig. Sender ingenting ved Global Privacy Control
- * eller Do Not Track.
+ * eller Do Not Track. Automated browsers (navigator.webdriver) are flagged wd:1 and
+ * counted as robots, never as visitors.
  * Åpen kildekode (MIT): https://github.com/datamynt/sporlos-tracker */
 (function () {
   var s = document.currentScript;
@@ -20,10 +21,6 @@
     });
   } catch (e) { /* eldre nettlesere: dropp kampanjedata, mål resten */ }
 
-  // Automated browsers (headless test runs, scrapers driving a real Chrome) pass
-  // the server's user-agent filter. They are not visitors.
-  if (navigator.webdriver) return;
-
   // A visitor who has asked not to be tracked is not counted: Global Privacy
   // Control, or Do Not Track (including the old window.doNotTrack and IE's
   // msDoNotTrack). Nothing is sent, and window.sporlos() becomes a no-op so a
@@ -34,6 +31,11 @@
     window.sporlos = function () {};
     return;
   }
+
+  // Automated browsers (headless test runs, scrapers, an AI agent driving a real
+  // Chrome) pass the server's user-agent filter. They are not visitors: the beacon
+  // carries wd:1, and the server counts it as a robot, never as a person.
+  var wd = navigator.webdriver === true;
 
   // Referrer for the NEXT pageview. The first one is the real document.referrer.
   // After an in-page navigation it is the page we came from on this site, which
@@ -55,6 +57,7 @@
         uc: utm.campaign || null,
       };
       if (extra) for (var k in extra) b[k] = extra[k];
+      if (wd) b.wd = 1;
       var body = JSON.stringify(b);
       // sendBeacon overlever sidebytte og blokkerer ikke navigasjon
       if (navigator.sendBeacon) {

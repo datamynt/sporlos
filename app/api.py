@@ -10,6 +10,7 @@ Designvalg:
     brukes av tilse sin månedlige driftsrapport. Rådata holdes i 90 dager, så
     eldre måneder avvises i stedet for å gi halve tall.
   - land returneres som ISO-koder (maskinvennlig; dashboardet oversetter til norsk)
+  - /bots: robot traffic is counted on its own (bot_daily), never in the other numbers
 """
 
 from __future__ import annotations
@@ -20,7 +21,8 @@ from datetime import datetime, timedelta, timezone
 
 from starlette.responses import JSONResponse
 
-from app import store
+from app import botcount, store
+from app.useragent import BOT_CLASSES
 
 _PERIOD_DAYS = {"1": 1, "7": 7, "30": 30}
 _MONTH_RE = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
@@ -278,3 +280,41 @@ def anchors(request):
         for r in store.recent_rollups(site["id"], limit=30)
     ]
     return JSONResponse({"site": request.query_params.get("site"), "anchors": out})
+
+
+# Shown to API users (Norwegian, like the other API messages): the tracker is JavaScript,
+# and most AI crawlers do not run it.
+BOTS_NOTE = (
+    "Roboter telles bare når de kjører JavaScript. De fleste KI-crawlere gjør ikke det, "
+    "så tallene er et minimum, ikke en fasit."
+)
+
+
+def bots(request):
+    """Robots, AI crawlers and AI agents, counted apart from people (bot_daily).
+
+    The unit is hits (pageviews/events), not unique visitors: robots get no visitor
+    hash. classes = every class seen in the period; agents = top list (canonical name
+    or generic token); ai_paths = the masked paths AI crawlers fetched."""
+    key = _auth(request)
+    if not key:
+        return _err("ugyldig eller manglende API-nøkkel", 401)
+    site, days, err = _site_and_days(request, key)
+    if err:
+        return err
+    try:
+        limit = min(100, max(1, int(request.query_params.get("limit", "20"))))
+    except ValueError:
+        return _err("limit må være et tall", 400)
+    botcount.flush()
+    b = store.bot_summary(site["id"], days, limit)
+    return JSONResponse(
+        {"site": request.query_params.get("site"), "period_days": days, "unit": "hits",
+         "total": b["total"],
+         "classes": [{"class": c["class"], "label": BOT_CLASSES.get(c["class"], c["class"]),
+                      "hits": c["n"]} for c in b["classes"]],
+         "agents": [{"agent": a["agent"], "class": a["class"], "hits": a["n"]}
+                    for a in b["agents"]],
+         "ai_paths": [{"path": p["path"], "hits": p["n"]} for p in b["ai_paths"]],
+         "note": BOTS_NOTE}
+    )
