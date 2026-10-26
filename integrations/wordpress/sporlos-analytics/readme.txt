@@ -76,7 +76,8 @@ price, and the payment gateway id as a short code (for example `bacs` or
 any other customer data, and Sporløs has no fields for them. Variation attributes
 (size, colour, personalisation) are left out; only the catalogue product name is
 sent. The address of the order confirmation page is recorded like any other
-page, without its query string.
+page, without its query string, and Sporløs replaces the order number in it
+with `:id` before anything is stored.
 
 = Which orders are counted? =
 
