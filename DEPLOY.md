@@ -64,6 +64,15 @@ as root, the script cannot write the backup and stops before deleting anything:
 mkdir -p backups
 ```
 
+## Private source addresses
+Ingest drops events whose client IP is private, loopback, link-local or otherwise non-global
+(RFC1918, `::1`, `fe80::/10`, `fc00::/7`, IPv4-mapped forms). Behind a reverse proxy on the same
+network as the operator's office, hairpin NAT makes the operator's own browsers arrive from a
+private address; they would otherwise show up as visitors with country "ukjent". The drop is
+logged as `ingest_drop reason=private` and is not added to the robot count. For an intranet
+install where every visitor has a private address, set `SPORLOS_COUNT_PRIVATE_IPS=1` in `.env`
+to count them as before.
+
 ## Retention job (terms §10, DPA §8)
 `python -m app.manage purge-dormant` deletes accounts whose customer relationship has ended:
 never-verified sign-ups with no data after 14 days, expired trials and cancelled plans 84 days
