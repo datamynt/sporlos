@@ -22,9 +22,9 @@ def send_verification(uid: int, email: str) -> bool:
     link = f"{_base()}/verify?uid={uid}&t={auth.sign_token('verify', str(uid))}"
     return mailer.send(
         email,
-        "Bekreft e-posten din - Sporlos",
-        f"Hei,\n\nBekreft e-postadressen din for Sporlos:\n{link}\n\n"
-        "Opprettet du ikke en konto? Se bort fra denne e-posten.\n\nSporlos",
+        "Bekreft e-posten din - Sporløs",
+        f"Hei,\n\nBekreft e-postadressen din for Sporløs:\n{link}\n\n"
+        "Opprettet du ikke en konto? Se bort fra denne e-posten.\n\nSporløs",
     )
 
 
@@ -72,7 +72,7 @@ def send_stalled_alerts() -> int:
     body = (
         "Hei,\n\nFolgende nettsteder hadde trafikk nylig, men har ikke registrert "
         "noe det siste dognet - sporingen kan ha sluttet a virke (CMS-bytte, CSP, e.l.):\n\n"
-        f"{lines}\n\nSjekk at sporings-koden fortsatt ligger pa sidene.\n\nSporlos"
+        f"{lines}\n\nSjekk at sporingskoden fortsatt ligger på sidene.\n\nSporlos"
     )
     ok = mailer.send(admin, f"Sporlos: {len(stalled)} nettsted uten trafikk siste dogn", body)
     return 1 if ok else 0
@@ -114,7 +114,7 @@ def send_weekly_reports(days: int = 7) -> int:
     sent = 0
     for t in store.weekly_report_data(days):
         lines = [
-            f"- {s['domain']}: {s['pv']} sidevisninger, {s['uv']} unike besokende"
+            f"- {s['domain']}: {s['pv']} sidevisninger, {s['uv']} unike besøkende (summert per dag)"
             for s in t["sites"]
             if s["pv"] > 0
         ]
@@ -123,11 +123,11 @@ def send_weekly_reports(days: int = 7) -> int:
         tid = str(t["tenant_id"])
         unsub = f"{_base()}/unsubscribe?tid={tid}&t={auth.sign_token('unsub', tid)}"
         body = (
-            "Hei,\n\nDin siste uke pa Sporlos:\n\n"
+            "Hei,\n\nDin siste uke på Sporløs:\n\n"
             + "\n".join(lines)
             + f"\n\nSe full statistikk: {_base()}/app\n\n"
-            f"Vil du ikke ha ukerapport? Meld av her:\n{unsub}\n\nSporlos"
+            f"Vil du ikke ha ukerapport? Meld av her:\n{unsub}\n\nSporløs"
         )
-        if mailer.send(t["email"], "Din uke pa Sporlos", body):
+        if mailer.send(t["email"], "Din uke på Sporløs", body):
             sent += 1
     return sent

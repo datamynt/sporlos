@@ -1,4 +1,4 @@
-"""The public live demo (/demo) shows what a customer gets beyond traffic: goals, funnels,
+"""The public demo (/demo) shows what a customer gets beyond traffic: goals, funnels,
 e-commerce and the robot section. Customers' own opt-in public dashboards (/p/<site>) must
 NOT get them: sharing your traffic must never publish your revenue.
 
@@ -9,6 +9,7 @@ All data here is synthetic. Run ONE FILE PER PROCESS (the module owns its SQLite
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -27,8 +28,8 @@ TODAY = lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d")  # noqa: E731
 
 # What each new section renders as its heading, and one synthetic marker from its data.
 SECTIONS = {
-    "goals": ("Mål / konverteringer", "Ny konto"),
-    "funnels": ("<h3>Funnels</h3>", "Forside til kjøp"),
+    "goals": ("<h3>Mål</h3>", "Ny konto"),
+    "funnels": ("<h3>Trakter</h3>", "Forside til kjøp"),
     "ecom": ("<h3>E-handel</h3>", "Eksempelprodukt"),
     "bots": ("Roboter og KI-agenter", "GPTBot"),
 }
@@ -113,9 +114,9 @@ class DemoSectionsTest(unittest.TestCase):
     def test_sections_sit_after_the_traffic_and_before_the_verifiable_numbers(self):
         html = self.demo(seed_site("demo-order.example"))
         pos = lambda s: html.index(s)  # noqa: E731
-        self.assertLess(pos("<h3>Operativsystem</h3>"), pos("Mål / konverteringer"))
-        self.assertLess(pos("Mål / konverteringer"), pos("<h3>Funnels</h3>"))
-        self.assertLess(pos("<h3>Funnels</h3>"), pos("<h3>E-handel</h3>"))
+        self.assertLess(pos("<h3>Operativsystemer</h3>"), pos("<h3>Mål</h3>"))
+        self.assertLess(pos("<h3>Mål</h3>"), pos("<h3>Trakter</h3>"))
+        self.assertLess(pos("<h3>Trakter</h3>"), pos("<h3>E-handel</h3>"))
         self.assertLess(pos("<h3>E-handel</h3>"), pos("Roboter og KI-agenter"))
         self.assertLess(pos("Roboter og KI-agenter"), pos("Verifiserbare tall</span>"))
 
@@ -125,8 +126,8 @@ class DemoSectionsTest(unittest.TestCase):
             with self.subTest(action=action):
                 self.assertNotIn(f'action="{action}"', html)
         self.assertNotIn("Legg til mål", html)
-        self.assertNotIn("Lag funnel", html)
-        self.assertNotIn("<form", html.split("<h3>Mål / konverteringer</h3>")[1].split("Verifiserbare tall</span>")[0])
+        self.assertNotIn("Lag trakt", html)
+        self.assertNotIn("<form", html.split("<h3>Mål</h3>")[1].split("Verifiserbare tall</span>")[0])
 
     def test_demo_sets_no_cookie(self):
         site = seed_site("demo-clean.example")
@@ -170,7 +171,7 @@ class DemoSectionsTest(unittest.TestCase):
         self.assertNotIn("Betalingsmåte", html)
         # the other sections still render, without data
         self.assertIn("ingen mål enda", html)
-        self.assertIn("Ingen funnels enda", html)
+        self.assertIn("Ingen trakter ennå", html)
         self.assertIn("Roboter og KI-agenter", html)
         self.assertIn("Ingen roboter registrert", html)
 
@@ -208,6 +209,79 @@ class DemoSectionsTest(unittest.TestCase):
         self.assertIn('action="/app/funnels"', html)
         self.assertNotIn("<h3>E-handel</h3>", html)          # no purchase ever: no section
         self.assertNotIn("Roboter og KI-agenter", html)      # no robots ever: no section
+        # the owner sees the same Norwegian labels as the demo
+        self.assertIn("Lag trakt", html)
+        self.assertIn("<th>Andel</th>", html)
+        self.assertIn("<h3>Trakter</h3>", html)
+        self.assertIn("Vis sporingskode", html)
+
+
+class DemoCopyTest(unittest.TestCase):
+    """The demo's intro, labels and number formats (the owner dashboard shares the renderers)."""
+
+    @classmethod
+    def setUpClass(cls):
+        botcount.flush()
+        cls.client = TestClient(main.app)
+        cls.site = seed_site("demo-copy.example")
+        # a tablet and a desktop visit, stored with the canonical device values
+        _ev(cls.site["id"], "pageview", "/", "d1", device="tablet")
+        _ev(cls.site["id"], "pageview", "/", "d2", device="desktop")
+        _ev(cls.site["id"], "pageview", "/", "d3", device="mobil")
+
+    def demo(self, **params):
+        with mock.patch.dict(os.environ, {"SPORLOS_DEMO_SITE": self.site["public_id"]}):
+            r = self.client.get("/demo", params=params)
+        self.assertEqual(r.status_code, 200)
+        return r.text
+
+    def test_intro_text(self):
+        html = self.demo()
+        self.assertIn(
+            "Dette er ekte tall for <b>sporlos.no</b>, målt med Sporløs uten cookies og uten "
+            "samtykkebanner. Kundene våre får det samme dashbordet.", html)
+        for old in ("levende tall", "Det du ser her, er det kundene får", "uten samtykke.",
+                    "Live demo", "live demo"):
+            self.assertNotIn(old, html)
+        self.assertIn("<title>Demo: ekte tall for sporlos.no | Sporløs</title>", html)
+
+    def test_goal_and_funnel_labels(self):
+        html = self.demo()
+        self.assertIn("<h3>Trakter</h3>", html)
+        self.assertIn("<th>Andel</th>", html)
+        self.assertIn("(hendelse: signup_complete)", html)
+        self.assertIn("(side)", html)
+        self.assertIn("(hendelse)", html)
+        visible = re.sub(r"<(style|script)\b.*?</\1>", "", html, flags=re.S)
+        for old in ("Funnels", "funnel", "<th>Rate</th>", "Rate =", "(path)", "(event)", "event:"):
+            self.assertNotIn(old, visible)
+
+    def test_device_labels_are_norwegian_but_storage_is_not(self):
+        html = self.demo()
+        for label in ("Datamaskin", "Mobil", "Nettbrett"):
+            self.assertIn(label, html)
+        grid = html.split("<h3>Enheter</h3>")[1].split("</table>")[0]
+        for raw in (">desktop<", ">tablet<", ">mobil<"):
+            self.assertNotIn(raw, grid)
+        with store._cursor() as cur:
+            cur.execute(f"SELECT DISTINCT device FROM events WHERE site_id = {store.P}", (self.site["id"],))
+            stored = {r["device"] for r in cur.fetchall()}
+        self.assertTrue({"desktop", "tablet", "mobil"} <= stored)
+
+    def test_norwegian_number_format(self):
+        html = self.demo()
+        # goal share with a decimal comma and a no-break space before %
+        self.assertRegex(html, r"<td>\d+,\d\u00a0%</td>")
+        self.assertNotRegex(html, r"<td>\d+\.\d%</td>")
+        # bounce rate and pages per visit
+        self.assertRegex(html, r"<b>\d+\u00a0%</b><span>fluktfrekvens</span>")
+        self.assertRegex(html, r"<b>\d+,\d</b><span>sider per besøk</span>")
+        self.assertNotIn("visn. per besøk", html)
+
+    def test_multi_day_visitors_are_labelled_as_summed(self):
+        self.assertIn("unike besøkende (summert per dag)", self.demo(period="7"))
+        today = self.demo(period="1")
+        self.assertIn("<span>unike besøkende</span>", today)
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ og du måler også dem som ville trykket «avvis». Bare besøkende med Do Not T
 eller Global Privacy Control telles ikke.
 
 Begrensningen er produktet: du får trafikk, kilder, geografi (bevisst capped
-på fylkesnivå), enheter, mål, funnels og kampanjer — du får ikke sporing av
+på fylkesnivå), enheter, mål, trakter og kampanjer — du får ikke sporing av
 enkeltpersoner.
 
 ## Hva er i repoet

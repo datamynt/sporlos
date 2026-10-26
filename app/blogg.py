@@ -17,7 +17,7 @@ POSTS = {
         "ingress": "NRK forklarte i dag hva som skjer når du trykker «godkjenn alle "
         "cookies»: opplysningene dine sendes ut i sanntidsauksjoner — i snitt 340 "
         "ganger om dagen. Saken er skrevet til deg som besøker nettsider. Vi vil "
-        "gjerne snakke til deg som eier ett.",
+        "snakke til deg som eier et nettsted.",
         "body": """
 <p>NRK publiserte i dag <a href="https://www.nrk.no/artikkel/dette-skjer-med-informasjonen-du-legg-igjen-pa-nettet-967863"
 rel="noopener">en sak om hva som skjer med informasjonen du legger igjen på nettet</a>
@@ -35,7 +35,7 @@ en gjennomsnittlig nordmann personopplysningene sine kringkastet på denne måte
 <blockquote>«Du mistar kontroll for alltid for at dei kan tena nokre kroner på deg.»</blockquote>
 
 <h2>Saken er skrevet til den som besøker nettsider</h2>
-<p>Rådene i saken går til privatpersoner, og de er gode — videreformidlet herved:
+<p>Rådene i saken er ment for privatpersoner, og de er gode:
 ikke trykk «godkjenn alle» på autopilot, velg heller «innstillinger» eller «les mer»
 og avvis, og vurder en utvidelse som blokkerer sporing.</p>
 <p>Men det finnes en gruppe til som bør lese den: alle som <em>eier</em> et nettsted.
@@ -60,14 +60,14 @@ fått uten.</p>
 <p>Her er vi part i saken, og det skal vi være ærlige om: Sporløs lever av akkurat
 dette. Vår tilnærming er å telle i stedet for å følge — hvor mange som besøker
 siden, hvilke sider som leses, hvor folk kommer fra. Uten cookies, uten
-fingerprinting, og uten at rå IP-adresse noen gang lagres: den besøkende blir en
+fingeravtrykk, og uten at rå IP-adresse noen gang lagres: den besøkende blir en
 enveis-hash med et salt som byttes og slettes hver natt, så den ikke kan føres
 tilbake til en person. Dataene bor i Norge, og koden er
 <a href="https://github.com/datamynt/sporlos" rel="noopener">åpen (AGPL)</a>,
 så påstandene kan etterprøves.</p>
 <p>Konsekvensen er at analysen ikke trenger samtykke — og dermed ikke banner. Ikke
-fordi vi fant et smutthull, men fordi det ikke samles inn noe § 3-15 krever
-samtykke til.</p>
+fordi vi fant et smutthull, men fordi Sporløs ikke lagrer eller leser noe på
+enheten, og det er det § 3-15 handler om.</p>
 
 <h2>Hva er egentlig oppsiden?</h2>
 <p>Saken slutter med at Judin får spørsmål om det er verdt det å godta alt. Svaret
@@ -77,7 +77,7 @@ nettsider er oppsiden av sporingen, i beste fall, litt mer treffsikker reklame.<
 holde styr på, et banner mindre mellom innholdet og leseren, en raskere side — og
 tall du kan stå for når noen spør hva dere gjør med informasjonen folk legger
 igjen.</p>
-<p class=muted>Se hvordan det ser ut i praksis på <a href="/demo">live-demoen</a>,
+<p class=muted>Se hvordan det ser ut i praksis på <a href="/demo">demoen</a>,
 eller les <a href="/sporsmal">spørsmål og svar</a> — inkludert det ærlige svaret på
 om Google Analytics er lovlig i Norge.</p>
 """,
