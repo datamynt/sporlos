@@ -7,6 +7,7 @@
     python -m app.manage mask-paths [--apply] [--backup-dir DIR]   # mask stored ID-like paths
     python -m app.manage purge-dormant         # delete ended accounts (terms §10); dry run
                                                # unless SPORLOS_RETENTION_ENFORCE=1 (cron: daily)
+    python -m app.manage seed-own-goals        # goals + funnels on sporlos.no's own site; idempotent
 """
 
 from __future__ import annotations
@@ -15,6 +16,49 @@ import os
 import sys
 
 from app import store
+
+# sporlos.no measures itself (the /demo site). The events behind these are fired by
+# app/main.py: signup_submit, signup_complete, checkout_submit, purchase.
+OWN_GOALS = [
+    ("Ny konto", "event", "signup_complete"),
+    ("Kjøp", "event", "purchase"),
+]
+OWN_FUNNELS = [
+    ("Forside til kjøp", [
+        {"type": "path", "value": "/"},
+        {"type": "path", "value": "/signup"},
+        {"type": "event", "value": "signup_complete"},
+        {"type": "event", "value": "checkout_submit"},
+        {"type": "event", "value": "purchase"},
+    ]),
+    ("Forside til gratis prøve", [
+        {"type": "path", "value": "/"},
+        {"type": "path", "value": "/signup"},
+        {"type": "event", "value": "signup_submit"},
+        {"type": "event", "value": "signup_complete"},
+    ]),
+]
+
+
+def seed_own_goals(public_id: str) -> tuple[int, int]:
+    """Create the goals and funnels above on one site, skipping names that already exist
+    (so running it twice, or after someone built one by hand, changes nothing).
+    Returns (goals created, funnels created); raises LookupError for an unknown site."""
+    site = store.resolve_site(public_id)
+    if not site:
+        raise LookupError(public_id)
+    have_goals = {g["name"] for g in store.goal_stats(site["id"], 1)}
+    have_funnels = {f["name"] for f in store.funnel_stats(site["id"], 1)}
+    goals = funnels = 0
+    for name, mtype, value in OWN_GOALS:
+        if name not in have_goals:
+            store.create_goal(site["id"], name, mtype, value)
+            goals += 1
+    for name, steps in OWN_FUNNELS:
+        if name not in have_funnels:
+            store.create_funnel(site["id"], name, steps)
+            funnels += 1
+    return goals, funnels
 
 
 def main(argv: list[str]) -> int:
@@ -98,6 +142,17 @@ def main(argv: list[str]) -> int:
             print(f"  e.g. {ex}")
         if res["backup"]:
             print(f"  backup: {res['backup']} (0600, id + old value)")
+        return 0
+
+    if cmd == "seed-own-goals":
+        public_id = os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7")
+        try:
+            goals, funnels = seed_own_goals(public_id)
+        except LookupError:
+            print(f"seed-own-goals: no site with public_id {public_id}")
+            return 1
+        print(f"seed-own-goals: {goals} goal(s) and {funnels} funnel(s) created on {public_id} "
+              f"(0 = already there)")
         return 0
 
     if cmd == "anchor":

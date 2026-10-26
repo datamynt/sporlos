@@ -310,7 +310,8 @@ class InvoiceTest(unittest.TestCase):
                                            "address": "Gate 1", "postal": "0461 Oslo",
                                            "invoice_email": "regnskap@example.no", "ehf": "1",
                                            "reference": "PO-7"}, follow_redirects=False)
-        self.assertIn("faktura=ok", r.headers["location"])
+        self.assertEqual(r.headers["location"], "/takk")  # reported from /takk, then on to ?faktura=ok
+        self.assertIn('href="/app?faktura=ok"', c.get("/takk").text)
         t = store.get_tenant(tid)
         self.assertEqual(t["plan"], "vekst")
         details = json.loads(t["invoice_details"])
@@ -358,7 +359,7 @@ class InvoiceTest(unittest.TestCase):
         tid, uid, c = account("linjeskift@example.no")
         SENT.clear()
         r = self._order(c, company="Slem AS\r\nBcc: x@example.no")
-        self.assertIn("faktura=ok", r.headers["location"])
+        self.assertEqual(r.headers["location"], "/takk")
         for to, subject, body in SENT:
             self.assertNotIn("\n", subject)
             self.assertNotIn("\r", subject)
@@ -372,7 +373,7 @@ class InvoiceTest(unittest.TestCase):
         tid, uid, c = account("tak@example.no")
         SENT.clear()
         for _ in range(main.INVOICES_PER_ADDRESS_HOURLY):
-            self.assertIn("faktura=ok", self._order(c, invoice_email="offer@example.no").headers["location"])
+            self.assertEqual(self._order(c, invoice_email="offer@example.no").headers["location"], "/takk")
         n = len(SENT)
         r = self._order(c, invoice_email="offer@example.no")
         self.assertEqual(r.status_code, 200)
@@ -381,7 +382,7 @@ class InvoiceTest(unittest.TestCase):
         # other addresses still work, until the per-account cap
         left = main.INVOICES_PER_ACCOUNT_HOURLY - main.INVOICES_PER_ADDRESS_HOURLY
         for i in range(left):
-            self.assertIn("faktura=ok", self._order(c, invoice_email=f"annen{i}@example.no").headers["location"])
+            self.assertEqual(self._order(c, invoice_email=f"annen{i}@example.no").headers["location"], "/takk")
         r = self._order(c, invoice_email="enda-en@example.no")
         self.assertIn("For mange bestillinger", r.text)
 

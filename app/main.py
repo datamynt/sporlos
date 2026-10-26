@@ -1590,6 +1590,79 @@ def _not_found_page(request):
     )
 
 
+# --- sporlos.no measures its own funnel -------------------------------------------------
+# The logged-in /app is deliberately NOT tracked, so the moments that happen on the way
+# into it (account created, order placed) are reported from /takk: a tiny tracked page
+# that fires the events once and carries on. The events travel in the signed session
+# cookie, set only by the server-side handler that has verified the moment, never by a
+# query string; /takk without a pending flash goes straight to /app, so reloading it, or
+# opening it by hand, cannot count anything twice. Events carry no ids, mail or names.
+# The tracker itself decides whether anything is sent (Global Privacy Control / DNT
+# make window.sporlos a no-op), so this adds no second privacy gate to keep in sync.
+
+def _kr(ore: int) -> int | float:
+    """Øre → kroner for sporlos('purchase', {revenue}): 990 stays 990, 99.5 stays 99.5."""
+    return ore // 100 if ore % 100 == 0 else round(ore / 100, 2)
+
+
+def _purchase_event(plan: str, payment: str, revenue_ore: int, *, annual: bool = False) -> list:
+    """The sporlos('purchase', …) call for one completed order, as [name, data].
+
+    Revenue is what Datamynt actually earns: the amount EXCLUDING VAT (mva is passed on to
+    the state, and the price list is set ex. VAT). One item, named after the plan."""
+    name = f"Sporløs {pricing.PLAN_NAMES[plan]}" + (" (årlig)" if annual else "")
+    kr = _kr(revenue_ore)
+    return ["purchase", {"revenue": kr, "currency": "NOK", "payment": payment,
+                         "items": [{"name": name, "qty": 1, "price": kr}]}]
+
+
+def _track_redirect(request, events: list, next_url: str):
+    """Hand the browser to /takk, which reports `events` once and then continues to `next_url`."""
+    request.session["track"] = {"e": events, "next": next_url}
+    return RedirectResponse("/takk", status_code=302)
+
+
+def takk(request):
+    """Tracked stop between a conversion and the untracked /app: fires the pending events once."""
+    pending = request.session.pop("track", None)
+    if not isinstance(pending, dict):
+        return RedirectResponse("/app", status_code=302)
+    events = [e for e in (pending.get("e") or [])
+              if isinstance(e, list) and e and isinstance(e[0], str)][:5]
+    nxt = pending.get("next")
+    if not (isinstance(nxt, str) and nxt.startswith("/") and not nxt.startswith("//")):
+        nxt = "/app"
+    bought = any(e[0] == "purchase" for e in events)
+    js_events = json.dumps(events).replace("</", "<\\/")
+    if bought:
+        head = ("<h1>Takk for kjøpet!</h1><p class=muted>Planen og alt om betalingen finner du i "
+                "dashbordet.</p>")
+        auto = "false"
+    else:
+        head = "<h1>Kontoen er opprettet</h1><p class=muted>Sender deg videre …</p>"
+        auto = "true"
+    inner = (
+        f'{head}<p><a class=btn href="{escape(nxt)}">Fortsett</a></p>'
+        "<script>document.addEventListener('DOMContentLoaded',function(){"
+        f"var E={js_events};"
+        "try{if(window.sporlos)E.forEach(function(e){window.sporlos(e[0],e[1]||undefined)})}catch(x){}"
+        f"if({auto})setTimeout(function(){{location.replace({json.dumps(nxt)})}},700)}});</script>"
+        f'<noscript><meta http-equiv=refresh content="2;url={escape(nxt)}"></noscript>'
+    )
+    resp = _shell(request, "Takk" if bought else "Velkommen", inner)
+    resp.headers["X-Robots-Tag"] = "noindex"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+def _checkout_click(method: str) -> str:
+    """onclick for a payment button on /betal: checkout_submit (the funnel step) plus
+    checkout_<method> (which button). Two names because an event with a name is the only
+    thing the funnel can match, and a payment slug alone is dropped without an amount."""
+    return (f' onclick="window.sporlos&amp;&amp;(sporlos(\'checkout_submit\'),'
+            f'sporlos(\'checkout_{method}\'))"')
+
+
 async def signup(request):
     # ?plan=liten|vekst|pro: bruker valgte plan på forsiden og vil betale med
     # en gang — sendes til /betal etter kontoopprettelse i stedet for trial-/app.
@@ -1643,8 +1716,9 @@ async def signup(request):
                         notify.send_verification(uid, email)
                     except Exception:
                         pass
-                    return RedirectResponse(
-                        f"/betal?plan={plan}" if plan else "/app?ny=1", status_code=302
+                    return _track_redirect(
+                        request, [["signup_complete", None]],
+                        f"/betal?plan={plan}" if plan else "/app?ny=1",
                     )
                 except Exception:
                     err = "Kunne ikke opprette konto. Prøv igjen."
@@ -1659,7 +1733,7 @@ async def signup(request):
         request,
         "Opprett konto",
         f"""<h1>Opprett konto</h1>{chosen}{eb}
-<form method=post>
+<form method=post onsubmit="window.sporlos&amp;&amp;sporlos('signup_submit')">
   <input type=hidden name=plan value="{escape(plan)}">
   <input type=hidden name=t value="{_signup_stamp()}">
   <label>Firma</label><input name=company required>
@@ -1968,10 +2042,11 @@ def _sso_new_account(who) -> tuple[int, int]:
 
 def _sso_done(request, uid: int, tid: int, plan: str = "", new: bool = False):
     _login(request, uid, tid)
-    if new and plan:
-        return RedirectResponse(f"/betal?plan={plan}", status_code=302)
-    # A brand-new account says so: logging in with Google on /login creates one silently.
-    return RedirectResponse("/app?ny=sso" if new else "/app", status_code=302)
+    if new:
+        # A brand-new account says so: logging in with Google on /login creates one silently.
+        return _track_redirect(request, [["signup_complete", None]],
+                               f"/betal?plan={plan}" if plan else "/app?ny=sso")
+    return RedirectResponse("/app", status_code=302)
 
 
 async def sso_callback(request):
@@ -2130,6 +2205,35 @@ async def gsc_disconnect(request):
     return RedirectResponse(f"/app?site={public_id}#sok", status_code=302)
 
 
+def billing_checkout_return(request):
+    """Back from Stripe Checkout. Reports the purchase only for a session that Stripe says is
+    paid, belongs to THIS account, and has not been reported in this login before."""
+    user = _user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    sid = request.query_params.get("session_id", "")
+    seen = request.session.get("paid_seen") or []
+    if not (stripe and re.fullmatch(r"cs_[A-Za-z0-9_]{8,200}", sid)) or sid in seen:
+        return RedirectResponse("/app", status_code=302)
+    try:
+        obj = stripe.checkout.Session.retrieve(sid)
+        obj = obj.to_dict() if hasattr(obj, "to_dict") else dict(obj)
+    except Exception as e:
+        log.warning("stripe return: %s", type(e).__name__)
+        return RedirectResponse("/app", status_code=302)
+    plan = (obj.get("metadata") or {}).get("plan")
+    if (str(obj.get("client_reference_id")) != str(user["tid"]) or obj.get("status") != "complete"
+            or obj.get("payment_status") not in ("paid", "no_payment_required")
+            or plan not in pricing.PLAN_ORE):
+        return RedirectResponse("/app", status_code=302)
+    # What was really charged, excluding VAT (coupons included); the list price if Stripe omits it.
+    total, tax = obj.get("amount_total"), (obj.get("total_details") or {}).get("amount_tax") or 0
+    ore = total - tax if isinstance(total, int) and isinstance(tax, int) and total >= tax \
+        else pricing.PLAN_ORE[plan]
+    request.session["paid_seen"] = (seen + [sid])[-5:]
+    return _track_redirect(request, [_purchase_event(plan, "stripe_card", ore)], "/app")
+
+
 def billing_checkout(request):
     """Start Stripe Checkout (abonnement) for valgt plan."""
     user = _user(request)
@@ -2151,7 +2255,9 @@ def billing_checkout(request):
         client_reference_id=str(user["tid"]),
         metadata={"tenant_id": str(user["tid"]), "plan": plan},
         subscription_data=sub_data,
-        success_url=f"{PUBLIC_BASE}/app",
+        # Stripe fills in the session id; the return route checks it with Stripe before it
+        # reports a purchase (a bare ?session_id= from a bookmark or a guess proves nothing).
+        success_url=f"{PUBLIC_BASE}/billing/checkout/retur?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{PUBLIC_BASE}/app",
         allow_promotion_codes=True,
         locale="nb",
@@ -2368,6 +2474,10 @@ async def vipps_return(request):
         await asyncio.sleep(1)
     if status == "ACTIVE":
         store.activate_vipps(user["tid"], pending, vipps.next_month(date.today()).isoformat())
+        if pending in pricing.PLAN_ORE:  # active at Vipps = the first charge went through
+            return _track_redirect(
+                request, [_purchase_event(pending, "vipps", pricing.PLAN_ORE[pending])],
+                "/app?vipps=ok")
         return RedirectResponse("/app?vipps=ok", status_code=302)
     if status in ("STOPPED", "EXPIRED"):
         store.clear_vipps(user["tid"])
@@ -2404,7 +2514,7 @@ async def betal(request):
     knapper = ""
     if stripe and STRIPE_PRICES.get(plan):
         knapper += (
-            f'<a href="/billing/checkout?plan={plan}" style="display:block;text-align:center;'
+            f'<a href="/billing/checkout?plan={plan}"{_checkout_click("card")} style="display:block;text-align:center;'
             "background:var(--btn-bg);color:#fff;padding:.75rem;border-radius:9px;"
             'text-decoration:none;font-weight:600;margin:.5rem 0">Betal med kort</a>'
         )
@@ -2412,13 +2522,13 @@ async def betal(request):
         # Vipps' own approved button file, unaltered and self-hosted (static/vipps/README.md);
         # their brand rules: use only the approved buttons, fixed 44 px height.
         knapper += (
-            f'<a href="/billing/vipps/start?plan={plan}" style="display:block;margin:.5rem 0;'
+            f'<a href="/billing/vipps/start?plan={plan}"{_checkout_click("vipps")} style="display:block;margin:.5rem 0;'
             'line-height:0;text-decoration:none">'
             '<img src="/static/vipps/vipps-betal-med-no.svg" width="250" height="44" '
             'alt="Betal med Vipps" style="display:block"></a>'
         )
     knapper += (
-        f'<a href="/betal/faktura?plan={plan}" style="display:block;text-align:center;'
+        f'<a href="/betal/faktura?plan={plan}"{_checkout_click("faktura")} style="display:block;text-align:center;'
         "border:1px solid var(--line);color:var(--ink);padding:.75rem;border-radius:9px;"
         'text-decoration:none;font-weight:600;margin:.5rem 0">Årlig faktura (for bedrifter)</a>'
     )
@@ -2552,7 +2662,8 @@ async def betal_faktura(request):
         f"{' som EHF' if details['ehf'] else ' på e-post'}, med 14 dagers betalingsfrist.\n\n"
         "Spørsmål? Bare svar på denne e-posten.\n\nSporløs · Datamynt AS",
     )
-    return RedirectResponse("/app?faktura=ok", status_code=302)
+    return _track_redirect(
+        request, [_purchase_event(plan, "faktura", ore, annual=True)], "/app?faktura=ok")
 
 
 async def create_site_post(request):
@@ -5870,6 +5981,8 @@ routes = [
     Route("/betal", betal),
     Route("/betal/faktura", betal_faktura, methods=["GET", "POST"]),
     Route("/billing/checkout", billing_checkout),
+    Route("/billing/checkout/retur", billing_checkout_return),
+    Route("/takk", takk),
     Route("/billing/portal", billing_portal),
     Route("/api/hero", hero_stats),
     Route("/proof", proof),
