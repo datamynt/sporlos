@@ -488,28 +488,29 @@ _FAQ = [
     (
         "Trenger nettstedet mitt cookie-banner?",
         "Bare hvis nettstedet lagrer eller leser noe på besøkerens enhet (ekomloven § 3-15) "
-        "eller behandler personopplysninger som krever samtykke. Bruker du verktøy uten cookies "
-        "og uten persondata — som Sporløs — utløses ikke kravet, og banneret kan fjernes for "
-        "analysens del. Husk at andre verktøy på siden (annonser, embeds) kan kreve banner uansett.",
+        "eller behandler personopplysninger som krever samtykke. Bruker du et analyseverktøy som "
+        "verken lagrer eller leser noe på enheten, som Sporløs, gjelder ikke samtykkekravet i "
+        "ekomloven, og banneret kan fjernes for analysens del. Husk at andre verktøy på siden (annonser, embeds) kan kreve banner uansett.",
     ),
     (
         "Er Google Analytics lovlig i Norge?",
         "Det er omdiskutert, og vi skal være ærlige: GA er ikke «forbudt» i Norge. Men GA krever "
         "cookies, og cookies krever samtykke — altså banner. I tillegg har overføringen av data til "
-        "USA vært tema hos europeiske datatilsyn i flere år. Med Sporløs slipper du hele diskusjonen: "
-        "ingen cookies, ingen persondata, data i Norge.",
+        "USA vært tema hos europeiske datatilsyn i flere år. Med Sporløs slipper du den diskusjonen: "
+        "ingen cookies, ingen lagrede IP-adresser, og dataene blir i Norge.",
     ),
     (
         "Hva er cookieløs webanalyse?",
-        "Måling som aldri lagrer noe i besøkerens nettleser. Sporløs teller besøk med en "
-        "daglig-roterende engangs-hash som forkastes — ingen kan gjenkjennes på tvers av dager "
-        "eller nettsteder. Du får trafikk, kilder, geografi, enheter og konverteringer; du får "
+        "Måling som aldri lagrer noe i besøkerens nettleser. Sporløs kjenner igjen et besøk med "
+        "en hash av IP-adresse og nettleser, laget med et salt som byttes og slettes hver natt. "
+        "IP-adressen lagres aldri, og ingen kan kobles på tvers av dager eller nettsteder. Du får trafikk, kilder, geografi, enheter og konverteringer; du får "
         "ikke sporing av enkeltpersoner. Det er poenget.",
     ),
     (
         "Blir tallene mindre nøyaktige uten cookies?",
         "Mer nøyaktige, faktisk. Verktøy med samtykkebanner mister alle som trykker «avvis» eller "
-        "ignorerer banneret — ofte 30–50 % av trafikken. Sporløs måler alle besøk. Forskjellen: "
+        "ignorerer banneret — ofte 30–50 % av trafikken. Sporløs teller også dem. Bare besøkende "
+        "som har slått på Do Not Track eller Global Privacy Control, telles ikke. Forskjellen: "
         "«unike besøkende» betyr unike per dag, ikke per måned, siden vi ikke følger folk over tid.",
     ),
     (
@@ -534,10 +535,12 @@ _FAQ = [
     ),
     (
         "Lagrer dere noe om mine besøkende?",
-        "Ingen IP-adresser, ingen cookies, ingen identifikatorer. Kun aggregater: antall besøk, "
-        "hvilke sider, hvilket land/fylke, hvilken nettlesertype. Geografisk stopper vi bevisst "
-        "på fylkesnivå. Hele tilnærmingen er beskrevet åpent i personvernerklæringen — og "
-        "sporingsscriptet er åpen kildekode, så du kan etterprøve selv.",
+        "Så lite som mulig. Ingen IP-adresser og ingen cookies. Hver sidevisning lagres i 90 dager "
+        "med side, kilde, land og fylke, enhetstype, nettleser, operativsystem, eventuelle "
+        "UTM-kampanjeverdier og en besøks-hash som byttes hver natt. Ved kjøp også beløp, "
+        "produktnavn og betalingsmåte. Etter 90 dager er bare dagstallene igjen. Geografisk "
+        "stopper vi bevisst på fylkesnivå. Hele tilnærmingen er beskrevet åpent i "
+        "personvernerklæringen, og sporingsskriptet er åpen kildekode, så du kan sjekke selv.",
     ),
 ]
 
@@ -1211,7 +1214,7 @@ def _site_nav(request=None) -> str:
 _SITE_FOOTER = (
     "<footer class=site><div class=wrap><div class=foot-top>"
     "<div class=foot-brand>" + _WORDMARK +
-    "<p>Webanalyse uten cookies, uten samtykkebanner og uten persondata. Bygget og driftet i Norge.</p>"
+    "<p>Webanalyse uten cookies og uten samtykkebanner. Bygget og driftet i Norge.</p>"
     '<p class=foot-company><span>En tjeneste fra</span>'
     '<a href="https://datamynt.no" rel=noopener>Datamynt AS</a><br>'
     "Org.nr: 936 017 207<br>Maridalsveien 163, 0461 Oslo</p></div>"
@@ -1439,8 +1442,8 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
 <div>
   <span class="tag inn1">Norsk · cookieløs · samtykkefri</span>
   <h1 class=inn2>Webanalyse uten cookie&#8209;banner.</h1>
-  <p class="lede inn3">Sporløs måler nettstedet ditt uten cookies, uten å lagre IP, og uten å samle
-  personopplysninger. Tallene til høyre er ekte — denne siden, målt med Sporløs.</p>
+  <p class="lede inn3">Sporløs måler nettstedet ditt uten cookies og uten å lagre IP-adresser.
+  Tallene til høyre er ekte — denne siden, målt med Sporløs.</p>
   <div class="hero-ctas inn3">
     <a class=btn href="/signup">Start gratis prøve</a>
     <a href="/google-analytics-alternativ" style="font-size:.95rem">Ærlig sammenligning med GA →</a>
@@ -1468,7 +1471,7 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
   som skjer på besøkerens enhet. Sporløs rører den aldri.</p>
   <ul class=aldri>
     <li><svg width=17 height=17 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>Setter aldri cookies eller lagrer noe i nettleseren</li>
-    <li><svg width=17 height=17 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>Lagrer aldri IP-adresser — flyktig hash, så forkastet</li>
+    <li><svg width=17 height=17 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>Lagrer aldri IP-adresser. IP-en brukes bare til en hash med et salt som byttes hver natt</li>
     <li><svg width=17 height=17 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>Fingerprinter aldri, følger aldri på tvers av dager og nettsteder</li>
   </ul>
   </div>
@@ -1479,8 +1482,7 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
     <p class=fri>Fri gjengivelse — les hele bestemmelsen på lovdata.no</p>
     <div class=dom>
       <svg width=26 height=26 viewBox="0 0 64 64" style="flex:none"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>
-      <div>Sporløs gjør ingen av delene.<small>Kravet utløses ikke — og uten personopplysninger
-      utløses heller ikke GDPR-samtykke.</small></div>
+      <div>Sporløs gjør ingen av delene.<small>Da gjelder ikke samtykkekravet i ekomloven.</small></div>
     </div>
   </div>
   </div>
@@ -1490,8 +1492,9 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
   <span class="tag kicker reveal">Funksjoner</span>
   <h2 class=reveal>Alt du faktisk trenger</h2>
   <div class=cards>
-    <div class="card reveal"><h3>Hele bildet, ikke et utvalg</h3><p>Uten samtykkekrav måles alle besøk —
-    ikke bare de som trykker «godta». Tallene blir mer riktige enn med GA, ikke mindre.</p></div>
+    <div class="card reveal"><h3>Hele bildet, ikke et utvalg</h3><p>Uten banner måler du også dem som ville
+    trykket «avvis». Bare de som har slått på Do Not Track eller Global Privacy Control, telles ikke.
+    Tallene blir mer riktige enn med GA, ikke mindre.</p></div>
     <div class="card reveal"><h3>Mål, funnels og kampanjer</h3><p>Egendefinerte hendelser, konverteringsrate,
     funnels med drop-off og UTM-kampanjer. Uten at noen blir identifisert.</p></div>
     <div class="card reveal"><h3>Data i Norge</h3><p>Norsk-eid drift på vår egen server i Oslo.
@@ -2359,7 +2362,7 @@ SHOPIFY_API_SECRET = os.environ.get("SHOPIFY_API_SECRET", "")
 
 async def shopify_compliance(request):
     """Shopifys påkrevde GDPR-webhooks (customers/data_request, customers/redact, shop/redact).
-    Sporløs lagrer INGEN Shopify-kunde-PII (kun anonyme aggregater via pixelen) → ingenting å
+    Sporløs lagrer INGEN Shopify-kundedata (pixelen sender pseudonyme hendelser uten kunde-ID) → ingenting å
     utlevere eller slette. Men endepunktet MÅ verifisere HMAC og svare 200 for App Store-review."""
     body = await request.body()
     sig = request.headers.get("x-shopify-hmac-sha256", "")
@@ -3206,7 +3209,7 @@ async def utviklere(request):
         f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>API — Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<meta name=description content="Read-only Stats-API for AI-verktøy og integrasjoner. Kun aggregater — aldri rådata.">
+<meta name=description content="Les tallene dine via API, for rapporter, regneark og KI-verktøy. API-et gir bare summer.">
 <link rel="canonical" href="https://sporlos.no/utviklere">
 {_BRAND_HEAD}
 <style>{_BRAND_CSS}{_CHROME_CSS}
@@ -3221,9 +3224,10 @@ table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-botto
 <div class=content>
 <h1>API for utviklere og AI-verktøy</h1>
 <p>Sporløs har et read-only Stats-API så du kan hente tallene dine inn i rapporter, regneark
-og AI-verktøy. Det er trygt å dele en nøkkel med en AI-assistent: API-et serverer kun
-<b>aggregater</b> — enkeltpersoner kan ikke slås opp, fordi rådataene ikke finnes
-(<a href="/personvern">ingen IP, ingen cookie, daglig-roterende hash</a>).</p>
+og AI-verktøy. Det er trygt å dele en nøkkel med en AI-assistent: API-et gir bare
+<b>summer</b>, aldri enkeltregistreringer. Det finnes ingen IP-adresser eller cookies å slå opp,
+og besøks-hashen byttes hver natt, så ingen kan følges over tid
+(<a href="/personvern">se personvernerklæringen</a>).</p>
 
 <h2>Kom i gang</h2>
 <p>Lag en nøkkel under «API-tilgang» i <a href="/app">dashbordet</a>, og send den som Bearer-token:</p>
@@ -3609,6 +3613,7 @@ async def vilkar(request):
         request,
         "Salgsbetingelser",
         path="/vilkar",
+        footer="Sist oppdatert 2026-10-26.",
         desc="Salgsbetingelser for webanalysetjenesten Sporløs — utformet etter Forbrukertilsynets anbefalinger.",
         inner="""<h1>Salgsbetingelser</h1>
 <p>Disse salgsbetingelsene gjelder kjøp av abonnement på webanalysetjenesten Sporløs, og er utformet
@@ -3660,12 +3665,14 @@ over til betalt abonnement uten at du aktivt velger en plan.</p>
 forbrukerkjøpsloven.</p>
 
 <h2>10. Behandling av data — og dine data</h2>
-<p>Sporløs samler ikke personopplysninger om dine besøkende. Se <a href="/personvern">personvernerklæringen</a>;
+<p>Sporløs er bygget for å samle så lite som mulig om dine besøkende: ingen IP-adresser, ingen
+cookies og ingen ID som kan kobles på tvers av dager. Se <a href="/personvern">personvernerklæringen</a>;
 for næringsdrivende gjelder i tillegg <a href="/databehandleravtale">databehandleravtalen</a>, som du godtar
 når du oppretter konto.</p>
 <p><b>Analysedataene for ditt nettsted er dine.</b> Du kan når som helst eksportere dem (CSV i
-tjenesten). Vi selger eller deler dem aldri med tredjepart. Ved opphør av kundeforholdet slettes
-innsamlede analysedata innen 90 dager.</p>
+tjenesten). Vi selger eller deler dem aldri med tredjepart. Enkeltregistreringer (sidevisninger og
+hendelser) slettes uansett etter 90 dager; etter det finnes bare dagstall. Ved opphør av
+kundeforholdet slettes innsamlede analysedata innen 90 dager.</p>
 
 <h2>11. Tilgjengelighet og ansvar</h2>
 <p>Vi tilstreber høy oppetid og tar jevnlige sikkerhetskopier. Planlagt vedlikehold som påvirker
@@ -3689,7 +3696,8 @@ async def personvern(request):
         request,
         "Personvernerklæring",
         path="/personvern",
-        desc="Slik behandler Sporløs personopplysninger: ingen IP-lagring, ingen cookies, kun daglig-roterende hash.",
+        footer="Sist oppdatert 2026-10-26.",
+        desc="Slik behandler Sporløs personopplysninger: ingen IP-lagring, ingen cookies og en besøks-hash som byttes hver natt.",
         inner="""<h1>Personvernerklæring</h1>
 <p>Denne erklæringen beskriver hvordan Datamynt AS behandler personopplysninger som
 behandlingsansvarlig for kunder og besøkende på sporlos.no.</p>
@@ -3704,21 +3712,30 @@ med og en kryptert tilgangsnøkkel, til du kobler fra.</p>
 innloggingstjeneste på samme server i Oslo. Vi lagrer da leverandørens bruker-ID og e-postadressen
 din, slik at vi kjenner deg igjen neste gang. Vi får ikke passordet ditt, og siden laster ingenting
 fra Google eller Microsoft før du selv trykker på knappen.</p>
-<p>Når du logger inn, settes én <b>nødvendig innloggings-cookie</b> (sesjon). Den brukes kun til å
-holde deg innlogget, deles ikke med noen, og er unntatt samtykkekravet (strengt nødvendig).
-Den er det eneste vi noensinne lagrer i nettleseren din — og kun for innloggede kunder.</p>
+<p>Når du registrerer deg eller logger inn, settes én <b>nødvendig innloggings-cookie</b> (sesjon).
+Den brukes kun til å holde deg innlogget, deles ikke med noen, og er unntatt samtykkekravet (strengt
+nødvendig). Det er den eneste cookien vi setter.</p>
+<p>I tillegg husker nettleseren din valg du selv gjør på sidene, som lyst eller mørkt tema og
+visningsvalg i demoen. Det lagres bare i nettleseren din (localStorage), og sendes aldri til oss.</p>
 
 <h2>2. Besøkende på sporlos.no</h2>
-<p>Vi måler vårt eget nettsted med Sporløs — cookieløst, uten å lagre IP og uten
-personopplysninger. Derfor settes ingen sporings-cookies og det kreves ikke samtykke.
+<p>Vi måler vårt eget nettsted med Sporløs, uten cookies og uten å lagre IP-adresser. Derfor
+settes ingen sporings-cookies og det kreves ikke samtykke.
 Vi bruker ingen tredjeparts sporings- eller analyseverktøy, og laster ingen ressurser
 (fonter, scripts) fra tredjepart på offentlige sider.</p>
+<p><b>Hva som lagres:</b> For hver sidevisning lagrer vi side, kilde, land og fylke, enhetstype,
+nettleser, operativsystem, eventuelle UTM-kampanjeverdier og en besøks-hash. Hashen lages av
+IP-adressen og nettleseren sammen med et salt som byttes og slettes hver natt, så besøk kan ikke
+kobles på tvers av dager. IP-adressen brukes bare til dette og til å slå opp land og fylke, og
+lagres aldri. Dette er pseudonyme opplysninger. Vi holder dem så få som mulig og bruker dem bare
+til statistikk. Roboter, trafikk fra datasentre og fra private nettverk telles ikke som besøkende.</p>
 <p><b>Reservasjon:</b> Sender nettleseren din signalet Global Privacy Control eller Do Not Track,
-sender Sporløs-skriptet ingenting, og besøket telles ikke. Det gjelder både på sporlos.no og på
-alle nettsteder som bruker Sporløs.</p>
-<p><b>Nettside-assistenten (chat):</b> Hvis du velger å bruke chatten, behandles meldingene
-dine av vår KI-tjeneste for å generere svar. Samtalen lagres ikke hos oss og kobles ikke
-til deg — vi teller kun antall meldinger (anonymt, slettes daglig) for å hindre misbruk.
+sender Sporløs-skriptet ingenting, og besøket telles ikke. Det gjelder sporingsskriptet vårt, både
+på sporlos.no og på kundenes nettsteder.</p>
+<p><b>Nettside-assistenten (chat):</b> Hvis du velger å bruke chatten, sendes meldingene dine
+via vår egen KI-gateway til en språkmodell fra Google (Gemini), som lager svaret. Samtalen lagres
+ikke hos oss og kobles ikke til kontoen din. For å hindre misbruk teller vi antall meldinger per
+besøks-hash og dag; tellerne fra tidligere dager slettes fortløpende.
 Ikke del personopplysninger i chatten; den trenger dem ikke for å hjelpe deg.</p>
 
 <h2>3. Formål og grunnlag</h2>
@@ -3731,11 +3748,15 @@ art. 6 nr. 1 b) og for support. Vi sender ikke markedsføring uten samtykke.</p>
 <tr><td><b>Stripe / Vipps</b></td><td>Betaling</td></tr>
 <tr><td><b>Google Workspace</b></td><td>E-post (support og transaksjonsmeldinger til kunder)</td></tr>
 <tr><td><b>Google / Microsoft</b></td><td>Kun hvis du selv velger å logge inn med dem</td></tr>
+<tr><td><b>Google (Gemini)</b></td><td>Språkmodellen bak chatten på sporlos.no, via vår egen KI-gateway. Kun hvis du bruker chatten.</td></tr>
 </table>
 <p><b>Lagringstider:</b> Kontoopplysninger lagres så lenge du er kunde, og slettes innen rimelig
 tid etter at kundeforholdet opphører (regnskapsplikt kan kreve lengre lagring av fakturadata).
-Analysehendelser inneholder ingen personopplysninger og lagres for statistikkformål;
-ved opphør slettes de innen 90 dager.</p>
+Enkeltregistreringer fra analysen (sidevisninger og hendelser, med besøks-hash) slettes etter
+90 dager. Etter det finnes bare dagstall per nettsted (sidevisninger, besøkende, besøk og
+fluktfrekvens), uten hash. Dagstallene kan forsegles med en kryptografisk hash i en offentlig
+blokkjede; bare hashen av dagstallene publiseres. Ved opphør av kundeforholdet slettes
+analysedataene innen 90 dager.</p>
 <p>Sletter du et nettsted eller hele kontoen selv, forsvinner dataene fra tjenesten med en gang.
 Kopier i de nattlige sikkerhetskopiene forsvinner når kopiene roterer ut, senest etter 35 dager.</p>
 
@@ -3799,13 +3820,14 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
 <section>
   <h2>Det viktigste først: cookie-banneret</h2>
   <p>Google Analytics krever samtykke, altså banner. Sporløs setter ingen cookies, lagrer ingenting i
-  nettleseren og samler ingen personopplysninger — da utløses verken samtykkekravet i ekomloven § 3-15
-  eller GDPR. <b>Banneret kan rett og slett fjernes.</b></p>
+  nettleseren og lagrer aldri IP-adresser. Da gjelder ikke samtykkekravet i ekomloven § 3-15.
+  <b>Banneret kan rett og slett fjernes.</b></p>
   <p>Det gir en roligere og raskere side, og et førsteinntrykk uten juridisk støy. Og det har en
   målbar bieffekt folk undervurderer:</p>
   <p><b>Tallene dine blir mer riktige, ikke mindre.</b> GA måler bare de som trykker «godta» og slipper
   gjennom annonseblokkere — en stor andel gjør ikke det, og hullene fylles delvis med modellerte
-  estimater. Sporløs trenger ikke samtykke og måler dermed alle besøk, som faktiske tall.</p>
+  estimater. Sporløs trenger ikke samtykke og måler derfor også dem som ville sagt nei, som faktiske
+  tall. Bare besøkende som har slått på Do Not Track eller Global Privacy Control, telles ikke.</p>
 </section>
 
 <section>
@@ -3850,7 +3872,7 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
   <table>
     <tr><th></th><th>Google Analytics</th><th>Sporløs</th></tr>
     <tr><td>Cookie-banner nødvendig</td><td class=nei>Ja</td><td class=ja>Nei</td></tr>
-    <tr><td>Måler besøkende uten samtykke</td><td class=delvis>Delvis (modellert)</td><td class=ja>Alle, faktiske tall</td></tr>
+    <tr><td>Måler besøkende uten samtykke</td><td class=delvis>Delvis (modellert)</td><td class=ja>Ja, faktiske tall (unntatt DNT/GPC)</td></tr>
     <tr><td>Scriptvekt</td><td class=nei>~90 kB+</td><td class=ja>~1 kB komprimert</td></tr>
     <tr><td>Datalagring</td><td class=nei>Google (USA-tilknyttet)</td><td class=ja>Norge, norsk-eid drift</td></tr>
     <tr><td>Google Ads-integrasjon</td><td class=ja>Ja</td><td class=nei>Nei</td></tr>
@@ -5474,7 +5496,7 @@ def dashboard(request):
         api_html = (
             "<div class=card>"
             '<p class=fine style="margin:.2rem 0 .6rem">Read-only nøkler for AI-verktøy og '
-            'integrasjoner — kun aggregater, aldri rådata. <a href="/utviklere">Dokumentasjon</a>.</p>'
+            'integrasjoner — bare summer, aldri enkeltregistreringer. <a href="/utviklere">Dokumentasjon</a>.</p>'
             f"{new_key_html}{keys_table}"
             '<form class=add method=post action="/app/api-keys" style="margin-top:.6rem">'
             '<input name=label placeholder="Navn (f.eks. Claude)" maxlength=60>'

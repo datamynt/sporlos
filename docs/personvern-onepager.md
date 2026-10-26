@@ -1,10 +1,10 @@
 # Webanalyse uten cookie-banner — og uten å bryte norsk lov
 
 > **Sporløs er bygget for å falle utenfor samtykkekravet i ekomloven § 3-15:
-> vi lagrer ingenting på besøkerens enhet, og samler ingen personopplysninger.**
+> vi lagrer og leser ingenting på besøkerens enhet, og vi samler så lite om besøket som mulig.**
 > Derfor trenger nettstedet ditt verken cookie-banner eller samtykke for å bruke oss.
 
-_Versjon 1 (30.09.2026) — produktmateriale, ikke juridisk rådgivning._
+_Versjon 2 (26.10.2026) — produktmateriale, ikke juridisk rådgivning._
 
 ---
 
@@ -42,12 +42,17 @@ Sporløs utløser ikke § 3-15, fordi vi rett og slett **ikke rører enheten**:
 |---|---|
 | Setter ingen cookies | Ingenting lagres i nettleseren |
 | Bruker ingen localStorage / device-identifikatorer | Ingen «tilgang til opplysninger på utstyret» |
-| Lagrer aldri IP-adresse | IP brukes kun flyktig til en enveis-hash og forkastes |
+| Lagrer aldri IP-adresse | IP brukes bare til en enveis-hash og til land/fylke, og lagres aldri |
 | Bruker ingen fingerprinting | Besøkende kan ikke gjenkjennes på tvers av dager |
 
-I stedet teller vi unike besøkende med en **daglig-roterende, enveis-hash** som nullstilles hvert
-døgn. Den kan verken reverseres til en person eller lenkes på tvers av dager eller nettsteder.
-Resultatet er aggregert statistikk uten personopplysninger.
+I stedet teller vi unike besøkende med en **enveis-hash** av IP-adresse og nettleser, laget med et
+salt som byttes og slettes hver natt. Hashen kan ikke reverseres til en IP-adresse, og besøk kan ikke
+kobles på tvers av dager eller nettsteder.
+
+Hver sidevisning lagres som en egen rad i 90 dager: side, kilde, land og fylke, enhetstype, nettleser,
+operativsystem, eventuelle UTM-kampanjeverdier, dagens besøks-hash og, ved kjøp, beløp, produktnavn og
+betalingsmåte. Etter 90 dager slettes radene, og bare dagstallene er igjen. Dette er pseudonyme
+opplysninger, holdt så få og så kortvarige som mulig. Derfor har vi også en databehandleravtale.
 
 **Følgene for deg som kunde:**
 - ✅ **Ingen cookie-banner** nødvendig for analysen
@@ -59,10 +64,10 @@ Resultatet er aggregert statistikk uten personopplysninger.
 ## Trenger du en personvernkonsekvensvurdering (DPIA)?
 
 En DPIA er bare **påkrevd når en behandling sannsynligvis medfører høy risiko** for de registrerte
-(GDPR art. 35). Cookieløs analyse uten personopplysninger og uten profilering treffer få eller ingen
-av de høy-risiko-kriteriene. **For en standard Sporløs-installasjon er DPIA derfor ikke påkrevd.**
+(GDPR art. 35). Cookieløs analyse med få, pseudonyme opplysninger og uten profilering treffer få eller
+ingen av de høy-risiko-kriteriene. **For en standard Sporløs-installasjon er DPIA derfor ikke påkrevd.**
 
-(Datatilsynet anbefaler likevel en frivillig vurdering ved tvil — og forutsetningen er at no-PII-løftet
+(Datatilsynet anbefaler likevel en frivillig vurdering ved tvil — og forutsetningen er at dataminimeringen
 er ekte. Fingerprinting eller vedvarende identifikatorer ville endret bildet.)
 
 ---
@@ -92,8 +97,9 @@ sikkerhetskopiene står i Norge.
 
 Vi vil heller være presise enn skråsikre:
 
-- Den **forsvarlige kjernen** i vårt standpunkt er at vi ikke lagrer eller aksesserer noe på enheten,
-  og ikke behandler personopplysninger. Det er det som holder oss utenfor § 3-15.
+- Den **forsvarlige kjernen** i vårt standpunkt er at vi ikke lagrer eller aksesserer noe på enheten.
+  Det er det som holder oss utenfor § 3-15. Hendelsene vi lagrer på serveren er pseudonyme, og de
+  dekkes av databehandleravtalen.
 - Spørsmålet om *enhver* form for cookieløs analyse alltid er samtykkefri, er **omdiskutert** internasjonalt
   (særlig rundt hashing av IP). Vi påstår derfor ikke at «cookieløst = alltid lovlig» generelt — vi sier at
   **Sporløs sin konkrete arkitektur** er designet for å unngå utløsende-faktorene i § 3-15.

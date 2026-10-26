@@ -9,10 +9,11 @@
 
 Samtykkekravet i ekomloven § 3-15 utløses av det som lagres eller leses på
 besøkerens enhet. Sporløs rører aldri enheten: ingen cookies, ingen
-localStorage, ingen fingerprinting. IP-adressen brukes flyktig til en
-daglig-roterende enveis-hash og forkastes — ingen kan gjenkjennes på tvers
-av dager eller nettsteder. Dermed trengs verken banner eller samtykke, og du
-måler **alle** besøk, ikke bare de som trykker «godta».
+localStorage, ingen fingerprinting. IP-adressen brukes bare til en enveis-hash
+med et salt som byttes og slettes hver natt, og lagres aldri — ingen kan kobles
+på tvers av dager eller nettsteder. Dermed trengs verken banner eller samtykke,
+og du måler også dem som ville trykket «avvis». Bare besøkende med Do Not Track
+eller Global Privacy Control telles ikke.
 
 Begrensningen er produktet: du får trafikk, kilder, geografi (bevisst capped
 på fylkesnivå), enheter, mål, funnels og kampanjer — du får ikke sporing av
@@ -64,6 +65,8 @@ addresses? Set `SPORLOS_COUNT_PRIVATE_IPS=1` to count them.
    Dette er hele samtykke-fritaket — brytes det, er produktet ulovlig som GA.
 2. **Geografi stopper på fylkesnivå.** By-nivå + lav trafikk = re-identifiserbart.
 3. **Aggregater ut, aldri rådata.** API-et og dashbordet serverer kun tellinger.
+4. **Kort lagring.** Hver hendelse lagres som egen rad (pseudonym, med dagens
+   besøks-hash) og slettes etter 90 dager. Etter det finnes bare dagstall.
 
 ## Lisens
 
@@ -76,10 +79,12 @@ men ikke under vårt navn.
 ## English summary
 
 Sporløs is consent-free, cookieless web analytics built in Norway. No cookies,
-no stored IPs, no fingerprinting — visitors are counted via a daily-rotating
-one-way hash that is then discarded, so no consent banner is required under
-Norwegian/EU ePrivacy rules, and every visit is measured (not just the ones
-that click "accept"). Daily aggregates can optionally be sealed with a
+no stored IPs, no fingerprinting — visitors are counted via a one-way hash of IP
+and user agent with a salt that is replaced and deleted every night, so visits
+cannot be linked across days. Single events are deleted after 90 days; only daily
+totals are kept. No consent banner is required under Norwegian/EU ePrivacy rules,
+so visitors who would have clicked "reject" are measured too (visitors with Do Not
+Track or Global Privacy Control are not counted). Daily aggregates can optionally be sealed with a
 cryptographic hash anchored to a public ledger, making the numbers tamper-
 evident. The codebase is intentionally in Norwegian — it is built for the
 Norwegian market, comments and all. Licensed AGPL-3.0; the tracker script is
