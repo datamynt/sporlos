@@ -19,6 +19,11 @@ ANNUAL_MONTHS = 10  # «årlig mot faktura = 2 måneder gratis»
 PLAN_ORE = {"liten": 9900, "vekst": 24900, "pro": 59900}
 PLAN_NAMES = {"liten": "Liten", "vekst": "Vekst", "pro": "Pro"}
 
+# Byrå is sold by agreement, never through checkout. This is the «fra»-price the
+# public pages show, kept here so its total incl. VAT is computed like the others.
+BYRA_FROM_ORE = 149000
+BYRA_FROM_SITES = 25
+
 
 def incl(ore: int) -> int:
     """Amount including VAT, in øre."""

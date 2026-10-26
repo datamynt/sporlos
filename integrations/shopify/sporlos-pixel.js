@@ -1,5 +1,6 @@
-/* Sporløs — Shopify Custom Pixel (Fase 1)
- * Cookieløs, samtykke-fri webanalyse. Ingen cookies, ingen localStorage, ingen PII.
+/* Sporløs — Shopify Custom Pixel
+ * Webanalyse uten cookies og uten samtykkebanner. Ingen cookies, ingen localStorage,
+ * ingen personopplysninger i det som sendes.
  *
  * Speiler /api/event-kontrakten fra tracker/sporlos.js, men leser hendelser fra
  * Shopifys Customer Events API. Pixelen kjører i Shopifys sandbox — derfor ingen
@@ -8,17 +9,17 @@
  * INSTALLERING (tar to minutter):
  *   1. Shopify-admin → Innstillinger → Kundehendelser → «Legg til egendefinert pixel».
  *   2. Gi den navnet «Sporløs» og lim inn HELE denne koden.
- *   3. Bytt SITE_ID under med din egen (Sporløs-dashbord → «Vis sporings-kode»).
+ *   3. Bytt SITE_ID under med nettsted-ID-en din (Sporløs-dashbordet → «Vis sporingskode»).
  *   4. Klikk Lagre → Koble til.
  *
- * Fordel over et tema-snippet: dette måler også checkout-stegene — Shopify-checkout
- * ligger på et låst domene der vanlige snippets ikke får kjøre.
+ * Fordel over kode i temaet: pikselen måler også stegene i kassen. Kassen ligger på
+ * et låst Shopify-domene der kode i temaet ikke får kjøre.
  *
  * Åpen kildekode (AGPL-3.0): https://github.com/datamynt/sporlos
  */
 
 var SITE_ID = "DITT_SITE_ID_HER";               // ← BYTT MEG (f.eks. 6LIACtOSP-S7)
-var ENDPOINT = "https://sporlos.no/api/event";  // self-hostere: bytt til eget domene
+var ENDPOINT = "https://sporlos.no/api/event";  // drifter du selv: bytt til eget domene
 
 // Shopify-hendelse → Sporløs-hendelsesnavn. «pageview» og «checkout_completed»
 // (som sender ordresum + produktlinjer) håndteres separat under.

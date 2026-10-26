@@ -359,7 +359,7 @@ _APPLE_ICON = (_STATIC_DIR / "brand" / "apple-touch-icon.png").read_bytes()
 _WEBMANIFEST = json.dumps({
     "name": "Sporløs",
     "short_name": "Sporløs",
-    "description": "Cookieløs, samtykke-fri webanalyse bygget i Norge.",
+    "description": "Webanalyse uten cookies og uten samtykkebanner. Utviklet og driftet i Norge.",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#faf9f6",
@@ -509,29 +509,29 @@ _FAQ = [
     (
         "Blir tallene mindre nøyaktige uten cookies?",
         "Mer nøyaktige, faktisk. Verktøy med samtykkebanner mister alle som trykker «avvis» eller "
-        "ignorerer banneret — ofte 30–50 % av trafikken. Sporløs teller også dem. Bare besøkende "
+        "ignorerer banneret, ofte en stor del av trafikken. Sporløs teller også dem. Bare besøkende "
         "som har slått på Do Not Track eller Global Privacy Control, telles ikke. Forskjellen: "
         "«unike besøkende» betyr unike per dag, ikke per måned, siden vi ikke følger folk over tid.",
     ),
     (
         "Hva koster Sporløs?",
         "Fra 99 kr/mnd (10 000 sidevisninger) til 599 kr/mnd (1 million), eks. mva "
-        "(123,75 og 748,75 kr inkl. mva). Bedrifter kan betale årlig mot faktura og få 2 måneder "
-        "gratis. 30 dager gratis prøve "
-        "uten kort. Vi slutter aldri å måle om du passerer grensen, og sender aldri "
-        "overraskelsesregninger — du får et varsel og velger selv om du vil oppgradere.",
+        "(123,75 og 748,75 kr inkl. mva). Bedrifter kan betale årlig mot faktura og få to måneder "
+        "gratis. Forseglede, verifiserbare tall er med i alle planer. Prøv gratis i 30 dager, "
+        "uten kort. Vi slutter aldri å måle om du passerer grensen, og du får aldri en "
+        "overraskelsesregning: du får et varsel og velger selv om du vil oppgradere.",
     ),
     (
         "Hvordan installerer jeg Sporløs?",
-        "Ett script på siden din — eller WordPress-pluginen vår: søk «Sporløs Analytics» i "
-        "plugin-katalogen, aktiver, lim inn site-ID. Ferdig. Ingen cookies betyr også: ingen "
-        "samtykke-oppsett å konfigurere.",
+        "Lim inn én linje sporingskode på siden din, eller bruk WordPress-utvidelsen vår: søk "
+        "«Sporløs Analytics» i plugin-katalogen, aktiver den og lim inn nettsted-ID-en. Uten "
+        "cookies er det heller ikke noe samtykkeoppsett å konfigurere.",
     ),
     (
         "Hva betyr «verifiserbare tall»?",
         "Hvert dagstall forsegles med en kryptografisk hash som forankres i en uavhengig, offentlig "
-        "logg. Endres tallet i ettertid, stemmer ikke seglet. Rapporterer du besøkstall til styre, "
-        "annonsører eller tilskuddsgivere, er det dokumentasjon som holder.",
+        "logg. Endres tallet i ettertid, stemmer ikke seglet. Det er nyttig når du skal dokumentere "
+        "besøkstall for styret, annonsører eller tilskuddsgivere. Forseglingen er med i alle planer.",
     ),
     (
         "Lagrer dere noe om mine besøkende?",
@@ -589,8 +589,8 @@ details p{{color:var(--muted);margin:.7rem 0 .2rem;max-width:60em}}
 <h1>Spørsmål og svar</h1>
 <p class=lede>Det folk lurer på om cookieløs webanalyse, samtykkekrav og Sporløs — uten skjønnmaling.</p>
 {items}
-<div class=cta><a class="btn btn-accent" href="/signup">Prøv Sporløs gratis i 30 dager</a>
-<p style="color:var(--muted);font-size:.85rem">uten kort · <a href="/demo">se live-demoen først</a></p></div>
+<div class=cta><a class="btn btn-accent" href="/signup">Prøv gratis i 30 dager</a>
+<p style="color:var(--muted);font-size:.85rem">uten kort · <a href="/demo">se demoen først</a></p></div>
 </div>
 {_SITE_FOOTER}</body></html>"""
     )
@@ -1163,7 +1163,7 @@ _MENU_ICON = (
 
 # Public links in the logged-out header. The last, primary action is rendered as a button.
 _NAV_PUBLIC_LINKS = (
-    ("/demo", "Live demo"),
+    ("/demo", "Demo"),
     ("/#priser", "Priser"),
     ("/google-analytics-alternativ", "Mot Google Analytics"),
     ("/blogg", "Blogg"),
@@ -1219,7 +1219,7 @@ _SITE_FOOTER = (
     '<a href="https://datamynt.no" rel=noopener>Datamynt AS</a><br>'
     "Org.nr: 936 017 207<br>Maridalsveien 163, 0461 Oslo</p></div>"
     "<div><h3>Produkt</h3>"
-    '<a class=foot-link href="/demo">Live demo</a>'
+    '<a class=foot-link href="/demo">Demo</a>'
     '<a class=foot-link href="/#priser">Priser</a>'
     '<a class=foot-link href="/google-analytics-alternativ">Sporløs mot Google Analytics</a>'
     '<a class=foot-link href="/integrasjoner">Integrasjoner</a>'
@@ -1228,7 +1228,7 @@ _SITE_FOOTER = (
     '<a class=foot-link href="/sporsmal">Spørsmål og svar</a>'
     '<a class=foot-link href="/blogg">Blogg</a>'
     '<a class=foot-link href="https://status.sporlos.no" rel=noopener>Driftsstatus ↗</a>'
-    '<a class=foot-link href="https://github.com/datamynt/sporlos-tracker" rel=noopener>Åpen kildekode ↗</a></div>'
+    '<a class=foot-link href="https://github.com/datamynt/sporlos" rel=noopener>Åpen kildekode ↗</a></div>'
     "<div class=foot-duo><div><h3>Kontakt</h3>"
     '<a class=foot-link href="mailto:post@sporlos.no">post@sporlos.no</a>'
     '<a class=foot-link href="https://datamynt.no" rel=noopener>datamynt.no</a></div>'
@@ -1311,7 +1311,7 @@ def _price_card(plan: str, what: str, hl: bool = False) -> str:
         f"<span class=pris>{pricing.kr(ore)} kr<small>/mnd</small></span>"
         f"<small class=mva>{pricing.kr(pricing.incl(ore))} kr inkl. mva</small>\n"
         f"      <small class=hva>{what}</small>\n"
-        f'      <a class="{btn}" href="/signup?plan={plan}">Kom i gang</a></div>\n'
+        f'      <a class="{btn}" href="/signup?plan={plan}">Velg {pricing.PLAN_NAMES[plan]}</a></div>\n'
     )
 
 
@@ -1319,12 +1319,15 @@ _PRICE_CARDS = (
     "  <div class=plans>\n"
     + _price_card("liten", "10 000 visninger<br>1 nettsted")
     + _price_card("vekst", "100 000 visninger<br>10 nettsteder", hl=True)
-    + _price_card("pro", "1 mill. visninger<br>15 nettsteder<br>verifiserbare tall")
-    + '    <div class="plan reveal"><b>Byrå</b><span class=pris>fra 1\u202f490 kr</span>'
-    + "<small class=mva>eks. mva, etter avtale</small>\n"
-    + "      <small class=hva>fra 25 kundenettsteder<br>forsegling inkludert</small>\n"
+    + _price_card("pro", "1 mill. visninger<br>15 nettsteder")
+    + '    <div class="plan reveal"><b>Byrå</b>'
+    + f"<span class=pris>fra {pricing.kr(pricing.BYRA_FROM_ORE)} kr<small>/mnd</small></span>"
+    + f"<small class=mva>{pricing.kr(pricing.incl(pricing.BYRA_FROM_ORE))} kr inkl. mva</small>\n"
+    + f"      <small class=hva>fra {pricing.BYRA_FROM_SITES} nettsteder<br>pris etter avtale</small>\n"
     + '      <a class=velg href="mailto:post@sporlos.no?subject=Byr%C3%A5-avtale">Ta kontakt</a></div>\n'
-    + "  </div>"
+    + "  </div>\n"
+    + '  <p class="fine reveal" style="margin:0">Alle planer har alle funksjoner, også forseglede, '
+    + "verifiserbare tall. Planene skiller seg bare på antall sidevisninger og nettsteder.</p>"
 )
 
 
@@ -1334,10 +1337,10 @@ async def landing(request):
         """<!doctype html><html lang="no"><head><meta charset="utf-8">
 <title>Sporløs — webanalyse uten cookie-banner</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<meta name="description" content="Cookieløs, samtykke-fri webanalyse bygget i Norge. Ingen cookie-banner. Data på norsk-eid infrastruktur.">
+<meta name="description" content="Webanalyse uten cookies og uten samtykkebanner. Bygget og driftet i Norge.">
 <link rel="canonical" href="https://sporlos.no/">
 <meta property="og:title" content="Sporløs — webanalyse uten cookie-banner">
-<meta property="og:description" content="Cookieløs, samtykke-fri webanalyse bygget i Norge. Ingen cookie-banner. Data på norsk-eid infrastruktur.">
+<meta property="og:description" content="Webanalyse uten cookies og uten samtykkebanner. Bygget og driftet i Norge.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://sporlos.no/">
 <meta property="og:locale" content="nb_NO">
@@ -1443,17 +1446,17 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
   <span class="tag inn1">Norsk · cookieløs · samtykkefri</span>
   <h1 class=inn2>Webanalyse uten cookie&#8209;banner.</h1>
   <p class="lede inn3">Sporløs måler nettstedet ditt uten cookies og uten å lagre IP-adresser.
-  Tallene til høyre er ekte — denne siden, målt med Sporløs.</p>
+  Tallene i boksen er ekte: sporlos.no, målt med Sporløs.</p>
   <div class="hero-ctas inn3">
-    <a class=btn href="/signup">Start gratis prøve</a>
-    <a href="/google-analytics-alternativ" style="font-size:.95rem">Ærlig sammenligning med GA →</a>
+    <a class=btn href="/signup">Prøv gratis i 30 dager</a>
+    <a href="/google-analytics-alternativ" style="font-size:.95rem">Sammenlign med Google Analytics →</a>
   </div>
-  <p class="fine inn3">30 dager gratis · uten kort · åpen kildekode</p>
+  <p class="fine inn3">Uten kort · åpen kildekode</p>
 </div>
 <div class="live inn3" aria-label="Sporløs-tall for sporlos.no">
   <div class=live-top><b>sporlos.no</b><span class=na><i class=livedot></i><span id=lper>&nbsp;</span></span></div>
   <div class=live-kpis>
-    <div><b id=lv>&nbsp;</b><span>unike besøkende</span></div>
+    <div title="Summen av unike besøkende per dag. Vi følger ingen på tvers av dager."><b id=lv>&nbsp;</b><span>unike besøkende</span></div>
     <div><b id=lb>&nbsp;</b><span id=lblab>fluktfrekvens</span></div>
   </div>
   <svg id=lspark viewBox="0 0 340 70" preserveAspectRatio="none" aria-hidden=true></svg>
@@ -1472,7 +1475,7 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
   <ul class=aldri>
     <li><svg width=17 height=17 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>Setter aldri cookies eller lagrer noe i nettleseren</li>
     <li><svg width=17 height=17 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>Lagrer aldri IP-adresser. IP-en brukes bare til en hash med et salt som byttes hver natt</li>
-    <li><svg width=17 height=17 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>Fingerprinter aldri, følger aldri på tvers av dager og nettsteder</li>
+    <li><svg width=17 height=17 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--card)" stroke-width=8 stroke-linecap=round/></svg>Ingen fingeravtrykk. Ingen kobling på tvers av dager eller nettsteder</li>
   </ul>
   </div>
   <div class=ark>
@@ -1490,55 +1493,55 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
 
 <section>
   <span class="tag kicker reveal">Funksjoner</span>
-  <h2 class=reveal>Alt du faktisk trenger</h2>
+  <h2 class=reveal>Dette får du</h2>
   <div class=cards>
     <div class="card reveal"><h3>Hele bildet, ikke et utvalg</h3><p>Uten banner måler du også dem som ville
     trykket «avvis». Bare de som har slått på Do Not Track eller Global Privacy Control, telles ikke.
     Tallene blir mer riktige enn med GA, ikke mindre.</p></div>
-    <div class="card reveal"><h3>Mål, funnels og kampanjer</h3><p>Egendefinerte hendelser, konverteringsrate,
-    funnels med drop-off og UTM-kampanjer. Uten at noen blir identifisert.</p></div>
-    <div class="card reveal"><h3>Data i Norge</h3><p>Norsk-eid drift på vår egen server i Oslo.
-    Sporingsscriptet er
-    <a href="https://github.com/datamynt/sporlos-tracker">åpen kildekode</a> — etterprøv selv.</p></div>
-    <div class="card reveal"><h3>Lett som en fjær</h3><p>Sporingsscriptet er ~1 kB komprimert — rundt en
-    nittidel av Google Analytics. Siden din merker det ikke.</p></div>
-    <div class="card reveal"><h3>Inngang, utgang og stier</h3><p>Hvor folk lander, hvor de forsvinner og
-    hvordan de beveger seg — som aggregat, aldri som enkeltpersoner.</p></div>
+    <div class="card reveal"><h3>Mål, trakter og kampanjer</h3><p>Egne hendelser, konverteringsrate,
+    trakter med frafall per steg og UTM-kampanjer.</p></div>
+    <div class="card reveal"><h3>Data i Norge</h3><p>Driftet på vår egen server i Oslo.
+    Sporingsskriptet er
+    <a href="https://github.com/datamynt/sporlos-tracker">åpen kildekode</a>, så du kan sjekke selv.</p></div>
+    <div class="card reveal"><h3>Lite skript</h3><p>Sporingsskriptet er rundt 1 kB komprimert, omtrent en
+    nittidel av Google Analytics.</p></div>
+    <div class="card reveal"><h3>Inngang, utgang og stier</h3><p>Hvor folk lander, hvor de forlater nettstedet
+    og hvordan de beveger seg. Bare summer, aldri enkeltpersoner.</p></div>
     <div class="card reveal"><h3>Verifiserbare tall</h3><p>Dagstallene forsegles i en uavhengig offentlig
-    logg, så de kan ikke pyntes i etterkant. Dokumentasjon som holder. (Pro)</p></div>
+    logg, så de ikke kan endres i ettertid. Med i alle planer.</p></div>
   </div>
 </section>
 
-<section>
-  <span class="tag kicker reveal">Kom i gang</span>
+<section id=installasjon>
+  <span class="tag kicker reveal">Installasjon</span>
   <h2 class=reveal>Én linje, ferdig</h2>
   <p class="muted reveal" style="margin:0 0 1.1rem;max-width:42em">Lim inn før
-  <code>&lt;/head&gt;</code> — det er hele installasjonen. Ingen cookies å konfigurere,
-  ingen banner å sette opp. Du får din egen site-ID når du registrerer deg.</p>
+  <code>&lt;/head&gt;</code>. Det er hele installasjonen. Ingen cookies å konfigurere,
+  ingen banner å sette opp. Du får din egen nettsted-ID når du registrerer deg.</p>
   <pre class="kode reveal"><code>"""
         + escape(_SNIPPET_TPL)
         + """</code></pre>
   <p class="fine reveal" style="margin-top:.8rem">Bruker du WordPress, Shopify, Wix eller lignende?
-  <a href="/integrasjoner">Se lim-inn-guidene →</a></p>
+  <a href="/integrasjoner">Se veiledningene →</a></p>
 </section>
 
 <section id=priser>
   <span class="tag kicker reveal">Priser</span>
   <h2 class=reveal>Forutsigbare priser</h2>
-  <p class=muted style="margin:0">Etter sidevisninger per måned (totale visninger, ikke unike
-  besøkende) · priser eks. mva, totalpris inkl. mva under · bedrifter kan betale årlig mot
-  faktura og få 2 måneder gratis.</p>
+  <p class=muted style="margin:0">Prisen styres av antall sidevisninger per måned. Priser eks. mva,
+  med totalpris inkl. mva under. Bedrifter kan betale årlig mot faktura og få to måneder gratis.</p>
 """ + _PRICE_CARDS + """
   <div class="loft reveal">
     <svg width=44 height=44 viewBox="0 0 64 64"><circle cx=32 cy=32 r=26 fill="var(--accent)"/><line x1=16 y1=52 x2=48 y2=12 stroke="var(--bg)" stroke-width=8 stroke-linecap=round/></svg>
     <div>
-      <b>Vi slutter aldri å måle — og sender aldri overraskelsesregninger.</b>
+      <b>Vi slutter aldri å måle, og du får aldri en overraskelsesregning.</b>
       <small>Over grensen? Du får et varsel og velger selv om du vil oppgradere.</small>
     </div>
   </div>
-  <p class=fine>Prøv hostet gratis i 30 dager — uten kort. Vil du ha det helt gratis?
-  Sporløs er åpen kildekode — kjør det på egen server. Enterprise/kommune: ta kontakt.</p>
-  <a class=btn href="/signup" style="margin-top:.8rem">Start gratis prøve</a>
+  <p class=fine>Uten kort. Vil du drifte selv? Sporløs er
+  <a href="https://github.com/datamynt/sporlos">åpen kildekode (AGPL)</a> og kan kjøres på egen server.
+  Store virksomheter og kommuner: <a href="mailto:post@sporlos.no">ta kontakt</a>.</p>
+  <a class=btn href="/signup" style="margin-top:.8rem">Prøv gratis i 30 dager</a>
   <p class=fine style="margin-top:.7rem"><a href="/login">Har du konto? Logg inn</a></p>
 </section>
 
@@ -1556,7 +1559,7 @@ border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.9r
       document.getElementById('lb').textContent = fmt(d.pageviews);
       document.getElementById('lblab').textContent = 'sidevisninger';
     } else {
-      document.getElementById('lb').textContent = (d.bounce || 0) + ' %';
+      document.getElementById('lb').textContent = (d.bounce || 0) + '\\u00a0%';
       document.getElementById('lblab').textContent = 'fluktfrekvens';
     }
     document.getElementById('lfrom').textContent = d.from || '';
@@ -1648,7 +1651,7 @@ def _not_found_page(request):
         "<h1>Fant ikke siden</h1>"
         "<p class=muted>Lenken er feil, eller siden er flyttet.</p>"
         '<p class=muted><a href="/">Til forsiden</a> · <a href="/blogg">Blogg</a> · '
-        '<a href="/demo">Live demo</a></p>',
+        '<a href="/demo">Demo</a></p>',
         status_code=404,
     )
 
@@ -1754,7 +1757,7 @@ async def signup(request):
                 "bekreftelseslenke.</p>",
             )
         if not company or "@" not in email or len(pw) < 8:
-            err = "Fyll inn firma, gyldig e-post og passord (min. 8 tegn)."
+            err = "Fyll inn firmanavn, gyldig e-post og passord (minst 8 tegn)."
         elif store.get_user_by_email(email):
             err = "Det finnes allerede en konto med denne e-posten."
         else:
@@ -1789,7 +1792,9 @@ async def signup(request):
         f'<p class=muted>Du har valgt <b>{escape(_PLAN_LABELS[plan])}</b> — betaling rett '
         "etter registrering. Du kan også ombestemme deg og prøve gratis først.</p>"
         if plan
-        else "<p class=muted>30 dager gratis · uten kort.</p>"
+        else "<p class=muted>30 dager gratis, uten kort. Prøveperioden gir opptil "
+        f"{pricing.kr(_PLAN_LIMITS['trial'][0] * 100)} sidevisninger og "
+        f"{_PLAN_LIMITS['trial'][1]} nettsteder.</p>"
     )
     eb = f'<div class=err>{escape(err)}</div>' if err else ""
     return _shell(
@@ -1799,12 +1804,12 @@ async def signup(request):
 <form method=post onsubmit="window.sporlos&amp;&amp;sporlos('signup_submit')">
   <input type=hidden name=plan value="{escape(plan)}">
   <input type=hidden name=t value="{_signup_stamp()}">
-  <label>Firma</label><input name=company required>
+  <label>Firmanavn</label><input name=company required>
   <label>E-post</label><input name=email type=email required autocomplete=email>
   <label>Passord</label><input name=password type=password required minlength=8 autocomplete=new-password>
   <div style="position:absolute;left:-9999px" aria-hidden=true>
     <label>Nettsted</label><input name=website tabindex=-1 autocomplete=off></div>
-  <button>{"Fortsett til betaling" if plan else "Start gratis prøve"}</button>
+  <button>{"Fortsett til betaling" if plan else "Opprett konto"}</button>
 </form>
 {_ACCEPT_TERMS}
 {_sso_buttons(plan, accept_terms=False)}
@@ -1851,7 +1856,7 @@ async def login(request):
 {_sso_buttons(on_login=True)}
 <div class=newhere><b>Ny hos Sporløs?</b>
   <a class=btn-sec href="/signup">Prøv gratis i 30 dager</a>
-  <span>Uten kort. Ingen cookies å be om lov til.</span></div>""",
+  <span>Uten kort. Ingen samtykkebanner å sette opp.</span></div>""",
     )
 
 
@@ -2607,7 +2612,7 @@ Kort og Vipps trekkes månedlig, og du kan si opp når som helst.</p>
 <p class=muted>Årlig faktura: {pricing.kr(pricing.annual_ore(plan))} kr eks. mva
 ({pricing.kr(pricing.incl(pricing.annual_ore(plan)))} kr inkl. mva) for 12 måneder, altså 2 måneder gratis.
 Sendes på e-post eller EHF, 14 dagers betalingsfrist.</p>
-<p class=muted style="margin-top:1rem"><a href="/app">Eller start 30 dagers gratis prøve først →</a></p>""",
+<p class=muted style="margin-top:1rem"><a href="/app">Eller prøv gratis i 30 dager først →</a></p>""",
     )
 
 
@@ -3204,7 +3209,7 @@ async def api_key_revoke(request):
 
 
 async def utviklere(request):
-    """API-dokumentasjon — kort nok til å limes inn i en AI-chat i sin helhet."""
+    """API-dokumentasjon — kort nok til å limes inn i en KI-chat i sin helhet."""
     return HTMLResponse(
         f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>API — Sporløs</title>
@@ -3222,9 +3227,9 @@ table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-botto
 <div class=wrap>
 {_site_nav(request)}
 <div class=content>
-<h1>API for utviklere og AI-verktøy</h1>
-<p>Sporløs har et read-only Stats-API så du kan hente tallene dine inn i rapporter, regneark
-og AI-verktøy. Det er trygt å dele en nøkkel med en AI-assistent: API-et gir bare
+<h1>API for utviklere og KI-verktøy</h1>
+<p>Sporløs har et API som bare leser, så du kan hente tallene dine inn i rapporter, regneark
+og KI-verktøy. Det er trygt å dele en nøkkel med en KI-assistent: API-et gir bare
 <b>summer</b>, aldri enkeltregistreringer. Det finnes ingen IP-adresser eller cookies å slå opp,
 og besøks-hashen byttes hver natt, så ingen kan følges over tid
 (<a href="/personvern">se personvernerklæringen</a>).</p>
@@ -3233,32 +3238,32 @@ og besøks-hashen byttes hver natt, så ingen kan følges over tid
 <p>Lag en nøkkel under «API-tilgang» i <a href="/app">dashbordet</a>, og send den som Bearer-token:</p>
 <pre>curl -H "Authorization: Bearer sl_..." \\
   "https://sporlos.no/api/v1/stats?site=DIN_SITE_ID&amp;period=7"</pre>
-<p class=muted><code>site</code> er nettstedets public-ID (samme som i sporings-snippeten —
+<p class=muted><code>site</code> er nettstedets offentlige ID (den samme som i sporingskoden,
 eller hent alle med <code>/api/v1/sites</code>). <code>period</code> er 1, 7 eller 30 dager.
 <code>/stats</code> og <code>/breakdown</code> tar også <code>month=ÅÅÅÅ-MM</code> (kalendermåned i UTC,
 innenfor de siste 90 dagene) i stedet for <code>period</code>.</p>
 
 <h2>Endepunkter</h2>
 <table>
-<tr><td><code>GET /api/v1/sites</code></td><td>nettstedene dine (domene + site-ID)</td></tr>
-<tr><td><code>POST /api/v1/sites</code></td><td>opprett ett nettsted — <code>{{"domain": "dittdomene.no"}}</code>. Idempotent: samme domene gir samme site-ID (200) i stedet for en duplikat (201 = ny)</td></tr>
-<tr><td><code>GET /api/v1/stats</code></td><td>KPI-er (unike, visninger, økter, fluktrate) + topplister, med forrige periode til sammenligning</td></tr>
+<tr><td><code>GET /api/v1/sites</code></td><td>nettstedene dine (domene og nettsted-ID)</td></tr>
+<tr><td><code>POST /api/v1/sites</code></td><td>opprett ett nettsted: <code>{{"domain": "dittdomene.no"}}</code>. Idempotent: samme domene gir samme nettsted-ID (200) i stedet for en duplikat (201 = ny)</td></tr>
+<tr><td><code>GET /api/v1/stats</code></td><td>nøkkeltall (unike besøkende, sidevisninger, besøk, fluktfrekvens) og topplister, med forrige periode til sammenligning</td></tr>
 <tr><td><code>GET /api/v1/timeseries</code></td><td>per dag (per time når period=1)</td></tr>
 <tr><td><code>GET /api/v1/breakdown</code></td><td>full liste per dimensjon: <code>prop=pages|sources|countries|regions|devices|browsers|os</code> (+ <code>limit</code>, maks 1000)</td></tr>
-<tr><td><code>GET /api/v1/goals</code></td><td>mål/konverteringer med rate</td></tr>
-<tr><td><code>GET /api/v1/events</code></td><td>egendefinerte hendelser</td></tr>
-<tr><td><code>GET /api/v1/ecommerce</code></td><td>e-handel: ordrer + omsetning per valuta, toppprodukter, omsetning per kilde og per betalingsmåte (beløp i øre)</td></tr>
-<tr><td><code>GET /api/v1/bots</code></td><td>roboter, KI-crawlere og KI-agenter — talt for seg, aldri med i besøkstallene: treff per klasse, toppliste over roboter og hvilke sider KI-crawlere leser</td></tr>
-<tr><td><code>GET /api/v1/anchors</code></td><td>forseglede dags-aggregater: sha256-hash + blokkjede-txid — bevis på at historiske tall ikke er endret i etterkant</td></tr>
+<tr><td><code>GET /api/v1/goals</code></td><td>mål med konverteringsrate</td></tr>
+<tr><td><code>GET /api/v1/events</code></td><td>egne hendelser</td></tr>
+<tr><td><code>GET /api/v1/ecommerce</code></td><td>e-handel: ordrer og omsetning per valuta, mest solgte produkter, omsetning per kilde og per betalingsmåte (beløp i øre)</td></tr>
+<tr><td><code>GET /api/v1/bots</code></td><td>roboter, KI-crawlere og KI-agenter, telt for seg og aldri med i besøkstallene: treff per klasse, toppliste over roboter og hvilke sider KI-crawlere leser</td></tr>
+<tr><td><code>GET /api/v1/anchors</code></td><td>forseglede dagstall: sha256-hash og blokkjede-txid, som viser at historiske tall ikke er endret i ettertid</td></tr>
 </table>
 <p class=muted>Alle svar er JSON. Land returneres som ISO-koder. Feil gir
 <code>{{"error": "..."}}</code> med 400/401/403/404. <code>POST /api/v1/sites</code> er det eneste
-skrivende kallet — det oppretter kun et tomt nettsted under din egen konto, og endrer
+skrivende kallet. Det oppretter bare et tomt nettsted under din egen konto, og endrer
 aldri måledata. Nøkler kan trekkes tilbake når som helst i dashbordet.</p>
 
 <h2>E-handel: send kjøp</h2>
 <p>Kall <code>sporlos('purchase', …)</code> fra ordrebekreftelsen, så får du omsetning,
-ordrer, snittordre, toppprodukter og omsetning per kilde i dashbordet:</p>
+ordrer, snittordre, mest solgte produkter og omsetning per kilde i dashbordet:</p>
 <pre>sporlos('purchase', {{
   revenue: 1198,           // ordresum i kroner
   currency: 'NOK',         // valgfri, NOK er standard
@@ -3267,16 +3272,16 @@ ordrer, snittordre, toppprodukter og omsetning per kilde i dashbordet:</p>
     {{ name: 'eSIM Europa 10 GB', qty: 2, price: 599 }}
   ]
 }});</pre>
-<p class=muted>Kun beløp, produktnavn og ev. betalingsmåte (kort slug som «vipps» —
-fritekst avvises) sendes — vi <b>ber aldri om ordre-ID eller
+<p class=muted>Bare beløp, valuta, produktnavn, antall og eventuell betalingsmåte (en kort kode
+som «vipps»; fritekst avvises) sendes. Vi <b>ber aldri om ordre-ID eller
 kundedata</b>, og det finnes ikke felt for dem. Ikke send ordrenummer eller
-personaliserte produktnavn (gravering o.l.) i navnefeltet. Fyr kallet én gang per
-fullført ordre (typisk gated på en parameter fra betalings-redirecten, ikke på hver
-visning av kvitteringssiden). Tallene rapporteres av kundens nettleser og er
-veiledende — bruk ordresystemet, ikke analysen, som regnskaps- og avregningsgrunnlag.</p>
+personaliserte produktnavn (gravering o.l.) i navnefeltet. Gjør kallet én gang per
+fullført ordre, for eksempel bare når betalingen sender kunden tilbake med en bekreftelse,
+ikke hver gang kvitteringssiden vises. Tallene kommer fra kundens nettleser og er
+veiledende. Bruk ordresystemet, ikke analysen, som regnskapsgrunnlag.</p>
 
-<h2>Eksempel: spør en AI om tallene dine</h2>
-<p>Lim denne siden + nøkkelen din inn i Claude eller ChatGPT og be den f.eks.
+<h2>Eksempel: spør en KI om tallene dine</h2>
+<p>Lim inn denne siden og nøkkelen din i Claude eller ChatGPT, og be den f.eks.
 «hent siste 30 dager for nettstedet mitt og forklar hva som driver trafikken».
 Verktøy som kan gjøre HTTP-kall trenger ikke mer enn dette.</p>
 </div></div>
@@ -3285,15 +3290,15 @@ Verktøy som kan gjøre HTTP-kall trenger ikke mer enn dette.</p>
 
 
 async def shopify_guide(request):
-    """Installasjonsguide for Shopify Custom Pixel (Fase 1) — kopier-og-lim."""
+    """Installasjonsguide for Shopify Custom Pixel — kopier-og-lim."""
     return HTMLResponse(
         f"""<!doctype html><html lang=no><meta charset=utf-8>
 <title>Shopify — Sporløs</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<meta name=description content="Cookieløs, samtykke-fri webanalyse for Shopify — uten cookie-banner. Måler også checkout. Lim inn én egendefinert pixel.">
+<meta name=description content="Webanalyse uten cookies for Shopify-butikker. Krever ikke samtykkebanner. Måler også kassen. Lim inn én egendefinert piksel.">
 <link rel="canonical" href="https://sporlos.no/shopify">
 <meta property="og:title" content="Sporløs på Shopify — cookieløs analyse uten cookie-banner">
-<meta property="og:description" content="Lim inn én egendefinert pixel. Måler også checkout-stegene. Ingen cookies, ingen cookie-banner.">
+<meta property="og:description" content="Lim inn én egendefinert piksel. Måler også stegene i kassen. Ingen cookies og ingen samtykkebanner.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://sporlos.no/shopify">
 {_BRAND_HEAD}{_OG_META}
@@ -3310,17 +3315,17 @@ table{{border-collapse:collapse;width:100%}}td{{padding:.3rem .5rem;border-botto
 {_site_nav(request)}
 <div class=content>
 <h1>Sporløs på Shopify</h1>
-<p>Cookieløs, samtykke-fri webanalyse for Shopify-butikker — <b>uten cookie-banner</b>,
-uten å lekke besøkende til tredjepart. Bonus: dette måler også checkout-stegene, som
-vanlige tema-snippets ikke får tilgang til (Shopify-checkout ligger på et låst domene).</p>
+<p>Webanalyse uten cookies for Shopify-butikker, <b>uten samtykkebanner</b>.
+Data om besøkende sendes ikke videre til andre. Pikselen måler også stegene i kassen,
+som kode i temaet ikke når (kassen ligger på et låst Shopify-domene).</p>
 
 <h2>Installer på to minutter</h2>
 <ol>
 <li>Shopify-admin → <b>Innstillinger → Kundehendelser</b>.</li>
 <li>Klikk <b>«Legg til egendefinert pixel»</b>, gi den navnet <code>Sporløs</code>.</li>
 <li>Kopier <b>hele</b> koden under og lim den inn.</li>
-<li>Bytt <code>DITT_SITE_ID_HER</code> med din egen site-ID — finn den i
-    <a href="/app">dashbordet</a> under «Vis sporings-kode».</li>
+<li>Bytt <code>DITT_SITE_ID_HER</code> med nettsted-ID-en din. Du finner den i
+    <a href="/app">dashbordet</a> under «Vis sporingskode».</li>
 <li>Klikk <b>Lagre</b> → <b>Koble til</b>. Ferdig.</li>
 </ol>
 <pre>{escape(_SHOPIFY_PIXEL)}</pre>
@@ -3330,21 +3335,21 @@ vanlige tema-snippets ikke får tilgang til (Shopify-checkout ligger på et lås
 <tr><td><code>page_viewed</code></td><td>sidevisninger</td></tr>
 <tr><td><code>product_viewed</code></td><td>produktvisning</td></tr>
 <tr><td><code>product_added_to_cart</code></td><td>lagt i handlekurv</td></tr>
-<tr><td><code>checkout_started</code></td><td>påbegynt checkout</td></tr>
+<tr><td><code>checkout_started</code></td><td>startet i kassen</td></tr>
 <tr><td><code>checkout_completed</code></td><td>fullført kjøp — med ordresum og produktlinjer:
-gir omsetning, snittordre og toppprodukter under «E-handel» i dashbordet</td></tr>
+gir omsetning, snittordre og mest solgte produkter under «E-handel» i dashbordet</td></tr>
 <tr><td><code>search_submitted</code></td><td>butikksøk</td></tr>
 </table>
-<p class=muted>Ved kjøp sendes kun beløp og produktnavn/antall — vi <b>ber aldri om ordre-ID
+<p class=muted>Ved kjøp sendes bare beløp, valuta, produktnavn og antall. Vi <b>ber aldri om ordre-ID
 eller kundedata</b>, og lagrer ingenting som identifiserer kjøperen. Ingen cookies, ingen
-<code>localStorage</code>, ingen fingerprinting. Derfor: ingen cookie-banner for Sporløs.</p>
+<code>localStorage</code> og ingen fingeravtrykk. Derfor trenger ikke Sporløs samtykkebanner.</p>
 
-<div class=note>Tipset gjelder kun <b>app-pixler</b> (ikke denne): Shopifys «Optimized»-modus
-struper aldri en egendefinert pixel som denne. Du er trygg.</div>
+<div class=note>Shopifys «Optimized»-modus begrenser bare piksler fra apper. En egendefinert
+piksel som denne påvirkes ikke.</div>
 
 <p class=muted style="margin-top:1.4rem">Bruker du WordPress i stedet?
-<a href="https://wordpress.org/plugins/sporlos-analytics/">Sporløs-pluginen ligger i katalogen</a>.
-Annen plattform? Lim inn <a href="/utviklere">sporings-snippeten</a> rett i temaet.</p>
+<a href="https://wordpress.org/plugins/sporlos-analytics/">Sporløs-utvidelsen ligger i plugin-katalogen</a>.
+Annen plattform? Lim inn <a href="/integrasjoner">sporingskoden</a> i temaet.</p>
 </div></div>
 {_SITE_FOOTER}"""
     )
@@ -3390,7 +3395,7 @@ _GUIDES = {
         "krav": "Krever en betalt Premium-plan med eget domene — verktøyet Custom Code er låst på gratis wixsite.com-adresser.",
         "intro": "Lim inn Sporløs i Wix sitt Custom Code-verktøy (ikke «Header Code» under SEO — det blokkerer script-tagger).",
         "steg": [
-            "Åpne nettstedet i Wix-dashbordet (My Sites → velg siten).",
+            "Åpne nettstedet i Wix-dashbordet (My Sites → velg nettstedet).",
             "Klikk <b>Settings</b> nederst i venstremenyen.",
             "Under <b>Development &amp; integrations</b>, klikk <b>Custom Code</b>.",
             "Klikk <b>+ Add Custom Code</b>, og lim inn koden under.",
@@ -3400,7 +3405,7 @@ _GUIDES = {
         "sjekk": "Åpne det publiserte nettstedet (eget domene, ikke editor-preview) — besøkene dukker opp i dashbordet ditt innen kort tid.",
         "feller": [
             "Ikke bruk «Header Code» under SEO-innstillingene — det avviser script-tagger. Bruk Settings → Custom Code.",
-            "Scriptet kjører ikke i Wix-editorens preview — test alltid på den live siden.",
+            "Skriptet kjører ikke i Wix-editorens forhåndsvisning. Test alltid på det publiserte nettstedet.",
         ],
     },
     "squarespace": {
@@ -3411,9 +3416,9 @@ _GUIDES = {
             "Logg inn og åpne nettstedet.",
             "Gå til <b>Website → Website Tools → Code Injection</b> (eldre grensesnitt: <b>Settings → Advanced → Code Injection</b>).",
             "Lim inn koden under i <b>Header</b>-feltet (det øverste).",
-            "Klikk <b>Save</b>. Koden er live på hele siten umiddelbart.",
+            "Klikk <b>Save</b>. Koden virker på hele nettstedet med en gang.",
         ],
-        "sjekk": "Åpne siten i et inkognitovindu, klikk gjennom et par sider, og se besøkene i dashbordet.",
+        "sjekk": "Åpne nettstedet i et privat vindu, klikk gjennom et par sider, og se besøkene i dashbordet.",
         "feller": [
             "Lim i <b>Header</b>, ikke Footer (Footer laster for sent).",
             "Code Injection lagres ikke automatisk — husk <b>Save</b>.",
@@ -3421,8 +3426,8 @@ _GUIDES = {
     },
     "webflow": {
         "navn": "Webflow",
-        "krav": "Site-wide kode krever et betalt Site-plan (Basic/CMS/Business).",
-        "intro": "Lim inn Sporløs i site-wide Head Code — gjelder hele nettstedet.",
+        "krav": "Kode for hele nettstedet krever en betalt Site-plan (Basic/CMS/Business).",
+        "intro": "Lim inn Sporløs i Head code under Site settings. Det gjelder hele nettstedet.",
         "steg": [
             "Åpne prosjektet → <b>Site settings</b> (tannhjulet).",
             "Klikk fanen <b>Custom code</b>.",
@@ -3430,21 +3435,21 @@ _GUIDES = {
             "Klikk <b>Save changes</b>.",
             "Klikk <b>Publish</b> og velg domenet ditt — koden går ikke live før du publiserer.",
         ],
-        "sjekk": "Verifiser på ditt eget domene (ikke .webflow.io) — site-wide kode kjører ikke på staging-domenet.",
+        "sjekk": "Test på ditt eget domene, ikke .webflow.io. Koden kjører ikke på testdomenet.",
         "feller": [
             "Endringer vises i Preview, men går aldri live før du trykker <b>Publish</b>.",
-            "Gratis/Starter-plan: feltet er låst — du trenger et betalt Site-plan.",
+            "Gratis/Starter-plan: feltet er låst, så du trenger en betalt Site-plan.",
         ],
     },
     "framer": {
         "navn": "Framer",
         "krav": "Custom code finnes på alle planer, men eget domene krever Basic eller høyere.",
-        "intro": "Lim inn Sporløs på site-nivå i «End of &lt;head&gt;» — Framer-sider bytter side client-side, så velg å kjøre på hver visning.",
+        "intro": "Lim inn Sporløs for hele nettstedet i «End of &lt;head&gt;». Framer bytter side uten å laste siden på nytt, så velg at koden skal kjøre ved hvert sidebesøk.",
         "steg": [
             "Åpne prosjektet → <b>Site Settings</b> (tannhjulet — ikke Page Settings).",
             "Velg fanen <b>General</b> og bla til <b>Custom Code</b>.",
             "Lim inn koden under i feltet <b>End of &lt;head&gt; tag</b> (klikk «Show Advanced» om du bare ser to felter).",
-            "Finnes en kjørings-bryter, velg <b>On Every Page Visit</b>.",
+            "Finnes det et valg for når koden kjører, velg <b>On Every Page Visit</b>.",
             "Klikk <b>Publish</b> — custom code legges kun på det live nettstedet.",
         ],
         "sjekk": "Test på den live, publiserte URL-en — custom code vises ikke i editor-preview.",
@@ -3465,13 +3470,13 @@ _GUIDES = {
         ],
         "sjekk": "Åpne forsiden, «Vis sidekilde» og søk etter «sporlos.js» — den skal ligge i &lt;head&gt;.",
         "feller": [
-            "Bruk <b>Site Header</b>, ikke code injection per innlegg (som bare sporer ett innlegg).",
-            "Har du CDN/cache foran Ghost, kan det ta noen minutter før snippeten vises.",
+            "Bruk <b>Site Header</b>, ikke code injection per innlegg (som bare måler ett innlegg).",
+            "Har du CDN/cache foran Ghost, kan det ta noen minutter før koden vises.",
         ],
     },
     "gtm": {
         "navn": "Google Tag Manager",
-        "krav": "Gratis. Forutsetter at GTM-container-snippeten allerede ligger på nettstedet.",
+        "krav": "Gratis. Forutsetter at GTM-containeren allerede ligger på nettstedet.",
         "intro": "Legg Sporløs inn som en Custom HTML-tag i GTM, utløst på alle sider.",
         "steg": [
             "Åpne <b>tagmanager.google.com</b> og velg containeren for nettstedet.",
@@ -3483,7 +3488,8 @@ _GUIDES = {
         "sjekk": "Bruk GTM <b>Preview</b> (Tag Assistant) og bekreft at «Sporløs» står under «Tags Fired» på første sidevisning.",
         "feller": [
             "Ikke live før <b>Submit → Publish</b> — vanligste feil.",
-            "Ikke lim Sporløs både i GTM <i>og</i> direkte i &lt;head&gt; — da telles besøk dobbelt.",
+            "Ikke lim Sporløs både i GTM <i>og</i> direkte i &lt;head&gt;, for da telles besøk dobbelt.",
+            "Google Tag Manager lastes fra Google. Sporløs trenger ikke samtykke, men vurder GTM for seg.",
         ],
     },
 }
@@ -3497,10 +3503,10 @@ def _render_guide(request, slug):
         f"""<!doctype html><html lang="no"><head><meta charset="utf-8">
 <title>Sporløs på {escape(g['navn'])} — installasjonsguide</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<meta name="description" content="Slik installerer du Sporløs cookieløs webanalyse på {escape(g['navn'])} — uten cookie-banner. {escape(g['krav'])}">
+<meta name="description" content="Slik installerer du Sporløs, webanalyse uten cookies, på {escape(g['navn'])}. Krever ikke samtykkebanner. {escape(g['krav'])}">
 <link rel="canonical" href="https://sporlos.no/integrasjoner/{slug}">
 <meta property="og:title" content="Sporløs på {escape(g['navn'])} — installasjonsguide">
-<meta property="og:description" content="Slik installerer du Sporløs cookieløs webanalyse på {escape(g['navn'])} — uten cookie-banner. {escape(g['krav'])}">
+<meta property="og:description" content="Slik installerer du Sporløs, webanalyse uten cookies, på {escape(g['navn'])}. Krever ikke samtykkebanner. {escape(g['krav'])}">
 {_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_CHROME_CSS}
 h1{{font-size:2rem;letter-spacing:-.02em}}h2{{font-size:1.15rem;margin-top:2rem}}
@@ -3518,15 +3524,15 @@ pre{{background:var(--card);border:1px solid var(--line);border-radius:8px;paddi
 <div class=note>{escape(g['krav'])}</div>
 <h2>Slik gjør du det</h2>
 <ol>{steg}</ol>
-<p class=muted>Lim inn denne — bytt <code>DITT_SITE_ID</code> med din egen ID fra
-<a href="/app">dashbordet</a> (under «Vis sporings-kode»):</p>
+<p class=muted>Lim inn koden under, og bytt <code>DITT_SITE_ID</code> med nettsted-ID-en din.
+Du finner den i <a href="/app">dashbordet</a> under «Vis sporingskode».</p>
 <pre>{escape(_SNIPPET_TPL)}</pre>
 <h2>Sjekk at det virker</h2>
 <p>{g['sjekk']}</p>
 <h2>Verdt å vite</h2>
 <ul>{feller}</ul>
 <p class=muted style="margin-top:1.4rem">Står du fast? Send oss en e-post på
-<a href="mailto:post@sporlos.no">post@sporlos.no</a> — vi hjelper deg i gang.</p>
+<a href="mailto:post@sporlos.no">post@sporlos.no</a>, så hjelper vi deg i gang.</p>
 </div></div>
 {_SITE_FOOTER}</body></html>"""
     )
@@ -3543,17 +3549,17 @@ async def integrasjoner(request):
     """Hub: alle plattformer Sporløs fungerer med — tier-et ærlig (plugin/app/guide)."""
     guide_kort = "".join(
         f'<a class=intk href="/integrasjoner/{slug}"><b>{escape(g["navn"])}</b>'
-        f'<span>Lim-inn-guide</span></a>'
+        f'<span>Veiledning</span></a>'
         for slug, g in _GUIDES.items()
     )
     return HTMLResponse(
         f"""<!doctype html><html lang="no"><head><meta charset="utf-8">
 <title>Integrasjoner — Sporløs fungerer med plattformen din</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<meta name="description" content="Sporløs cookieløs webanalyse fungerer med WordPress, Shopify, Wix, Squarespace, Webflow, Framer, Ghost og Google Tag Manager — eller hvilken som helst side der du kan lime inn en kodesnutt.">
+<meta name="description" content="Sporløs cookieløs webanalyse fungerer med WordPress, Shopify, Wix, Squarespace, Webflow, Framer, Ghost og Google Tag Manager, og alle nettsteder der du kan legge kode i &lt;head&gt;.">
 <link rel="canonical" href="https://sporlos.no/integrasjoner">
 <meta property="og:title" content="Integrasjoner — Sporløs fungerer med plattformen din">
-<meta property="og:description" content="Sporløs cookieløs webanalyse fungerer med WordPress, Shopify, Wix, Squarespace, Webflow, Framer, Ghost og Google Tag Manager — eller hvilken som helst side der du kan lime inn en kodesnutt.">
+<meta property="og:description" content="Sporløs cookieløs webanalyse fungerer med WordPress, Shopify, Wix, Squarespace, Webflow, Framer, Ghost og Google Tag Manager, og alle nettsteder der du kan legge kode i &lt;head&gt;.">
 {_BRAND_HEAD}{_OG_META}
 <style>{_BRAND_CSS}{_CHROME_CSS}
 h1{{font-size:2.1rem;letter-spacing:-.025em}}h2{{font-size:1.05rem;margin:2rem 0 .8rem;color:var(--muted)}}
@@ -3571,26 +3577,26 @@ padding:1rem 1.1rem;text-decoration:none;background:var(--card);transition:borde
 {_site_nav(request)}
 <div class=content>
 <h1>Fungerer med plattformen din</h1>
-<p class=lede>Sporløs er én liten kodesnutt — den virker på alt som lar deg legge til kode i
-&lt;head&gt;. For de vanligste plattformene har vi laget ferdige guider.</p>
+<p class=lede>Sporløs er én linje kode. Den virker på alle plattformer der du kan legge kode i
+&lt;head&gt;. For de vanligste plattformene har vi laget ferdige veiledninger.</p>
 
-<h2>Dedikert plugin / app</h2>
+<h2>Egen utvidelse</h2>
 <div class=grid>
-  <a class="intk dedikert" href="https://wordpress.org/plugins/sporlos-analytics/"><b>WordPress</b><span>Offisiell plugin →</span></a>
-  <a class="intk dedikert" href="/shopify"><b>Shopify</b><span>Pixel — måler også checkout →</span></a>
+  <a class="intk dedikert" href="https://wordpress.org/plugins/sporlos-analytics/"><b>WordPress</b><span>Offisiell utvidelse →</span></a>
+  <a class="intk dedikert" href="/shopify"><b>Shopify</b><span>Måler også kassen →</span></a>
 </div>
 
-<h2>Kodefrie lim-inn-guider</h2>
+<h2>Veiledninger</h2>
 <div class=grid>{guide_kort}</div>
 
 <h2>Alt annet</h2>
-<p class=muted>Egen nettside eller et rammeverk? Lim
-<a href="/utviklere">sporings-snippeten</a> rett inn i &lt;head&gt; — det er alt som skal til.</p>
+<p class=muted>Eget nettsted eller et rammeverk? Lim
+<a href="/#installasjon">sporingskoden</a> inn i &lt;head&gt;. Det er alt som skal til.</p>
 
 <div class=cta>
 <b>Mangler integrasjonen du trenger?</b>
-<p class=muted style="margin:.4rem 0 0">Si fra på <a href="mailto:post@sporlos.no?subject=Integrasjon">post@sporlos.no</a>
-— trenger du en integrasjon vi ikke har ennå, fikser vi det.</p>
+<p class=muted style="margin:.4rem 0 0">Skriv til <a href="mailto:post@sporlos.no?subject=Integrasjon">post@sporlos.no</a>,
+så ser vi på det.</p>
 </div>
 </div></div>
 {_SITE_FOOTER}</body></html>"""
@@ -3676,9 +3682,9 @@ kundeforholdet slettes innsamlede analysedata innen 90 dager.</p>
 
 <h2>11. Tilgjengelighet og ansvar</h2>
 <p>Vi tilstreber høy oppetid og tar jevnlige sikkerhetskopier. Planlagt vedlikehold som påvirker
-tjenesten varsles. Hvis sporingsscriptet er utilgjengelig, påvirkes ikke nettstedet ditt —
-scriptet feiler stille uten å forstyrre siden.</p>
-<p>Tjenesten leveres "som den er". For næringsdrivende er vårt samlede ansvar begrenset til vederlag
+tjenesten varsles. Hvis sporingsskriptet er utilgjengelig, påvirkes ikke nettstedet ditt —
+skriptet feiler stille uten å forstyrre siden.</p>
+<p>Tjenesten leveres «som den er». For næringsdrivende er vårt samlede ansvar begrenset til vederlag
 betalt siste 12 måneder; forbrukeres ufravikelige rettigheter berøres ikke.</p>
 
 <h2>12. Endringer i vilkårene</h2>
@@ -3722,7 +3728,7 @@ visningsvalg i demoen. Det lagres bare i nettleseren din (localStorage), og send
 <p>Vi måler vårt eget nettsted med Sporløs, uten cookies og uten å lagre IP-adresser. Derfor
 settes ingen sporings-cookies og det kreves ikke samtykke.
 Vi bruker ingen tredjeparts sporings- eller analyseverktøy, og laster ingen ressurser
-(fonter, scripts) fra tredjepart på offentlige sider.</p>
+(fonter, skript) fra tredjepart på offentlige sider.</p>
 <p><b>Hva som lagres:</b> For hver sidevisning lagrer vi side, kilde, land og fylke, enhetstype,
 nettleser, operativsystem, eventuelle UTM-kampanjeverdier og en besøks-hash. Hashen lages av
 IP-adressen og nettleseren sammen med et salt som byttes og slettes hver natt, så besøk kan ikke
@@ -3812,9 +3818,9 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
         + _site_nav(request)
         + """<div class=content>
 <header>
-  <h1>Bytte fra Google Analytics? Her er den ærlige sammenligningen.</h1>
+  <h1>Bytte fra Google Analytics? Dette mister du, og dette får du.</h1>
   <p class=lede>Sporløs er ikke en kopi av Google Analytics, og later ikke som. Her er hva du faktisk
-  mister, hva du får — og hva du tror du mister, men ikke gjør.</p>
+  mister, hva du får, og hva du tror du mister, men ikke gjør.</p>
 </header>
 
 <section>
@@ -3825,43 +3831,44 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
   <p>Det gir en roligere og raskere side, og et førsteinntrykk uten juridisk støy. Og det har en
   målbar bieffekt folk undervurderer:</p>
   <p><b>Tallene dine blir mer riktige, ikke mindre.</b> GA måler bare de som trykker «godta» og slipper
-  gjennom annonseblokkere — en stor andel gjør ikke det, og hullene fylles delvis med modellerte
-  estimater. Sporløs trenger ikke samtykke og måler derfor også dem som ville sagt nei, som faktiske
-  tall. Bare besøkende som har slått på Do Not Track eller Global Privacy Control, telles ikke.</p>
+  gjennom annonseblokkere. En stor andel gjør ikke det, og hullene fylles delvis med modellerte
+  anslag. Sporløs trenger ikke samtykke og måler derfor også dem som ville sagt nei. Alt er faktiske
+  tall, ikke anslag. Bare besøkende som har slått på Do Not Track eller Global Privacy Control, telles ikke.</p>
 </section>
 
 <section>
-  <h2>Dette mister du — ærlig talt</h2>
+  <h2>Dette mister du</h2>
   <ul>
     <li><b>Google Ads-integrasjonen.</b> Konverteringsimport, remarketing-målgrupper og smart
     bidding-signaler finnes ikke hos oss. Kjører du tung Google Ads-annonsering, bør du beholde GA
     ved siden av (eller koble Ads-konvertering direkte i Ads).</li>
     <li><b>Demografi og interesser.</b> GA gjetter alder/interesser via Googles annonsenettverk.
-    Sporløs vet ikke hvem folk er — det er hele poenget.</li>
-    <li><b>Bruker-nivå analyse.</b> Utforskninger, segmenter på enkeltbrukere, reiser på tvers av
-    enheter og dager, BigQuery-eksport. Sporløs viser aggregater, aldri enkeltpersoner.</li>
+    Sporløs vet ikke hvem folk er. Det er hele poenget.</li>
+    <li><b>Analyse på brukernivå.</b> Utforskninger, segmenter på enkeltbrukere, reiser på tvers av
+    enheter og dager, BigQuery-eksport. Sporløs viser summer, aldri enkeltpersoner.</li>
     <li><b>Avansert kampanjeattribusjon.</b> UTM-kampanjer (kilde/medium/kampanje) måles, men
-    fler-stegs attribusjonsmodeller og <code>utm_content</code>/<code>utm_term</code> finnes ikke ennå.</li>
-    <li><b>Prisen.</b> GA er gratis. Sporløs koster fra 99 kr/mnd eks. mva — eller null, hvis du kjører
-    åpen kildekode-versjonen på egen server. Du betaler for at <i>du</i> er kunden, ikke produktet.</li>
+    attribusjon over flere kontaktpunkter og <code>utm_content</code>/<code>utm_term</code> finnes ikke ennå.</li>
+    <li><b>Prisen.</b> GA er gratis. Sporløs koster fra 99 kr/mnd eks. mva (123,75 kr inkl. mva),
+    eller ingenting hvis du drifter åpen kildekode-versjonen selv. Du betaler med penger, ikke med
+    besøkernes data.</li>
   </ul>
 </section>
 
 <section>
-  <h2>Dette tror mange at de mister — men ikke gjør</h2>
+  <h2>Dette tror mange at de mister, men ikke gjør</h2>
   <ul>
-    <li><b>SEO- og søkeordsdata.</b> Den kommer fra Google Search Console, ikke fra Analytics — og
+    <li><b>SEO- og søkeordsdata.</b> De kommer fra Google Search Console, ikke fra Analytics, og
     Search Console beholder du uansett. Sporløs viser hva folk gjør på siden; Search Console viser
-    hvordan de fant den. Komplementært.</li>
-    <li><b>Mål og konvertering.</b> Egendefinerte hendelser, mål med konverteringsrate og funnels med
-    drop-off finnes i Sporløs.</li>
-    <li><b>E-handel på produktnivå.</b> Omsetning, ordrer, snittordre, toppprodukter og omsetning
-    per kilde — med ett <code>purchase</code>-kall fra ordrebekreftelsen. Forskjellen fra GA: vi
+    hvordan de fant den. De utfyller hverandre.</li>
+    <li><b>Mål og konvertering.</b> Egne hendelser, mål med konverteringsrate og trakter med
+    frafall finnes i Sporløs.</li>
+    <li><b>E-handel på produktnivå.</b> Omsetning, ordrer, snittordre, mest solgte produkter og omsetning
+    per kilde, med ett <code>purchase</code>-kall fra ordrebekreftelsen. Forskjellen fra GA: vi
     ber aldri om ordre-ID eller kundedata, og lagrer ingenting som identifiserer kjøperen.</li>
-    <li><b>Kampanjemåling.</b> UTM-merkede lenker (kilde, medium, kampanje) måles — uten at hele
+    <li><b>Kampanjemåling.</b> UTM-merkede lenker (kilde, medium, kampanje) måles, uten at hele
     URL-en med potensielt personidentifiserende parametre noensinne lagres.</li>
-    <li><b>Kilder, enheter, geografi.</b> Hvor trafikken kommer fra, mobil/desktop, nettleser og
-    fylke — uten å identifisere noen.</li>
+    <li><b>Kilder, enheter, geografi.</b> Hvor trafikken kommer fra, mobil eller datamaskin, nettleser og
+    fylke, uten å identifisere noen.</li>
     <li><b>Inngangs- og utgangssider, navigasjonsstier.</b> Hvor folk lander, hvor de forsvinner og
     hvordan de beveger seg.</li>
   </ul>
@@ -3873,19 +3880,19 @@ th{font-size:.85rem;color:var(--muted);font-weight:600}
     <tr><th></th><th>Google Analytics</th><th>Sporløs</th></tr>
     <tr><td>Cookie-banner nødvendig</td><td class=nei>Ja</td><td class=ja>Nei</td></tr>
     <tr><td>Måler besøkende uten samtykke</td><td class=delvis>Delvis (modellert)</td><td class=ja>Ja, faktiske tall (unntatt DNT/GPC)</td></tr>
-    <tr><td>Scriptvekt</td><td class=nei>~90 kB+</td><td class=ja>~1 kB komprimert</td></tr>
+    <tr><td>Skriptstørrelse</td><td class=nei>~90 kB+</td><td class=ja>~1 kB komprimert</td></tr>
     <tr><td>Datalagring</td><td class=nei>Google (USA-tilknyttet)</td><td class=ja>Norge, norsk-eid drift</td></tr>
     <tr><td>Google Ads-integrasjon</td><td class=ja>Ja</td><td class=nei>Nei</td></tr>
-    <tr><td>Bruker-/segmentanalyse, BigQuery</td><td class=ja>Ja</td><td class=nei>Nei (kun aggregater)</td></tr>
-    <tr><td>Mål, funnels, kilder, enheter</td><td class=ja>Ja</td><td class=ja>Ja</td></tr>
+    <tr><td>Bruker-/segmentanalyse, BigQuery</td><td class=ja>Ja</td><td class=nei>Nei (bare summer)</td></tr>
+    <tr><td>Mål, trakter, kilder, enheter</td><td class=ja>Ja</td><td class=ja>Ja</td></tr>
     <tr><td>E-handel (omsetning, produkter)</td><td class=ja>Ja</td><td class=ja>Ja (uten ordre-ID/kundedata)</td></tr>
-    <tr><td>Åpen kildekode / self-host</td><td class=nei>Nei</td><td class=ja>Ja</td></tr>
-    <tr><td>Etterprøvbare, forseglede tall</td><td class=nei>Nei</td><td class=ja>Ja (Pro)</td></tr>
-    <tr><td>Pris</td><td class=ja>Gratis</td><td class=delvis>Fra 99 kr/mnd eks. mva · self-host gratis</td></tr>
+    <tr><td>Åpen kildekode, kan driftes selv</td><td class=nei>Nei</td><td class=ja>Ja</td></tr>
+    <tr><td>Etterprøvbare, forseglede tall</td><td class=nei>Nei</td><td class=ja>Ja, i alle planer</td></tr>
+    <tr><td>Pris</td><td class=ja>Gratis</td><td class=delvis>Fra 99 kr/mnd eks. mva · gratis på egen server</td></tr>
   </table>
   <p class=muted>Etterprøvbare tall: dagstallene forsegles kryptografisk i en uavhengig offentlig
-  logg, så de kan ikke pyntes på i etterkant. Nyttig når tall skal dokumenteres overfor kunder
-  eller annonsører.</p>
+  logg, så de ikke kan endres i ettertid. Nyttig når tall skal dokumenteres overfor kunder
+  eller annonsører. Forseglingen er med i alle planer.</p>
 </section>
 
 <section>
@@ -4080,11 +4087,12 @@ async def llms_txt(request):
     mater Copilot/ChatGPT-søk, så en ren, siterbar oppsummering hjelper."""
     return PlainTextResponse(
         "# Sporløs\n\n"
-        "> Personvernvennlig, cookieløs webanalyse for EØS — et norsk "
-        "Plausible-alternativ. Ingen cookies og ingen samtykkebanner (kun "
-        "daglig-saltet enveis-hash, aldri rå-IP lagret). Self-hostbar (AGPL) "
-        "eller hosted SaaS. Valgfri BSV-forankring av dags-aggregater som "
-        "premium. Drevet av Datamynt AS.\n\n"
+        "> Personvernvennlig webanalyse uten cookies, laget i Norge: et norsk "
+        "Plausible-alternativ. Ingen cookies og ingen samtykkebanner. IP-adresser "
+        "lagres aldri; besøk kjennes igjen med en besøks-hash som byttes hver natt. "
+        "Åpen kildekode (AGPL), kan driftes selv eller brukes som tjeneste fra "
+        "sporlos.no. Dagstallene forsegles i en offentlig blokkjede (BSV) i alle "
+        "planer. Drevet av Datamynt AS.\n\n"
         "## Sider\n"
         "- [Hjem](https://sporlos.no/)\n"
         "- [Google Analytics-alternativ](https://sporlos.no/google-analytics-alternativ)\n"
@@ -4142,7 +4150,31 @@ def _trial_expired(tenant: dict) -> bool:
 
 
 def _fmt_n(n: int) -> str:
-    return f"{n:,}".replace(",", " ")
+    """Hele tall med hardt mellomrom som tusenskille: «12\u00a0345»."""
+    return f"{n:,}".replace(",", "\u00a0")
+
+
+def _fmt_dec(x, places: int = 1) -> str:
+    """Desimaltall på norsk: «1,8» (desimalkomma)."""
+    return f"{float(x or 0):.{places}f}".replace(".", ",")
+
+
+def _fmt_pct(x, places: int = 0) -> str:
+    """Prosent på norsk: «74 %», «0,0 %» (desimalkomma, hardt mellomrom før %)."""
+    num = _fmt_dec(x, places) if places else str(round(x or 0))
+    return f"{num}\u00a0%"
+
+
+# Mål- og traktsteg lagres som path/event; vist som side/hendelse.
+_MATCH_TYPE_NO = {"path": "side", "event": "hendelse"}
+
+# Enhetstyper lagres kanonisk (useragent.py: desktop/mobil/tablet); bare visningen er norsk.
+_DEVICE_NO = {"desktop": "Datamaskin", "mobil": "Mobil", "tablet": "Nettbrett"}
+
+
+def _devices_no(items: list[dict]) -> list[dict]:
+    """Ikon slås opp på den lagrede verdien FØR navnet byttes til norsk visningsnavn."""
+    return [{**d, "ikon": icons.device(str(d["k"])), "k": _DEVICE_NO.get(d["k"], d["k"])} for d in items]
 
 
 def _fmt_kr(cents: int, currency: str = "NOK") -> str:
@@ -4167,7 +4199,7 @@ text-decoration:none;color:var(--muted);font-size:.85rem;background:var(--card)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;margin:1rem 0}
 .kpi b{font-size:1.9rem;display:block;line-height:1.15;letter-spacing:-.02em}
-.kpi span{color:var(--muted);font-size:.8rem}
+.kpi span{color:var(--muted);font-size:.8rem;display:block;line-height:1.35}
 .kpi .d{display:block;font-size:.78rem;font-weight:600;margin-top:.2rem}
 .dg{color:var(--ok)}.dr{color:var(--err)}.d0{color:var(--muted)}
 /* KPI-hierarki (v2): unike eier blikket — stort kort m/ sparkline + forseglet-badge,
@@ -4294,7 +4326,7 @@ _CHART_JS = """<script>
       tip.querySelector('.tl').textContent = p[2];
       tip.querySelector('b').textContent = nf.format(p[3]);
       tip.querySelector('b').insertAdjacentText('afterend',
-        ' unike \\u00b7 ' + nf.format(p[4]) + ' visn.');
+        ' unike besøkende \\u00b7 ' + nf.format(p[4]) + ' visninger');
       tip.hidden = false;
       /* svg ligger øverst i wrapperen, så svg-lokale piksler == wrapper-lokale */
       var px = p[0] / W * r.width, py = p[1] / H * r.height;
@@ -4381,22 +4413,22 @@ def _bots_html(site_id: int, days: int, label: str, *, always: bool = False) -> 
     return (
         '<h3 id=roboter>Roboter og KI-agenter</h3>'
         "<p class=hint>Trafikk som ikke er mennesker: søkemotorer, KI-crawlere, KI-agenter, "
-        "lenkeforhåndsvisninger og skript. Holdt helt utenfor besøkstallene over, og talt i treff "
-        "(sidevisninger), ikke unike — roboter får ingen besøkshash.</p>"
+        "lenkeforhåndsvisninger og skript. Telles ikke med i besøkstallene over. Roboter telles "
+        "i treff, ikke som unike besøkende.</p>"
         + body
         + '<p style="color:var(--muted);font-size:.78rem;margin:.7rem 0 0">Forbehold: Sporløs ser bare '
-        "roboter som kjører JavaScript. De fleste KI-crawlere gjør ikke det, så de er undertalt her — "
-        "en integrasjon på serversiden ville sett alle.</p>"
+        "roboter som kjører JavaScript. De fleste KI-crawlere gjør ikke det, så de er undertalt her. "
+        "Måling på serversiden ville ha fanget alle.</p>"
     )
 
 
 def _goals_html(goals, public_id, *, editable=True):
-    """«Mål / konverteringer». Shared by the owner dashboard (editable: delete
+    """«Mål». Shared by the owner dashboard (editable: delete
     buttons and the add form) and the public demo page (read-only: no forms)."""
     goal_rows = "".join(
         f'<tr><td>{escape(g["name"])} <small style="color:var(--muted)">'
-        f'({escape(g["match_type"])}: {escape(g["match_value"])})</small></td>'
-        f'<td>{g["completions"]}</td><td>{g["rate"]}%</td>'
+        f'({_MATCH_TYPE_NO.get(g["match_type"], escape(g["match_type"]))}: {escape(g["match_value"])})</small></td>'
+        f'<td>{_fmt_n(g["completions"])}</td><td>{_fmt_pct(g["rate"], 1)}</td>'
         + (
             f'<td><form method=post action="/app/goals/delete" style="display:inline">'
             f'<input type=hidden name=site value="{escape(public_id)}">'
@@ -4413,30 +4445,30 @@ def _goals_html(goals, public_id, *, editable=True):
         '<form method=post action="/app/goals" style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0;font-size:.9rem">'
         f'<input type=hidden name=site value="{escape(public_id)}">'
         '<input name=name placeholder="Navn (f.eks. Påmelding)" required style="flex:1;min-width:8rem;padding:.4rem;border:1px solid #ccc;border-radius:6px">'
-        '<select name=match_type style="padding:.4rem;border:1px solid #ccc;border-radius:6px"><option value=event>Hendelse</option><option value=path>Sti</option></select>'
+        '<select name=match_type style="padding:.4rem;border:1px solid #ccc;border-radius:6px"><option value=event>Hendelse</option><option value=path>Side</option></select>'
         '<input name=match_value placeholder="signup eller /takk" required style="flex:1;min-width:8rem;padding:.4rem;border:1px solid #ccc;border-radius:6px">'
         '<button style="background:#1a1a1a;color:#fff;border:0;padding:0 .8rem;border-radius:6px;cursor:pointer">Legg til mål</button>'
         "</form>"
     )
     return (
-        "<h3>Mål / konverteringer</h3>"
-        '<p class=hint>Et mål teller besøk som når noe du bryr deg om: en side '
+        "<h3>Mål</h3>"
+        '<p class=hint>Et mål teller besøkende som når noe du bryr deg om: en side '
         "(f.eks. <code>/takk</code>) eller en hendelse (f.eks. <code>signup</code>). "
-        "Rate = andel av alle besøk i perioden.</p>"
-        f"<table class=gf><tr><th>Mål</th><th>Fullført</th><th>Rate</th>{'<th></th>' if editable else ''}</tr>"
+        "Andel er hvor stor del av de besøkende i perioden som nådde målet.</p>"
+        f"<table class=gf><tr><th>Mål</th><th>Fullført</th><th>Andel</th>{'<th></th>' if editable else ''}</tr>"
         f"{goal_rows or '<tr><td>ingen mål enda</td>' + empty_cells + '</tr>'}</table>"
         + (form if editable else "")
     )
 
 
 def _funnels_html(funnels, public_id, *, editable=True):
-    """«Funnels». Shared by the owner dashboard and the read-only public demo."""
+    """«Trakter» (funnels). Shared by the owner dashboard and the read-only public demo."""
     frows = ""
     for fu in funnels:
         steprows = "".join(
             f'<tr><td>{i + 1}. {escape(st["value"])} '
-            f'<small style="color:var(--muted)">({escape(st["type"])})</small></td>'
-            f'<td>{st["count"]}</td><td>{st["rate"]}%</td></tr>'
+            f'<small style="color:var(--muted)">({_MATCH_TYPE_NO.get(st["type"], escape(st["type"]))})</small></td>'
+            f'<td>{_fmt_n(st["count"])}</td><td>{_fmt_pct(st["rate"])}</td></tr>'
             for i, st in enumerate(fu["steps"])
         )
         frows += (
@@ -4452,25 +4484,25 @@ def _funnels_html(funnels, public_id, *, editable=True):
         )
     if not frows:
         frows = (
-            '<p style="color:var(--muted);font-size:.9rem">Ingen funnels enda. '
-            "Eksempel: <code>/</code> → <code>/priser</code> → <code>signup</code> "
-            "viser hvor mange som går hele veien — og hvor de faller fra.</p>"
+            '<p style="color:var(--muted);font-size:.9rem">Ingen trakter ennå. '
+            "Eksempel: <code>/</code>, <code>/priser</code>, <code>signup</code> "
+            "viser hvor mange som går hele veien, og hvor de faller fra.</p>"
         )
     form = (
         '<form method=post action="/app/funnels" style="margin:.5rem 0;font-size:.9rem">'
         f'<input type=hidden name=site value="{escape(public_id)}">'
         '<input name=name placeholder="Navn (f.eks. Kjøpstrakt)" required '
         'style="padding:.4rem;border:1px solid #ccc;border-radius:6px;width:100%;box-sizing:border-box;margin-bottom:.4rem">'
-        '<textarea name=steps required rows=4 placeholder="Ett steg per linje, i rekkefolge:&#10;/&#10;/priser&#10;signup" '
+        '<textarea name=steps required rows=4 placeholder="Ett steg per linje, i rekkefølge:&#10;/&#10;/priser&#10;signup" '
         'style="width:100%;box-sizing:border-box;padding:.4rem;border:1px solid #ccc;border-radius:6px;font:inherit"></textarea>'
-        '<button style="background:#1a1a1a;color:#fff;border:0;padding:.4rem .8rem;border-radius:6px;cursor:pointer;margin-top:.4rem">Lag funnel</button>'
-        '<div style="color:var(--muted);font-size:.8rem">Linjer som starter med / = sti, ellers = hendelse. Min. 2 steg.</div>'
+        '<button style="background:#1a1a1a;color:#fff;border:0;padding:.4rem .8rem;border-radius:6px;cursor:pointer;margin-top:.4rem">Lag trakt</button>'
+        '<div style="color:var(--muted);font-size:.8rem">En linje som starter med / er en side, ellers en hendelse. Minst 2 steg.</div>'
         "</form>"
     )
     return (
-        "<h3>Funnels</h3>"
-        '<p class=hint>En funnel følger besøk gjennom en stegvis rekke sider/hendelser '
-        "og viser frafallet mellom hvert steg.</p>"
+        "<h3>Trakter</h3>"
+        '<p class=hint>En trakt følger besøk gjennom faste steg (sider eller hendelser) og viser '
+        "hvor mange som faller fra mellom hvert steg. Prosenten er andelen av dem som startet.</p>"
         f"{frows}"
         + (form if editable else "")
     )
@@ -4542,9 +4574,9 @@ def _ecom_html(site_id, days, *, always=False):
             f"{prod_rows or '<tr><td>kjøp uten produktlinjer</td><td></td><td></td></tr>'}</table></div>"
             "<div><table><tr><th>Kilde</th><th style='text-align:right'>Ordrer</th>"
             f"<th style='text-align:right'>Omsetning</th></tr>{src_rows}</table>"
-            '<p style="color:var(--muted);font-size:.78rem;margin:.4rem 0 0">Kilde = besøkerens '
-            "første kilde i samme døgn (UTC) — hashen roterer ved midnatt, så attribusjon "
-            "krysser aldri døgn.</p>"
+            '<p style="color:var(--muted);font-size:.78rem;margin:.4rem 0 0">Kilde er besøkerens '
+            "første kilde samme døgn (UTC). Besøks-hashen byttes ved midnatt, så et kjøp kobles "
+            "aldri til en kilde fra et annet døgn.</p>"
             "</div>"
             f"{pay_html}"
             "</div>"
@@ -4560,9 +4592,9 @@ def _ecom_html(site_id, days, *, always=False):
         body = '<p style="color:var(--muted);font-size:.9rem">Ingen kjøp i perioden.</p>'
     return (
         "<h3>E-handel</h3>"
-        "<p class=hint>Kjøp sendes med <code>sporlos('purchase', {…})</code> — kun beløp, "
-        "produktnavn og betalingsmåte, uten ordre-ID eller kundedata. Nettleser-rapporterte tall: "
-        "veiledende, ikke avregningsgrunnlag. "
+        "<p class=hint>Kjøp sendes med <code>sporlos('purchase', {…})</code>: bare beløp, valuta, "
+        "produktnavn, antall og betalingsmåte. Ingen ordre-ID eller kundedata. Tallene kommer fra "
+        "nettleseren og er veiledende, ikke regnskapsgrunnlag. "
         '<a href="/utviklere">Slik sender du kjøp</a>.</p>'
         + body
     )
@@ -4583,12 +4615,28 @@ def _stat_table(items, key, icon=None):
         rows += (
             f'<tr><td title="{escape(str(i[key]))}" style="background:linear-gradient(90deg,'
             f'var(--bar) {pct:.0f}%,transparent {pct:.0f}%);border-radius:4px;padding-left:.45rem">'
-            f'{ic}{escape(str(i[key]))}</td><td>{i["n"]}</td></tr>'
+            f'{ic}{escape(str(i[key]))}</td><td>{_fmt_n(i["n"])}</td></tr>'
         )
     return f"<table>{rows or '<tr><td>ingen data enda</td></tr>'}</table>"
 
 
-_VS_LABEL = {"1": "i går", "7": "forrige 7 dager", "30": "forrige 30 dager", "90": "forrige 90 dager"}
+_SESSION_TITLE = "Et besøk slutter etter 30 minutter uten aktivitet."
+_BOUNCE_TITLE = "Andel besøk med bare én sidevisning. Lavere er bedre."
+_DEPTH_TITLE = "Gjennomsnittlig antall sider per besøk."
+_VS_LABEL = {"1": "i går", "7": "de 7 dagene før", "30": "de 30 dagene før", "90": "de 90 dagene før"}
+_PERIOD_PHRASE = {"1": "i dag", "7": "siste 7 dager", "30": "siste 30 dager", "90": "siste 90 dager"}
+
+
+def _visitors_label(days: int) -> str:
+    """Over flere dager er tallet en sum av unike per dag (vi følger ingen over døgnet)."""
+    return "unike besøkende" if days == 1 else "unike besøkende (summert per dag)"
+
+
+def _visitors_title(days: int) -> str:
+    if days == 1:
+        return "Vi følger ingen på tvers av dager."
+    return ("Summen av unike besøkende per dag. Vi følger ingen på tvers av dager, "
+            "så samme person telles én gang per dag.")
 
 
 def _delta(now, before, invert=False):
@@ -4602,12 +4650,12 @@ def _delta(now, before, invert=False):
         return ('<small class="d d0" title="forrige periode hadde for lite data '
                 'til meningsfull sammenligning">—</small>')
     if pct == 0:
-        return '<small class="d d0" title="mot forrige periode">±0 %</small>'
+        return '<small class="d d0" title="mot forrige periode">±0\u00a0%</small>'
     up = pct > 0
     good = (not up) if invert else up
     return (
         f'<small class="d {"dg" if good else "dr"}" title="mot forrige periode">'
-        f'{"↑" if up else "↓"} {abs(pct)} %</small>'
+        f'{"↑" if up else "↓"} {abs(pct)}\u00a0%</small>'
     )
 
 
@@ -4661,7 +4709,7 @@ def _verify_table(rollups, public_id=None):
                 'style="font-size:.72rem">bevis</a>'
             )
         rows.append(
-            f"<tr><td>{escape(day)}</td><td>{r['visitors']}</td><td>{r['pageviews']}</td>"
+            f"<tr><td>{escape(day)}</td><td>{_fmt_n(r['visitors'])}</td><td>{_fmt_n(r['pageviews'])}</td>"
             f'<td style="font-family:monospace;font-size:.72rem;color:var(--muted)">'
             f"{escape((r['rollup_hash'] or '')[:12])}…{proof_link}</td>"
             f"<td>{status}</td></tr>"
@@ -4683,20 +4731,20 @@ def _verify_table(rollups, public_id=None):
         "nøyaktig slik de ble forseglet.</li>"
         "<li><b>Regn ut seglet selv:</b> sha256 av tallene (kanonisk JSON, oppskrift i beviset) "
         "skal gi nøyaktig samme hash som står her.</li>"
-        "<li><b>Følg Merkle-stien</b> i beviset opp til roten — hvert steg er én sha256.</li>"
+        "<li><b>Følg Merkle-stien</b> i beviset opp til roten. Hvert steg er én sha256.</li>"
         "<li><b>Slå opp transaksjonen</b> på en uavhengig utforsker (lenken i Status-kolonnen): "
         "roten ligger i OP_RETURN-feltet, tidsstemplet av et nettverk vi ikke kontrollerer.</li>"
         "</ol>"
         '<p style="color:var(--muted);font-size:.85rem;margin:.4rem 0 .2rem">Endres ett eneste tall '
-        "i ettertid, stemmer ikke seglet i steg 2 — det er hele poenget. Du trenger ikke stole på "
+        "i ettertid, stemmer ikke seglet i steg 2. Det er hele poenget. Du trenger ikke stole på "
         "oss, bare på sha256.</p></details>"
     )
     return (
         f"<h3>{badge}<span style='display:inline-flex;align-items:center;gap:.5rem'>"
         f"{_segl_badge(22)}Verifiserbare tall</span></h3>"
-        '<p style="color:var(--muted);font-size:.85rem">Hver dags tall forsegles med en kryptografisk '
-        "hash som forankres i en offentlig blokkjede — etter det kan ingen, heller ikke vi, endre dem "
-        "uten at det synes.</p>"
+        '<p style="color:var(--muted);font-size:.85rem">Hver dags tall får et kryptografisk segl som '
+        "lagres i en offentlig blokkjede. Etter det kan ingen, heller ikke vi, endre tallene uten at "
+        "det synes. Med i alle planer.</p>"
         '<table class=vt><tr><th>Dag</th><th>Unike</th><th>Visn.</th><th>Segl</th><th>Status</th></tr>'
         f"{rr or '<tr><td>ingen forseglede dager enda — første segl lages i natt</td><td></td><td></td><td></td><td></td></tr>'}</table>"
         f"{howto}"
@@ -4789,7 +4837,7 @@ def _area_chart(series, width=880, height=170, days=7):
         f'<line class=cx x1=-9 x2=-9 y1="{pad_top - 6}" y2="{height - pad_bot}" '
         'style="stroke:var(--line)" stroke-width="1.5"/>'
         "</svg><div class=cdot hidden></div><div class=ctip hidden></div></div>"
-        f'<div class=axis><span>{first}</span><span>topp: {peak} unike</span><span>{last}</span></div>'
+        f'<div class=axis><span>{first}</span><span>topp: {_fmt_n(peak)} besøkende</span><span>{last}</span></div>'
     )
 
 
@@ -4842,6 +4890,7 @@ def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, ti
     s["countries"] = [
         {**c, "ikon": icons.flag(c["k"]), "k": country_no(c["k"])} for c in s["countries"]
     ]
+    s["devices"] = _devices_no(s["devices"])
     prev = store.kpis(site["id"], days, offset=1)
     chart = _area_chart(store.timeseries(site["id"], days), days=days)
     flow = store.flow_stats(site["id"], days)
@@ -4854,13 +4903,13 @@ def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, ti
     if transitions:
         nav_rows = "".join(
             f'<tr><td title="{escape(tr["from"])} → {escape(tr["to"])}">'
-            f'{escape(tr["from"])} → {escape(tr["to"])}</td><td>{tr["n"]}</td></tr>'
+            f'{escape(tr["from"])} → {escape(tr["to"])}</td><td>{_fmt_n(tr["n"])}</td></tr>'
             for tr in transitions[:8]
         )
         nav_html = (
             '<div class="card block"><h3>Navigasjonsstier</h3>'
-            '<p class=muted style="font-size:.85rem;margin:.1rem 0 .4rem">Vanligste '
-            "side→side-overganger innen en økt — som aggregat, aldri enkeltpersoner.</p>"
+            '<p class=muted style="font-size:.85rem;margin:.1rem 0 .4rem">De vanligste '
+            "overgangene fra side til side i samme besøk. Bare summer, aldri enkeltpersoner.</p>"
             f"<table><tr><th>Fra → Til</th><th>Antall</th></tr>{nav_rows}</table></div>"
         )
     camp_html = ""
@@ -4868,12 +4917,12 @@ def _public_stats_page(request, site, base_path, *, public_id, suffix, intro, ti
         camp_rows = "".join(
             f'<tr><td title="{escape(c["source"])}">{escape(c["source"])}'
             f'{(" / " + escape(c["campaign"])) if c["campaign"] else ""}</td>'
-            f'<td>{c["visitors"]}</td><td>{c["n"]}</td></tr>'
+            f'<td>{_fmt_n(c["visitors"])}</td><td>{_fmt_n(c["n"])}</td></tr>'
             for c in s["campaigns"][:8]
         )
         camp_html = (
             '<div class="card block"><h3>Kampanjer (UTM)</h3>'
-            f"<table><tr><th>Kilde / kampanje</th><th>Unike</th><th>Visn.</th></tr>{camp_rows}</table></div>"
+            f"<table><tr><th>Kilde / kampanje</th><th>Unike</th><th>Visninger</th></tr>{camp_rows}</table></div>"
         )
 
     product_html = ""
@@ -4912,38 +4961,38 @@ padding:.6rem .9rem;font-size:.9rem;margin-bottom:1rem}}</style>
 <div class=head><h1>{escape(site["domain"])} <span class=muted style="font-size:1rem;font-weight:400">· {escape(suffix)}</span></h1>
 <div class=tabs>{tabs}</div></div>
 <div class=kpis>
-  <div class="card kpi" title="Unike per dag — vi følger ingen på tvers av dager"><b>{s['visitors']}</b><span>unike besøkende</span>{_delta(s['visitors'], prev['visitors'])}</div>
-  <div class="card kpi" title="Én sammenhengende økt — 30 min pause regnes som nytt besøk"><b>{s['sessions']}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
-  <div class="card kpi"><b>{s['pageviews']}</b><span>sidevisninger</span>{_delta(s['pageviews'], prev['pageviews'])}</div>
-  <div class="card kpi" title="Andel besøk som forlot nettstedet etter bare én side — lavere er bedre"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
-  <div class="card kpi" title="Sidevisninger delt på besøk — hvor dypt folk går"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
+  <div class="card kpi" title="{_visitors_title(days)}"><b>{_fmt_n(s['visitors'])}</b><span>{_visitors_label(days)}</span>{_delta(s['visitors'], prev['visitors'])}</div>
+  <div class="card kpi" title="{_SESSION_TITLE}"><b>{_fmt_n(s['sessions'])}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
+  <div class="card kpi"><b>{_fmt_n(s['pageviews'])}</b><span>sidevisninger</span>{_delta(s['pageviews'], prev['pageviews'])}</div>
+  <div class="card kpi" title="{_BOUNCE_TITLE}"><b>{_fmt_pct(s['bounce_rate'])}</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
+  <div class="card kpi" title="{_DEPTH_TITLE}"><b>{_fmt_dec(s['views_per_session'])}</b><span>sider per besøk</span></div>
 </div>
 <div class="card chartcard">
-<p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende · {escape(label)} <span style="float:right">endring målt mot {_VS_LABEL[period]}</span></p>
+<p class=muted style="font-size:.8rem;margin:.1rem 0 .6rem">Unike besøkende {_PERIOD_PHRASE[period]}, sammenlignet med {_VS_LABEL[period]}</p>
 {chart}
 </div>
 <div class=grid>
   <div class=card><h3>Topp sider</h3>{_stat_table(s['top_paths'], 'path')}</div>
-  <div class=card><h3>Topp kilder</h3><p class=hint>hvor trafikken kommer fra — «direkte» = skrev inn adressen eller bokmerke</p>{_stat_table(s['top_sources'], 'src')}</div>
-  <div class=card><h3>Inngangssider</h3><p class=hint>første side i besøket — der folk lander</p>{_stat_table(flow['entries'], 'path')}</div>
-  <div class=card><h3>Utgangssider</h3><p class=hint>siste side før de dro — se etter lekkasjer</p>{_stat_table(flow['exits'], 'path')}</div>
+  <div class=card><h3>Topp kilder</h3><p class=hint>Hvor trafikken kommer fra. «direkte» betyr at adressen ble skrevet inn eller åpnet fra et bokmerke.</p>{_stat_table(s['top_sources'], 'src')}</div>
+  <div class=card><h3>Inngangssider</h3><p class=hint>Første side i besøket</p>{_stat_table(flow['entries'], 'path')}</div>
+  <div class=card><h3>Utgangssider</h3><p class=hint>Siste side før besøkeren gikk</p>{_stat_table(flow['exits'], 'path')}</div>
   <div class=card><h3>Land</h3>{_stat_table(s['countries'], 'k')}</div>
   <div class=card><h3>Fylke / region</h3>{_stat_table(s['regions'], 'k')}</div>
-  <div class=card><h3>Enheter</h3>{_stat_table(s['devices'], 'k', icons.device)}</div>
+  <div class=card><h3>Enheter</h3>{_stat_table(s['devices'], 'k')}</div>
   <div class=card><h3>Nettlesere</h3>{_stat_table(s['browsers'], 'k', icons.browser)}</div>
-  <div class=card><h3>Operativsystem</h3>{_stat_table(s['os'], 'k', icons.os)}</div>
+  <div class=card><h3>Operativsystemer</h3>{_stat_table(s['os'], 'k', icons.os)}</div>
 </div>
 {nav_html}
 {camp_html}
 {product_html}
 <div class="card block">{verify_html}</div>
 <div class="card block" style="text-align:center;padding:2rem">
-  <p style="margin:0 0 1rem;font-size:1.05rem"><b>Vil du ha dette for ditt nettsted — uten cookie-banner?</b></p>
-  <a class="btn btn-accent" href="/signup">Start gratis prøve</a>
-  <p class=fine style="margin-top:.7rem;color:var(--muted);font-size:.85rem">30 dager · uten kort</p>
+  <p style="margin:0 0 1rem;font-size:1.05rem"><b>Vil du ha dette for ditt nettsted?</b></p>
+  <a class="btn btn-accent" href="/signup">Prøv gratis i 30 dager</a>
+  <p class=fine style="margin-top:.7rem;color:var(--muted);font-size:.85rem">Uten kort</p>
 </div>
 <p class=footnote>Cookieløs · ingen IP lagret · samtykkefri ·
-<a href="#" id=barstoggle>andelssøyler av/på</a> ·
+<a href="#" id=barstoggle>Vis/skjul søyler</a> ·
 Geo: <a href="https://db-ip.com">IP Geolocation by DB-IP</a> (CC BY 4.0)</p>
 </div>
 {_SITE_FOOTER}
@@ -5029,20 +5078,20 @@ def proof(request):
 
 
 def demo(request):
-    """Offentlig live-demo: ekte tall for sporlos.no selv — produktet i drift som bevis."""
+    """Offentlig demo: ekte tall for sporlos.no selv — produktet i drift som bevis."""
     site = store.resolve_site(os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7"))
     if not site:
         return _not_found_page(request)
     intro = (
-        "<div class=demobar>Dette er ekte, levende tall for <b>sporlos.no</b> — målt av "
-        "Sporløs selv, uten cookies og uten samtykke. Det du ser her, er det kundene får.</div>"
+        "<div class=demobar>Dette er ekte tall for <b>sporlos.no</b>, målt med Sporløs uten "
+        "cookies og uten samtykkebanner. Kundene våre får det samme dashbordet.</div>"
     )
     return _public_stats_page(
         request, site, "/demo",
         public_id=os.environ.get("SPORLOS_DEMO_SITE", "6LIACtOSP-S7"),
-        suffix="live demo", intro=intro,
-        title="Live demo — ekte tall for sporlos.no | Sporløs",
-        description="Sporløs i drift: ekte, levende statistikk for sporlos.no — cookieløst og uten samtykke. Slik ser dashbordet ut.",
+        suffix="demo", intro=intro,
+        title="Demo: ekte tall for sporlos.no | Sporløs",
+        description="Ekte tall fra sporlos.no, målt med Sporløs uten cookies. Slik ser dashbordet ut.",
         canonical="https://sporlos.no/demo",
         show_product=True,
     )
@@ -5059,7 +5108,7 @@ def public_dash(request):
         public_id=pid,
         suffix="offentlig statistikk", intro="",
         title=f"{site['domain']} — offentlig statistikk | Sporløs",
-        description=f"Åpen, cookieløs statistikk for {site['domain']} — målt av Sporløs, uten cookies og uten samtykke.",
+        description=f"Åpen statistikk for {site['domain']}, målt med Sporløs uten cookies og uten samtykkebanner.",
         canonical=f"https://sporlos.no/p/{pid}",
     )
 
@@ -5465,8 +5514,9 @@ def dashboard(request):
                 '<p class=fine style="margin:.2rem 0 .7rem">Priser eks. mva. Du velger kort, Vipps '
                 "eller årlig faktura (2 måneder gratis) på neste side.</p>"
                 f"<div class=planpick>{cards}</div>"
-                '<p class=fine style="margin:.7rem 0 0">Byrå eller over 25 nettsteder? '
-                '<a href="mailto:post@sporlos.no?subject=Byr%C3%A5-avtale">Ta kontakt</a>.</p></div>'
+                '<p class=fine style="margin:.7rem 0 0">Alle planer har alle funksjoner, også forseglede, '
+                f"verifiserbare tall. Byrå, fra {pricing.BYRA_FROM_SITES} nettsteder, har pris etter avtale: "
+                '<a href="mailto:post@sporlos.no?subject=Byr%C3%A5-avtale">ta kontakt</a>.</p></div>'
             )
         # API-tilgang: read-only nøkler for AI-verktøy/integrasjoner
         keys = store.list_api_keys(user["tid"])
@@ -5495,8 +5545,8 @@ def dashboard(request):
         )
         api_html = (
             "<div class=card>"
-            '<p class=fine style="margin:.2rem 0 .6rem">Read-only nøkler for AI-verktøy og '
-            'integrasjoner — bare summer, aldri enkeltregistreringer. <a href="/utviklere">Dokumentasjon</a>.</p>'
+            '<p class=fine style="margin:.2rem 0 .6rem">Nøkler som bare kan lese, for KI-verktøy og '
+            'integrasjoner. API-et gir bare summer, aldri enkeltregistreringer. <a href="/utviklere">Dokumentasjon</a>.</p>'
             f"{new_key_html}{keys_table}"
             '<form class=add method=post action="/app/api-keys" style="margin-top:.6rem">'
             '<input name=label placeholder="Navn (f.eks. Claude)" maxlength=60>'
@@ -5641,7 +5691,7 @@ def dashboard(request):
         sites_head = (
             '<h2 class=sec>Nettsteder <span style="float:right;text-transform:none;letter-spacing:0;'
             f'font-weight:400">{escape(ov_label)}</span></h2>'
-            f'<div class=ovtabs>{ov_tabs}<a href="/app/seo" style="margin-left:auto">Søk og AI →</a></div>'
+            f'<div class=ovtabs>{ov_tabs}<a href="/app/seo" style="margin-left:auto">Søk og KI →</a></div>'
             if rows else ""
         )
         ny = request.query_params.get("ny")
@@ -5737,6 +5787,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
     s["countries"] = [
         {**c, "ikon": icons.flag(c["k"]), "k": country_no(c["k"])} for c in s["countries"]
     ]
+    s["devices"] = _devices_no(s["devices"])
     prev = store.kpis(site["id"], days, offset=1)
     series = store.timeseries(site["id"], days)
     events = store.top_events(site["id"], days)
@@ -5770,16 +5821,16 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
         onboard_card = (
             '<div class="card block" style="border:1px solid var(--accent)">'
             "<h3>Steg 2: lim inn sporingskoden</h3>"
-            '<p class=muted style="margin:.2rem 0 .6rem">Lim denne rett før '
-            "&lt;/head&gt; på sidene du vil måle — så er du i gang. Ingen cookies, "
-            "ingen samtykke å sette opp.</p>"
+            '<p class=muted style="margin:.2rem 0 .6rem">Lim den inn rett før '
+            "&lt;/head&gt; på sidene du vil måle, så er du i gang. Ingen cookies og "
+            "ingen samtykkebanner å sette opp.</p>"
             f'<pre id=snip style="white-space:pre-wrap;word-break:break-all">{_snip}</pre>'
             '<button class=btn onclick="navigator.clipboard.writeText('
             "document.getElementById('snip').textContent).then(()=>{this.textContent='Kopiert ✓'})\" "
             'style="font-size:.9rem;padding:.45rem .9rem">Kopier koden</button>'
             '<p class=muted style="font-size:.82rem;margin:.7rem 0 0">Bruker du WordPress eller '
-            'Shopify? <a href="https://wordpress.org/plugins/sporlos-analytics/">WordPress-plugin</a> · '
-            '<a href="/shopify">Shopify-guide</a></p></div>'
+            'Shopify? <a href="https://wordpress.org/plugins/sporlos-analytics/">WordPress-utvidelse</a> · '
+            '<a href="/shopify">Shopify-veiledning</a></p></div>'
         )
 
     # KPI-band v2: unike eier blikket (stort kort m/ sparkline + forseglet-badge),
@@ -5795,9 +5846,9 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
     if s["pageviews"] == 0:
         siden = _siden(store.last_event_at(site["id"]))
         livstegn = (
-            f"Scriptet er aktivt og lytter — siste livstegn {siden}."
+            f"Sporingsskriptet er aktivt og lytter. Siste livstegn {siden}."
             if siden
-            else "Legg inn sporings-koden nederst, så dukker tallene opp her."
+            else "Legg inn sporingskoden nederst, så dukker tallene opp her."
         )
         puls = (
             '<span class=puls><span class=dot></span>tilkoblet</span>'
@@ -5815,7 +5866,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
         kpiband = f"""<div class=kpiband>
   <div class="card kpihero">
     <div class=top>
-      <div><div class=lbl>Unike besøkende · {escape(label)}</div>
+      <div><div class=lbl title="{_visitors_title(days)}">{_visitors_label(days).capitalize()} · {escape(label)}</div>
       <div class=big>{_fmt_n(s['visitors'])}</div>
       {_delta(s['visitors'], prev['visitors']) or '<small class="d d0">&nbsp;</small>'}</div>
       {hero_badge}
@@ -5823,10 +5874,10 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
     {chart}
   </div>
   <div class=kpisec>
-    <div class="card kpi" title="Én sammenhengende økt — 30 min pause regnes som nytt besøk"><b>{_fmt_n(s['sessions'])}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
+    <div class="card kpi" title="{_SESSION_TITLE}"><b>{_fmt_n(s['sessions'])}</b><span>besøk</span>{_delta(s['sessions'], prev['sessions'])}</div>
     <div class="card kpi"><b>{_fmt_n(s['pageviews'])}</b><span>sidevisninger</span>{_delta(s['pageviews'], prev['pageviews'])}</div>
-    <div class="card kpi" title="Andel besøk som forlot nettstedet etter bare én side — lavere er bedre"><b>{s['bounce_rate']}%</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
-    <div class="card kpi" title="Sidevisninger delt på besøk — hvor dypt folk går"><b>{s['views_per_session']}</b><span>visn. per besøk</span></div>
+    <div class="card kpi" title="{_BOUNCE_TITLE}"><b>{_fmt_pct(s['bounce_rate'])}</b><span>fluktfrekvens</span>{_delta(s['bounce_rate'], prev['bounce_rate'], invert=True)}</div>
+    <div class="card kpi" title="{_DEPTH_TITLE}"><b>{_fmt_dec(s['views_per_session'])}</b><span>sider per besøk</span></div>
   </div>
 </div>"""
 
@@ -5834,12 +5885,12 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
     funnels_html = _funnels_html(funnels, public_id)
     nav_rows = "".join(
         f'<tr><td title="{escape(tr["from"])} → {escape(tr["to"])}">'
-        f'{escape(tr["from"])} → {escape(tr["to"])}</td><td>{tr["n"]}</td></tr>'
+        f'{escape(tr["from"])} → {escape(tr["to"])}</td><td>{_fmt_n(tr["n"])}</td></tr>'
         for tr in transitions
     )
     nav_html = (
         "<h3>Navigasjonsstier</h3>"
-        '<p style="color:var(--muted);font-size:.85rem">Vanligste side→side-overganger innen en økt.</p>'
+        '<p style="color:var(--muted);font-size:.85rem">De vanligste overgangene fra side til side i samme besøk.</p>'
         "<table><tr><th>Fra → Til</th><th>Antall</th></tr>"
         f"{nav_rows or '<tr><td>ingen overganger enda</td><td></td></tr>'}</table>"
     )
@@ -5848,7 +5899,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
     )
     events_html = (
         "<h3>Hendelser</h3>"
-        '<p class=hint>Egendefinerte hendelser du selv sender: '
+        '<p class=hint>Egne hendelser du selv sender: '
         "<code>sporlos('navn')</code> i JS, eller <code>data-sporlos-event=\"navn\"</code> "
         'på en knapp/lenke. Kjøp med beløp/produkter: se <a href="/utviklere">E-handel</a>.</p>'
         "<table><tr><th>Hendelse</th><th>Unike</th><th>Totalt</th></tr>"
@@ -5870,7 +5921,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
             "<h3>Kampanjer (UTM)</h3>"
             "<table><tr><th style='text-align:left;color:var(--muted);font-size:.85rem'>Kilde · medium · kampanje</th>"
             "<th style='text-align:right;color:var(--muted);font-size:.85rem'>Unike</th>"
-            f"<th style='text-align:right;color:var(--muted);font-size:.85rem'>Visn.</th></tr>{camp_rows}</table>"
+            f"<th style='text-align:right;color:var(--muted);font-size:.85rem'>Visninger</th></tr>{camp_rows}</table>"
         )
 
     ecom_html = _ecom_html(site["id"], days)
@@ -5925,7 +5976,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
             f'<div><div style="font-size:1.45rem;font-weight:700">{g["position"] if g["position"] is not None else "–"}</div>'
             f'<small style="color:var(--muted)">snittposisjon</small> {pos_delta}</div>'
             f'<div><div style="font-size:1.45rem;font-weight:700">{_fmt_n(ai["visitors"])}</div>'
-            f'<small style="color:var(--muted)">besøk fra AI-assistenter</small> {_delta(ai["visitors"], aip["visitors"])}</div>'
+            f'<small style="color:var(--muted)">besøk fra KI-assistenter</small> {_delta(ai["visitors"], aip["visitors"])}</div>'
             "</div>"
         )
         q_rows = "".join(
@@ -5963,7 +6014,7 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
             )
         ai_src = store.ai_referral_sources(site["id"], days)
         if ai_src:
-            extras.append("AI-assistenter: " + " · ".join(
+            extras.append("KI-assistenter: " + " · ".join(
                 f"{escape(_AI_NAMES.get(a['k'].removeprefix('www.'), a['k']))} <b>{a['u']}</b>"
                 for a in ai_src
             ) + ".")
@@ -5972,21 +6023,21 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
             if extras else ""
         )
         sok_html = (
-            '<h3 id=sok>Søk og AI</h3>'
+            '<h3 id=sok>Søk og KI</h3>'
             "<p class=hint>Hvordan folk finner deg: Google/Bing-søk (Search Console-tall) "
-            "og henvisninger fra AI-assistenter målt av Sporløs selv.</p>"
+            "og henvisninger fra KI-assistenter målt av Sporløs selv.</p>"
             + sok_flash + sok_stat + sok_tables + sok_extra + sok_conn_html
             + '<p style="color:var(--muted);font-size:.78rem;margin:.6rem 0 0">Søketall synkes '
-            "daglig og har 1–2 døgns forsinkelse — perioden slutter derfor i forgårs. "
-            "AI-besøk telles live.</p>"
+            "daglig og har 1–2 døgns forsinkelse, så perioden slutter i forgårs. "
+            "Besøk fra KI-assistenter telles fortløpende.</p>"
         )
     elif sok_conn_html or sok_flash:
         # Ingen søkedata enda, men tilkobling er mulig/gjort — vis seksjonen som
         # onboarding i stedet for å gjemme featuren til første synk.
         sok_html = (
-            '<h3 id=sok>Søk og AI</h3>'
+            '<h3 id=sok>Søk og KI</h3>'
             "<p class=hint>Se hvilke søkeord folk finner deg på i Google, og hvor mange "
-            "besøk AI-assistenter sender deg — rett i Sporløs.</p>"
+            "besøk KI-assistenter sender deg, rett i Sporløs.</p>"
             + sok_flash + sok_conn_html
         )
 
@@ -6012,13 +6063,13 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
     if pub_on:
         pub_text = (
             '<span style="color:var(--ok)">● Delt.</span> Alle med lenken '
-            f'<a href="/p/{escape(public_id)}">sporlos.no/p/{escape(public_id)}</a> ser tallene — '
-            "read-only, uten innlogging."
+            f'<a href="/p/{escape(public_id)}">sporlos.no/p/{escape(public_id)}</a> ser tallene, '
+            "uten å logge inn og uten å kunne endre noe."
         )
     else:
         pub_text = (
-            "Ikke delt — bare du ser tallene. Deling gir en åpen, read-only lenke "
-            "(som vår egen <a href=/demo>live-demo</a>) du kan gi til styre, kunder eller annonsører."
+            "Ikke delt. Bare du ser tallene. Deling gir en åpen lenke som bare viser tallene "
+            "(som vår egen <a href=/demo>demo</a>), og som du kan gi til styret, kunder eller annonsører."
         )
     public_html = (
         '<div class="card block"><h3>Offentlig dashboard</h3>'
@@ -6042,22 +6093,22 @@ a.pp span{{font-weight:700;font-size:1.15rem}}a.pp small{{color:var(--muted);fon
   <a href="/app/export?site={escape(public_id)}&period={period}&what=sider">sider</a> ·
   <a href="/app/export?site={escape(public_id)}&period={period}&what=kilder">kilder</a> ·
   <a href="/app/export?site={escape(public_id)}&period={period}&what=land">land</a>
-  · <a href="#" id=barstoggle>andelssøyler av/på</a></p>
+  · <a href="#" id=barstoggle>Vis/skjul søyler</a></p>
 <div class=grid>
   <div class=card><h3>Topp sider</h3>{table(s['top_paths'], 'path')}</div>
-  <div class=card><h3>Topp kilder</h3><p class=hint>hvor trafikken kommer fra — «direkte» = skrev inn adressen eller bokmerke</p>{table(s['top_sources'], 'src')}</div>
-  <div class=card><h3>Inngangssider</h3><p class=hint>første side i besøket — der folk lander</p>{table(flow['entries'], 'path')}</div>
-  <div class=card><h3>Utgangssider</h3><p class=hint>siste side før de dro — se etter lekkasjer</p>{table(flow['exits'], 'path')}</div>
+  <div class=card><h3>Topp kilder</h3><p class=hint>Hvor trafikken kommer fra. «direkte» betyr at adressen ble skrevet inn eller åpnet fra et bokmerke.</p>{table(s['top_sources'], 'src')}</div>
+  <div class=card><h3>Inngangssider</h3><p class=hint>Første side i besøket</p>{table(flow['entries'], 'path')}</div>
+  <div class=card><h3>Utgangssider</h3><p class=hint>Siste side før besøkeren gikk</p>{table(flow['exits'], 'path')}</div>
   <div class=card><h3>Land</h3>{table(s['countries'], 'k')}</div>
   <div class=card><h3>Fylke / region</h3>{table(s['regions'], 'k')}</div>
-  <div class=card><h3>Enheter</h3>{table(s['devices'], 'k', icons.device)}</div>
+  <div class=card><h3>Enheter</h3>{table(s['devices'], 'k')}</div>
   <div class=card><h3>Nettlesere</h3>{table(s['browsers'], 'k', icons.browser)}</div>
-  <div class=card><h3>Operativsystem</h3>{table(s['os'], 'k', icons.os)}</div>
+  <div class=card><h3>Operativsystemer</h3>{table(s['os'], 'k', icons.os)}</div>
 </div>
 {blocks}
-<div class="card block"><details><summary>Vis sporings-kode</summary>
+<div class="card block"><details><summary>Vis sporingskode</summary>
 <pre>{escape(f'<script defer data-site="{public_id}" data-api="{PUBLIC_BASE}/api/event" src="{PUBLIC_BASE}/sporlos.js"></script>')}</pre>
-<p class=muted style="font-size:.82rem;margin:.5rem 0 0">Plattform-guider:
+<p class=muted style="font-size:.82rem;margin:.5rem 0 0">Veiledninger:
 <a href="https://wordpress.org/plugins/sporlos-analytics/">WordPress</a> ·
 <a href="/shopify">Shopify</a></p></details></div>
 {public_html}
@@ -6116,7 +6167,7 @@ def seo_page(request):
 
     return HTMLResponse(
         f"""<!doctype html><html lang=no><meta charset=utf-8>
-<title>Sporløs — søk og AI på tvers</title>
+<title>Sporløs — søk og KI på tvers</title>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {_BRAND_HEAD}
 <style>{_BRAND_CSS}{_CHROME_CSS}
@@ -6140,16 +6191,16 @@ td.num b{{display:block;color:var(--ink);font-weight:700;font-variant-numeric:ta
 @media(max-width:640px){{.card{{overflow-x:auto}}th:first-child,td:first-child{{width:8rem}}}}</style>
 <div class=wrap>
 {_site_nav(request)}
-<h1>Søk og AI på tvers</h1>
-<p class=fine style="margin:0 0 .8rem">Google/Bing-søk og AI-henvisninger for alle nettstedene dine i én tabell — {escape(label)}.</p>
+<h1>Søk og KI på tvers</h1>
+<p class=fine style="margin:0 0 .8rem">Google/Bing-søk og henvisninger fra KI-assistenter for alle nettstedene dine i én tabell, {escape(label)}.</p>
 <div class=ovtabs>{tabs}</div>
 {setup}
 <div class=card>
-<table><tr><th>Nettsted</th><th>G-klikk</th><th>Visn.</th><th>Pos.</th><th>Bing</th><th>AI-besøk</th></tr>
+<table><tr><th>Nettsted</th><th>G-klikk</th><th>Visn.</th><th>Pos.</th><th>Bing</th><th>KI-besøk</th></tr>
 {trows or '<tr><td>ingen nettsteder enda</td><td></td><td></td><td></td><td></td><td></td></tr>'}</table>
 </div>
-<p class=fine>Klikk/visninger/posisjon: Google Search Console (1–2 døgns forsinkelse — perioden slutter i forgårs).
-Bing: Bing Webmaster Tools. AI-besøk: unike besøkende henvist fra AI-assistenter, målt live av Sporløs.</p>
+<p class=fine>Klikk/visninger/posisjon: Google Search Console (1–2 døgns forsinkelse, så perioden slutter i forgårs).
+Bing: Bing Webmaster Tools. KI-besøk: unike besøkende henvist fra KI-assistenter, målt fortløpende av Sporløs.</p>
 </div>
 {_SITE_FOOTER}"""
     )
