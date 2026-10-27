@@ -38,7 +38,37 @@ _DATACENTER_NAMES: dict[int, str] = {
     12876: "Scaleway",
     51167: "Contabo",
     197540: "netcup",
+    # Budget hosting that rotating-proxy pools and scrapers rent by the IP (added
+    # 27.10.2026 after a price scraper came in through 36352/18779/46261/62874 with
+    # a fresh human-looking UA per hit). Names as in DB-IP ASN Lite. None of these
+    # sells residential or mobile access, so no real visitor sits behind them.
+    36352: "ColoCrossing/HostPapa",
+    18779: "EGIHosting",
+    46261: "QuickPacket",
+    62874: "Web2Objects",
+    40021: "Contabo",        # Contabo Inc. (US); 51167 is the German entity above
+    8100: "QuadraNet",
+    53667: "FranTech/BuyVM",
+    35916: "MULTACOM",
+    55286: "B2 Net/ServerMania",
+    397423: "Tier.Net",
+    32097: "WholeSale Internet",
+    23470: "ReliableSite",
+    14576: "Hosting Solution",
+    20454: "Secured Servers",
+    29802: "Hivelocity",
+    40676: "Psychz",
+    30058: "FDCservers",
+    25820: "IT7 Networks",
+    19318: "Interserver",
+    30633: "Leaseweb USA",
 }
+# Deliberately NOT listed, although they are mostly hosting: M247 (9009) and
+# Datacamp (60068, 212238) carry the exit nodes of consumer VPNs, so real people
+# browse from them. Same reasoning as for Cloudflare and Apple Private Relay above.
+# Carriers and ISPs (Cogent 174, T-Mobile, Verizon, Windstream ...) are never listed:
+# real end users sit behind them. The residential part of a proxy pool is caught
+# by the behavioural burst filter (app/burst.py) instead.
 _DATACENTER_ASNS = frozenset(_DATACENTER_NAMES)
 
 

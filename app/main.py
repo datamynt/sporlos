@@ -45,7 +45,7 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from app import api, assist, blogg, botcount, dpa, icons, innlogg, mailer, notify, pricing, store, vipps
+from app import api, assist, blogg, botcount, burst, dpa, icons, innlogg, mailer, notify, pricing, store, vipps
 from app import export as data_export
 from app.auth import check_token, hash_password, verify_password
 from app.datacenter import datacenter_asn, datacenter_name
@@ -61,6 +61,7 @@ from app.useragent import (
     is_named_agent,
     parse_ua,
     signed_agent,
+    spoofed_referrer,
 )
 
 SECRET = os.environ.get("SPORLOS_SALT_SECRET", "dev-secret-change-me")
@@ -729,7 +730,8 @@ def _note_drop(reason: str, site_id, ua: str, ip: str, *, log_it: bool = True, *
 def _classify_hit(payload: dict, headers: dict, ua: str) -> tuple[str, str] | None:
     """(class, agent) when this beacon is not from a person, else None (datacenter
     networks are checked separately, after this). Precedence: a UA that names a known
-    robot > Web Bot Auth signature > the tracker's webdriver flag > a bare bot token."""
+    robot > Web Bot Auth signature > the tracker's webdriver flag > a bare bot token
+    or an impossible UA > a fake search-engine referrer."""
     by_ua = classify_ua(ua)
     if by_ua and is_named_agent(by_ua[1]):
         return by_ua
@@ -738,7 +740,13 @@ def _classify_hit(payload: dict, headers: dict, ua: str) -> tuple[str, str] | No
         return ("agent", signed)
     if payload.get("wd") in (1, True, "1"):
         return ("agent", "webdriver")
-    return by_ua
+    if by_ua:
+        return by_ua
+    # A referrer host no search engine sends (yahoo.no, yandex.no ...): a scraper's
+    # disguise. Only the host is looked at, and nothing of it is stored.
+    if spoofed_referrer(_normalize_referrer(payload.get("r"))):
+        return ("script", "fake-referrer")
+    return None
 
 
 def _clean_name(v) -> str:
@@ -837,6 +845,12 @@ def _ingest_store(payload: dict, headers: dict, client_host: str):
         log.exception("ingest: daily_salt feilet")
         return PlainTextResponse("", status_code=204)
     vhash = visitor_hash(ip, ua, str(site["id"]), secret=SECRET, day_salt=day_salt)
+    if burst.is_flagged(site["id"], vhash):
+        # Already moved out of events as part of a scraper burst: its follow-up
+        # events (checkout_start ...) are the same robot.
+        _note_drop("bot", site["id"], ua, ip, cls="script", agent="burst")
+        botcount.note(site["id"], "script", "burst", "")
+        return PlainTextResponse("", status_code=204)
     device, browser, os_ = parse_ua(ua)
     country, region = geo_lookup(ip)  # land + fylke, by-nivå brukes aldri
     # ip og ua brukes KUN her (hash + kategorisering + geo) — aldri lagret.
@@ -4376,6 +4390,12 @@ def _bot_name(agent: str, cls: str) -> str:
         return "tom user-agent"
     if agent == "webdriver":
         return "automatisert nettleser (webdriver)"
+    if agent == "burst":
+        return "skraper (mange nye besøk på sekunder)"
+    if agent == "fake-ua":
+        return "falsk user-agent"
+    if agent == "fake-referrer":
+        return "falsk søkemotor-referrer"
     if cls in ("datacenter", "agent") or is_named_agent(agent):
         return agent
     return f"ukjent («{agent}»)"
@@ -6527,7 +6547,10 @@ async def _handle_404(request, exc):
 
 @contextlib.asynccontextmanager
 async def _lifespan(app):
+    sweeper = asyncio.create_task(burst.run_forever()) if burst.enabled() else None
     yield
+    if sweeper:
+        sweeper.cancel()
     # Robot counts wait in memory for up to a minute; write them before exiting.
     await asyncio.to_thread(botcount.flush)
 
