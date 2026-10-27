@@ -8,6 +8,9 @@
     python -m app.manage purge-dormant         # warn (14 days ahead) and delete ended accounts
                                                # (terms §10); dry run unless
                                                # SPORLOS_RETENTION_ENFORCE=1 (cron: daily)
+    python -m app.manage burst-backfill --site PUBLIC_ID --from "YYYY-MM-DD HH:MM" --to "YYYY-MM-DD HH:MM" [--apply]
+                                               # apply the scraper-burst rule (app/burst.py) to a past range
+                                               # (UTC); dry run unless --apply
     python -m app.manage seed-own-goals        # goals + funnels on sporlos.no's own site; idempotent
 """
 
@@ -60,6 +63,45 @@ def seed_own_goals(public_id: str) -> tuple[int, int]:
             store.create_funnel(site["id"], name, steps)
             funnels += 1
     return goals, funnels
+
+
+def _burst_backfill(args: list[str]) -> int:
+    """Apply the burst rule to one site and a UTC time range. Prints counts and the
+    time range of each burst, never hashes. Dry run unless --apply."""
+    from datetime import datetime
+
+    from app import burst
+
+    def opt(name):
+        if name in args:
+            i = args.index(name)
+            return args[i + 1] if i + 1 < len(args) else None
+        return None
+
+    public_id, t0, t1 = opt("--site"), opt("--from"), opt("--to")
+    if not (public_id and t0 and t1):
+        print('usage: burst-backfill --site PUBLIC_ID --from "YYYY-MM-DD HH:MM" --to "YYYY-MM-DD HH:MM" [--apply]')
+        return 2
+    try:
+        start, end = (datetime.fromisoformat(t.replace("T", " ")) for t in (t0, t1))
+    except ValueError:
+        print("burst-backfill: --from/--to must look like 2026-10-27 11:20 (UTC)")
+        return 2
+    site = store.resolve_site(public_id)
+    if not site:
+        print(f"burst-backfill: no site with public_id {public_id}")
+        return 1
+    apply = "--apply" in args
+    res = burst.backfill(site["id"], start, end, apply=apply)
+    verb = "moved" if apply else "would move (dry run, pass --apply)"
+    if not res:
+        print(f"burst-backfill: no burst found in {start} .. {end} UTC")
+        return 0
+    for r in res:
+        print(f"burst-backfill: {verb} {r['events']} events from {r['visitors']} visitors "
+              f"({r['paths']} distinct landing paths, {'/'.join(r['countries'])}), "
+              f"{r['first']} .. {r['last']} UTC, to the robot count (script/burst)")
+    return 0
 
 
 def main(argv: list[str]) -> int:
@@ -128,6 +170,9 @@ def main(argv: list[str]) -> int:
         res["deletion_warnings"] = warned
         print("purge-dormant " + json.dumps(res, sort_keys=True))
         return 1 if warned["failed"] else 0
+
+    if cmd == "burst-backfill":
+        return _burst_backfill(argv[1:])
 
     if cmd == "mask-paths":
         # One-off for events stored before ingest masked ID-like segments. Dry run

@@ -226,13 +226,66 @@ _TOKEN_CLASS = {
 }
 
 
+# User agents that no real browser has ever sent: the output of a fake-UA generator
+# (python-faker's `user_agent()`, random-useragent and friends), used by price
+# scrapers that rotate proxies and want to look human. Narrow on purpose, one
+# pattern per observed tell, each with a test on both sides:
+#  * `Opera/8.57.(X11; ...` - Faker builds Opera strings with a DOT before the
+#    parenthesis. Real Opera (Presto) has a space: `Opera/9.80 (Windows NT 6.1; ...`.
+#  * Presto (Opera's engine, dead since 2013) next to a platform that did not exist
+#    while Presto lived (Windows 10/11) or next to a Chromium token. A real Opera 12
+#    never says either.
+# Not flagged on purpose: unusual-but-real browsers (QuarkPC, UC, Sogou, Yandex ...)
+# and "too new" Chrome versions - the ceiling moves every four weeks and a stale
+# ceiling would drop real people.
+_FAKE_OPERA = re.compile(r"^Opera/\d+\.\d+\.\(")
+_PRESTO_MODERN = re.compile(r"Presto/.*(?:Windows NT 1[01]|Chrome/|Edg/)|(?:Windows NT 1[01]|Chrome/|Edg/).*Presto/")
+
+
+def impossible_ua(ua: str) -> str | None:
+    """A short reason ("faker-opera", "presto-modern") when the UA cannot be a real
+    browser, else None. Fixed tokens, never UA text, so the reason is safe to store."""
+    if not ua:
+        return None
+    if _FAKE_OPERA.match(ua):
+        return "faker-opera"
+    if "Presto/" in ua and _PRESTO_MODERN.search(ua):
+        return "presto-modern"
+    return None
+
+
+# Referrer hosts that no real search engine sends. A scraper that wants to look like
+# organic traffic fills in a plausible search referrer, and builds the host from the
+# target's own ccTLD: yahoo.no, bing.no, yandex.no, baidu.no. Checked 27.10.2026:
+#  * yandex.no does not resolve; yahoo.no resolves but serves nothing; baidu.no is an
+#    unrelated parked site.
+#  * bing.no 301-redirects to www.bing.com: the results page, the only place a click
+#    can come from, is bing.com.
+# Real results pages are bing.com, search.yahoo.com / <cc>.search.yahoo.com,
+# yandex.ru / .com / .by / .kz / .com.tr, www.baidu.com. Only the four engines and
+# only European ccTLDs (the scraper copies the target site's own TLD) are listed.
+# google.<cc> is NOT here: those are real Google search hosts (older browsers and
+# links still carry them), so they stay human.
+_FAKE_SEARCH_REFERRER = re.compile(
+    r"^(?:www\.)?(?:yahoo|bing|yandex|baidu)\."
+    r"(?:no|se|dk|fi|is|de|fr|nl|be|at|ch|it|es|pt|pl|cz|ie|uk|co\.uk)$"
+)
+
+
+def spoofed_referrer(host: str | None) -> bool:
+    """True for a referrer host that is a fake search-engine address (see above)."""
+    return bool(host) and _FAKE_SEARCH_REFERRER.match(host.strip().lower().rstrip(".")) is not None
+
+
 def classify_ua(ua: str) -> tuple[str, str] | None:
     """(class, agent) for a user agent that is not a person, else None.
 
     Superset of bot_match(): a UA that names a known AI fetcher or HTTP library is
     non-human even when the old regex misses it (Claude-User, Perplexity-User,
     python-urllib ...). `agent` is the canonical name from _KNOWN_AGENTS, or the
-    bare bot_match() token ("bot", "crawl", "empty" ...) for an unnamed robot."""
+    bare bot_match() token ("bot", "crawl", "empty" ...) for an unnamed robot.
+    A UA no browser has ever sent (impossible_ua) comes last, as ("script",
+    "fake-ua")."""
     if not ua or not ua.strip():
         return ("script", "empty")
     u = ua.lower()
@@ -240,9 +293,11 @@ def classify_ua(ua: str) -> tuple[str, str] | None:
         if token in u:
             return (cls, name)
     tok = bot_match(ua)
-    if tok is None:
-        return None
-    return (_TOKEN_CLASS.get(tok, "other"), tok)
+    if tok is not None:
+        return (_TOKEN_CLASS.get(tok, "other"), tok)
+    if impossible_ua(ua):
+        return ("script", "fake-ua")
+    return None
 
 
 _NAMED = frozenset(name for _t, name, _c in _KNOWN_AGENTS)
