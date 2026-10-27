@@ -17,6 +17,8 @@ _TMP_DB = tempfile.NamedTemporaryFile(prefix="sporlos_test_", suffix=".db", dele
 _TMP_DB.close()
 os.environ["SPORLOS_DB"] = _TMP_DB.name
 os.environ.pop("DATABASE_URL", None)
+# Extra trap names come from the environment, on top of the built-in list.
+os.environ["SPORLOS_SIGNUP_BLOCKED_COMPANIES"] = " Spam Corp ,,acme bot"
 
 from starlette.testclient import TestClient  # noqa: E402
 
@@ -70,6 +72,10 @@ class SignupBotTest(unittest.TestCase):
 
     def test_placeholder_company(self):
         self._assert_stopped("tc@example.no", company="Test Company")
+
+    def test_env_blocked_companies(self):
+        self._assert_stopped("spam@example.no", company="spam corp")
+        self._assert_stopped("acme@example.no", company="ACME Bot")
 
     def test_human_gets_through(self):
         r = TestClient(main.app).post("/signup", data=_form("human@example.no"), follow_redirects=False)

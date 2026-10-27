@@ -284,8 +284,15 @@ SIGNUP_GLOBAL_HOURLY = 40
 # webmail, ingen nettsted, aldri bekreftet — og hver av dem fikk oss til å sende
 # bekreftelses-e-post til en død eller fremmed adresse. Et menneske bruker mer enn
 # noen sekunder på skjemaet; en POST uten gyldig skjemastempel har ikke lastet det.
-SIGNUP_MIN_SECONDS = 3
-_SIGNUP_BOT_COMPANIES = {"test company"}
+# Driftsinstansen kan stramme inn uten at nye feller havner i det offentlige
+# repoet: SPORLOS_SIGNUP_MIN_SECONDS overstyrer tida, og
+# SPORLOS_SIGNUP_BLOCKED_COMPANIES (kommaseparert) legges til lista under.
+SIGNUP_MIN_SECONDS = int(os.environ.get("SPORLOS_SIGNUP_MIN_SECONDS") or 3)
+_SIGNUP_BOT_COMPANIES = {"test company"} | {
+    name.strip().casefold()
+    for name in os.environ.get("SPORLOS_SIGNUP_BLOCKED_COMPANIES", "").split(",")
+    if name.strip()
+}
 
 
 def _signup_stamp(now: float | None = None) -> str:
