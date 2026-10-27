@@ -2808,11 +2808,13 @@ def _bot_days(days: int) -> tuple[str, str]:
     return (today - timedelta(days=days - 1)).isoformat(), today.isoformat()
 
 
-def has_bots(site_id: int) -> bool:
-    """Has this site ever had a robot counted? Gates the dashboard section."""
+def first_bot_day(site_id: int) -> str | None:
+    """First day (YYYY-MM-DD) a robot was counted for this site, or None if never.
+    Gates the dashboard section and tells it when counting started."""
     with _cursor() as cur:
-        cur.execute(f"SELECT 1 FROM bot_daily WHERE site_id = {P} LIMIT 1", (site_id,))
-        return cur.fetchone() is not None
+        cur.execute(f"SELECT MIN(day) AS d FROM bot_daily WHERE site_id = {P}", (site_id,))
+        row = cur.fetchone()
+        return row["d"] if row and row["d"] else None
 
 
 def bot_summary(site_id: int, days: int = 7, limit: int = 10) -> dict:

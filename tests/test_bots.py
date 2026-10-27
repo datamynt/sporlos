@@ -340,6 +340,12 @@ class BotApiAndDashboardTest(IngestTestCase):
         html = self.dashboard()
         self.assertIn("Roboter og KI-agenter", html)
         self.assertIn("Ingen roboter registrert", html)
+        self.assertNotIn("Roboter telles fra", html)  # counting predates the 7-day period
+
+    def test_dashboard_notes_when_counting_started(self):
+        self.seed()  # today only: a 7-day period reaches back before the first count
+        today = datetime.now(timezone.utc).strftime("%d.%m.%Y")
+        self.assertIn(f"Roboter telles fra {today}", self.dashboard())
 
 
 if __name__ == "__main__":
