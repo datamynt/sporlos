@@ -109,6 +109,8 @@ def seed_site(tid: int, domain: str) -> dict:
     store.add_bot_counts({(sid, "2026-09-01", "ai", "GPTBot", "/"): 4})
     with store._cursor() as cur:
         cur.execute("INSERT INTO anchors (site_id, rollup_hash) VALUES (?, ?)", (sid, "ef" * 32))
+        cur.execute("INSERT INTO daily_breakdowns (site_id, day, dim, key, n) "
+                    "VALUES (?, '2026-09-01', 'page', '/', 1)", (sid,))
     return site
 
 

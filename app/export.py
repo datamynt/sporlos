@@ -140,6 +140,7 @@ SITE_FILES: list[tuple[str, str]] = [
     ("nettsted.csv", "Nettstedet: domene, nettsted-ID og når det ble opprettet."),
     ("tidsserie.csv", "Sidevisninger og unike besøkende per dag, fra de rå hendelsene som fortsatt er lagret (høyst 90 dager)."),
     ("daglige_tall.csv", "Dagstall for HELE historikken: sidevisninger, unike, økter og fluktfrekvens per dag, med fingeravtrykk (rollup_hash) og BSV-forankring (txid, merkle_root, merkle_proof). Se under «Bevis»."),
+    ("daglige_fordelinger.csv", "Fordelinger per dag for HELE historikken, også etter at de rå hendelsene er slettet: én rad per dag, dimensjon (side, kilde, land, enhet, kampanje, hendelse, kjøp osv.) og verdi, med antall, unike besøkende den dagen og ev. omsetning. Uten besøkskoden. Inntil 500 verdier per dimensjon per dag."),
     ("sider.csv", "Sider: sidevisninger og unike besøkende per side (rå hendelser, høyst 90 dager)."),
     ("inngangssider.csv", "Inngangssider: første side i en økt, med antall økter."),
     ("utgangssider.csv", "Utgangssider: siste side i en økt, med antall økter."),
@@ -205,6 +206,33 @@ class SiteExport:
                   "rollup_hash", "merkle_root", "merkle_proof", "txid", "forankret"]
         rows = _paged("daily_rollups", cols, ["day"], f"site_id = {P}", (self.sid,))
         return header, ([_day(r["day"])] + [r[c] for c in cols[1:]] for r in rows)
+
+    # dim codes in daily_breakdowns (app/history.py) -> Norwegian names in the file
+    _BD_DIMS = {
+        "kpi": "totalt", "page": "side", "source": "kilde", "country": "land", "region": "region",
+        "device": "enhet", "browser": "nettleser", "os": "operativsystem", "campaign": "kampanje",
+        "entry": "inngangsside", "exit": "utgangsside", "event": "hendelse",
+        "ai": "ki_assistent", "ai_total": "ki_assistenter_totalt", "ecom": "ehandel",
+        "ecom_source": "ehandel_kilde", "ecom_payment": "ehandel_betalingsmaate",
+        "product": "ehandel_produkt", "bot": "robot", "bot_ai_path": "ki_crawler_side",
+    }
+
+    _BD_KPI = {"pageviews": "sidevisninger", "visitors": "unike_besoekende", "sessions": "okter",
+               "bounces": "okter_med_en_sidevisning"}
+
+    def daglige_fordelinger(self):
+        header = ["dag", "dimensjon", "verdi", "valuta", "antall", "unike_besoekende", "omsetning"]
+        if not _table_exists("daily_breakdowns"):
+            return header, []
+        cols = ["day", "dim", "key", "currency", "n", "visitors", "revenue_cents"]
+        rows = _paged("daily_breakdowns", cols, ["day", "dim", "key", "currency"],
+                      f"site_id = {P}", (self.sid,))
+        return header, (
+            [_day(r["day"]), self._BD_DIMS.get(r["dim"], r["dim"]),
+             self._BD_KPI.get(r["key"], r["key"]) if r["dim"] == "kpi" else r["key"], r["currency"], r["n"],
+             r["visitors"], None if r["revenue_cents"] is None else money(r["revenue_cents"])]
+            for r in rows
+        )
 
     def sider(self):
         return self._group("path", "side")
@@ -495,8 +523,9 @@ def readme_text(scope: str, label: str, now: datetime, site_folders: dict[str, s
         "",
         "Hva som er med, og hva som ikke er det",
         "- Rå hendelser lagres i 90 dager. Eldre rader er slått sammen til dagstall, og de ligger i",
-        "  daglige_tall.csv for hele historikken. Fordelingene (sider, kilder, land osv.) er regnet ut",
-        "  fra de rå hendelsene, så de dekker de siste 90 dagene.",
+        "  daglige_tall.csv for hele historikken. Fordelingene per dag (sider, kilder, land osv.) ligger",
+        "  i daglige_fordelinger.csv for hele historikken. De andre fordelingsfilene (sider.csv,",
+        "  kilder.csv osv.) er regnet ut fra de rå hendelsene, så de dekker de siste 90 dagene.",
         "- Besøkskoden (visitor_hash) er IKKE med. Det er en enveis-hash som skifter hver",
         "  dag og som vi bruker for å telle unike besøkende. Du får hendelsene uten den.",
         "- Passord, API-nøkler og tilkoblinger til Google-kontoen din er ikke med.",

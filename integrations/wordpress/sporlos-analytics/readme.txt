@@ -20,7 +20,7 @@ cookie banner**.
 
 * No cookies, nothing written to the browser
 * No IP addresses stored
-* Individual page views are deleted after 90 days; only daily totals are kept
+* Individual page views are deleted after 90 days; after that only daily totals remain (per page, source, country, device and so on), kept while your account exists
 * Data hosted in Norway on European-owned infrastructure
 * Lightweight script (~1.5 kB) that never slows your site down
 * Page views, sources, UTM campaigns, goals, funnels and more

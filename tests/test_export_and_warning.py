@@ -259,6 +259,18 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(table(self.files, "roboter.csv")[1][1:], ["ai", "GPTBot", "/", "4"])
         self.assertEqual(table(self.files, "sokestatistikk.csv")[1][4:], ["3", "40", "7,5"])
 
+    def test_daily_breakdowns_are_exported(self):
+        # daily_breakdowns (app/history.py) outlive the raw events; the export carries them.
+        rows = table(self.files, "daglige_fordelinger.csv")
+        self.assertEqual(rows[0], ["dag", "dimensjon", "verdi", "valuta", "antall",
+                                   "unike_besoekende", "omsetning"])
+        day = utcnow().strftime("%Y-%m-%d")
+        got = {(r[1], r[2], r[3]): r[4:] for r in rows[1:] if r[0] == day}
+        self.assertEqual(got[("totalt", "sidevisninger", "")][0], "7")
+        self.assertEqual(got[("side", "/side-0", "")], ["3", "2", ""])
+        self.assertEqual(got[("ehandel", "", "NOK")], ["1", "", "123,45"])
+        self.assertNotIn(SECRET_HASH, self.files["daglige_fordelinger.csv"].decode("utf-8-sig"))
+
     def test_big_tables_are_paged_without_losing_or_repeating_rows(self):
         tid, _, _ = account("Stor AS")
         site = store.create_site(tid, "stor.no")

@@ -144,3 +144,16 @@ docker compose -f docker-compose.b550.yml exec -T app python -m app.manage seed-
 - [ ] Backup lagret i Norge/EØS, ikke US-sky
 - [ ] SPORLOS_SALT_SECRET er ekte (ikke dev-default)
 - [ ] Databehandleravtale klar (KS-mal: data i Norge — VPS-valget oppfyller dette)
+
+## Per-day breakdowns (long history)
+`daily_breakdowns` keeps, per site and day, the breakdowns the dashboard shows (pages, entry/exit
+pages, sources, campaigns, countries, regions, devices, browsers, OS, custom events, AI referrals,
+e-commerce, robots) as plain counts with no visitor hash (`app/history.py`). The nightly
+`manage rollup` writes yesterday's rows in the same transaction as the daily totals; `manage
+retention` never deletes them (only site or account deletion does) and first fills in any day that
+is about to lose its raw events without them. The table is created by `manage init`, which the
+container runs on start. Once after the first deploy, fill in the days still in `events`:
+```bash
+docker compose -f docker-compose.b550.yml exec -T app python -m app.manage backfill-breakdowns          # dry run: counts
+docker compose -f docker-compose.b550.yml exec -T app python -m app.manage backfill-breakdowns --apply  # idempotent
+```

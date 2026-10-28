@@ -192,6 +192,18 @@ CREATE TABLE IF NOT EXISTS bot_daily (
     n INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (site_id, day, bot_class, agent, path)
 );
+CREATE TABLE IF NOT EXISTS daily_breakdowns (
+    site_id INTEGER NOT NULL REFERENCES sites(id),
+    day TEXT NOT NULL,
+    dim TEXT NOT NULL,
+    key TEXT NOT NULL DEFAULT '',
+    currency TEXT NOT NULL DEFAULT '',
+    n INTEGER NOT NULL DEFAULT 0,
+    visitors INTEGER,
+    revenue_cents INTEGER,
+    PRIMARY KEY (site_id, day, dim, key, currency)
+);
+CREATE INDEX IF NOT EXISTS daily_breakdowns_ecom ON daily_breakdowns (site_id) WHERE dim = 'ecom';
 CREATE TABLE IF NOT EXISTS invites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL REFERENCES tenants(id),
@@ -995,6 +1007,9 @@ def reassign_site(public_id: str, tenant_id: int) -> None:
 def top_events(site_id: int, days: int = 7) -> list[dict]:
     """Egendefinerte hendelser (ikke pageview) — antall + unike, for å se hva som fyrer."""
     start, end = _period_window(days)
+    if _long(start):
+        from app import history
+        return history.top_events(site_id, start, end)
     with _cursor() as cur:
         cur.execute(
             f"SELECT name AS k, COUNT(*) AS n, COUNT(DISTINCT visitor_hash) AS u "
@@ -1012,7 +1027,10 @@ def has_ecommerce(site_id: int) -> bool:
             f"SELECT 1 FROM events WHERE site_id = {P} AND revenue_cents IS NOT NULL LIMIT 1",
             (site_id,),
         )
-        return cur.fetchone() is not None
+        if cur.fetchone() is not None:
+            return True
+    from app import history  # purchases older than the raw window
+    return history.has_ecommerce(site_id)
 
 
 def ecommerce_stats(site_id: int, days: int = 7, offset: int = 0) -> dict:
@@ -1021,6 +1039,9 @@ def ecommerce_stats(site_id: int, days: int = 7, offset: int = 0) -> dict:
     by_currency er sortert på antall ordrer — første rad er sitens dominerende valuta,
     og det er den produkt-/kilde-tabellene filtreres på (blander aldri valutaer)."""
     start, end = _period_window(days, offset)
+    if _long(start):
+        from app import history
+        return history.ecommerce_stats(site_id, start, end)
     with _cursor() as cur:
         cur.execute(
             f"SELECT COALESCE(currency, 'NOK') AS currency, COUNT(*) AS orders, "
@@ -1045,6 +1066,9 @@ def ecommerce_stats(site_id: int, days: int = 7, offset: int = 0) -> dict:
 def top_products(site_id: int, days: int = 7, currency: str = "NOK", limit: int = 10) -> list[dict]:
     """Toppprodukter etter omsetning (antall × enhetspris) i én valuta."""
     start, end = _period_window(days)
+    if _long(start):
+        from app import history
+        return history.top_products(site_id, start, end, currency, limit)
     with _cursor() as cur:
         cur.execute(
             f"SELECT name, SUM(qty) AS qty, SUM(qty * unit_price_cents) AS revenue_cents "
@@ -1080,6 +1104,9 @@ def revenue_by_source(site_id: int, days: int = 7, currency: str = "NOK", limit:
     en ærlig personvern-begrensning, ikke en bug. Kjente PSP-hosts normaliseres til
     'direkte' (kjøp som krysser midnatt får ellers PSP-returen som «første» kilde)."""
     start, end = _period_window(days)
+    if _long(start):
+        from app import history
+        return history.revenue_by_source(site_id, start, end, currency, limit)
     with _cursor() as cur:
         cur.execute(
             f"""SELECT e.revenue_cents,
@@ -1110,6 +1137,9 @@ def revenue_by_payment(site_id: int, days: int = 7, currency: str = "NOK", limit
     betalingsmåte (eldre hendelser, butikker som ikke sender feltet) grupperes
     som 'ukjent' — ærligere enn å late som de ikke finnes."""
     start, end = _period_window(days)
+    if _long(start):
+        from app import history
+        return history.revenue_by_payment(site_id, start, end, currency, limit)
     with _cursor() as cur:
         cur.execute(
             f"SELECT COALESCE(payment_method, 'ukjent') AS method, COUNT(*) AS orders, "
@@ -1147,6 +1177,15 @@ def delete_goal(goal_id: int, site_id: int) -> None:
 def goal_stats(site_id: int, days: int = 7) -> list[dict]:
     """Hvert mål m/ unike fullføringer + konverteringsrate (av unike besøkende)."""
     start, end = _period_window(days)
+    if _long(start):
+        from app import history
+        with _cursor() as cur:
+            cur.execute(
+                f"SELECT id, name, match_type, match_value FROM goals WHERE site_id = {P} ORDER BY id",
+                (site_id,),
+            )
+            goals = [dict(r) for r in cur.fetchall()]
+        return history.goal_stats(site_id, start, end, goals)
     base = f"site_id = {P} AND ts >= {P} AND ts < {P}"
     with _cursor() as cur:
         cur.execute(
@@ -1179,6 +1218,9 @@ def flow_stats(site_id: int, days: int = 7) -> dict:
     """Inngangs- og utgangssider (aggregat fra økter). Første side i en økt = inngang,
     siste = utgang. 30-min gap definerer økt (samme som sesjonisering). Ingen ny data."""
     start, end = _period_window(days)
+    if _long(start):
+        from app import history
+        return history.flow_stats(site_id, start, end)
     with _cursor() as cur:
         cur.execute(
             f"SELECT visitor_hash, ts, path FROM events WHERE site_id = {P} AND ts >= {P} "
@@ -1210,8 +1252,9 @@ def flow_stats(site_id: int, days: int = 7) -> dict:
 
 def path_transitions(site_id: int, days: int = 7, limit: int = 12) -> list[dict]:
     """Vanligste side→side-overganger innen økter (navigasjonsstier). Hopper over
-    selv-overganger (samme side på rad, f.eks. refresh). Aggregat, ingen ny data."""
-    start, end = _period_window(days)
+    selv-overganger (samme side på rad, f.eks. refresh). Aggregat, ingen ny data.
+    Needs raw events, so a longer window is clamped to the last RAW_DAYS days."""
+    start, end = _period_window(min(days, RAW_DAYS))
     with _cursor() as cur:
         cur.execute(
             f"SELECT visitor_hash, ts, path FROM events WHERE site_id = {P} AND ts >= {P} "
@@ -1251,8 +1294,9 @@ def delete_funnel(funnel_id: int, site_id: int) -> None:
 
 def funnel_stats(site_id: int, days: int = 7) -> list[dict]:
     """For hver funnel: antall unike besøkende som nådde hvert steg (i rekkefølge) + rate.
-    Per besøkende (daglig-hash), steg matches sekvensielt i tidsorden."""
-    start, end = _period_window(days)
+    Per besøkende (daglig-hash), steg matches sekvensielt i tidsorden.
+    Needs raw events, so a longer window is clamped to the last RAW_DAYS days."""
+    start, end = _period_window(min(days, RAW_DAYS))
     with _cursor() as cur:
         cur.execute(
             f"SELECT id, name, steps FROM funnels WHERE site_id = {P} ORDER BY id", (site_id,)
@@ -1333,6 +1377,10 @@ def compute_rollup(site_id: int, day: str) -> dict:
                 WHERE daily_rollups.txid IS NULL""",
             (site_id, day, pv, vis, sessions, br, h),
         )
+        # Per-day breakdowns kept after the raw events are gone (app/history.py).
+        # Same transaction: the day's totals and its breakdowns commit together.
+        from app import history
+        history.write_day(cur, site_id, day)
     return {**payload, "rollup_hash": h}
 
 
@@ -1522,6 +1570,9 @@ def api_breakdown(
     """Full breakdown for Stats-API-et. `prop` må finnes i _API_DIMS (hvitlistet)."""
     dim = _API_DIMS[prop]
     start, end = window or _period_window(days)
+    if _long(start):
+        from app import history
+        return history.api_breakdown(site_id, start, end, prop, limit)
     with _cursor() as cur:
         cur.execute(
             f"SELECT {dim} AS k, COUNT(*) AS n, COUNT(DISTINCT visitor_hash) AS u "
@@ -1538,8 +1589,8 @@ def api_breakdown(
 def retention_sweep(days: int = 90) -> tuple[int, int]:
     """Slett rå-events eldre enn `days` dager — løftet i vilkårene (§10).
 
-    Dags-aggregatene (daily_rollups) beholdes, så historikken i dashbordet
-    lever videre. Dager som mangler rollup forsegles FØRST, slik at ingen
+    Dags-aggregatene (daily_rollups, daily_breakdowns) beholdes, så historikken i
+    dashbordet lever videre. Dager som mangler rollup forsegles FØRST, slik at ingen
     tall går tapt ved sletting. Returnerer (slettede events, forseglede dager)."""
     cutoff_day = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     cutoff = f"{cutoff_day} 00:00:00"
@@ -1554,7 +1605,17 @@ def retention_sweep(days: int = 90) -> tuple[int, int]:
         have = {(r["site_id"], str(r["day"])) for r in cur.fetchall()}
     missing = [c for c in candidates if c not in have]
     for site_id, day in missing:
-        compute_rollup(site_id, day)
+        compute_rollup(site_id, day)  # writes the day's breakdowns too
+    # The per-day breakdowns (app/history.py) outlive the raw rows. Any day about to
+    # lose its events or robot rows without them (missed nightly runs, data from
+    # before the table existed) gets them now. Not counted in the return value.
+    from app import history
+    with _cursor() as cur:
+        doomed = history._source_days(cur, before=cutoff_day)
+        have_bd = history.days_with_breakdowns(cur, doomed[0][1], cutoff_day) if doomed else set()
+    for site_id, day in doomed:
+        if (site_id, day) not in have_bd and (site_id, day) not in missing:
+            history.compute_breakdowns(site_id, day)
     with _cursor() as cur:
         # Produktlinjer først — FK peker på events (SQLite håndhever ikke cascade her).
         cur.execute(f"DELETE FROM event_items WHERE ts < {P}", (cutoff,))
@@ -1674,6 +1735,16 @@ def insert_event(site_id: int, ev: dict, items: list[dict] | None = None) -> Non
         )
 
 
+# Raw events are kept this many days (retention_sweep). A window that starts before
+# the first day of the RAW_DAYS window is read from daily_breakdowns for its older
+# days (app/history.py); every other window reads events exactly as before.
+RAW_DAYS = 90
+
+
+def _long(start: str) -> bool:
+    return start < _period_window(RAW_DAYS)[0]
+
+
 def _period_window(days: int, offset: int = 0) -> tuple[str, str]:
     """[start, end)-vindu (UTC) som dekker `days` kalenderdager t.o.m. i dag.
     offset=1 gir det FORRIGE like lange vinduet (for periodesammenligning).
@@ -1704,6 +1775,9 @@ def kpis(
     """Lett KPI-sett (pv/unike/økter/flukt) for et vindu — brukes til
     forrige-periode-sammenligning uten å dra hele stats(). `window` overstyrer days/offset."""
     start, end = window or _period_window(days, offset)
+    if _long(start):
+        from app import history
+        return history.kpis(site_id, start, end)
     where = f"site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview'"
     args = (site_id, start, end)
     with _cursor() as cur:
@@ -1782,8 +1856,13 @@ def stats(site_id: int, days: int = 7, window: tuple[str, str] | None = None) ->
     summeres daglige unike (en gjenganger teller én gang per dag) — samme
     personvern-bevarende oppførsel som Plausible.
     `window` ([start, end) UTC) overstyrer days, f.eks. month_window("2026-09").
+    A window reaching past the raw-data horizon reads its older days from
+    daily_breakdowns (app/history.py).
     """
     start, end = window or _period_window(days)
+    if _long(start):
+        from app import history
+        return history.stats(site_id, start, end)
     # Traffic-metrikk teller KUN sidevisninger — egendefinerte hendelser holdes utenfor.
     where = f"site_id = {P} AND ts >= {P} AND ts < {P} AND name = 'pageview'"
     args = (site_id, start, end)
@@ -1876,18 +1955,7 @@ def export_breakdown(site_id: int, days: int, what: str) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
-def timeseries(site_id: int, days: int = 7, unit: str | None = None) -> list[dict]:
-    """Buckets med pv + unike, oppløsning etter vinduslengde: time (days=1),
-    dag, eller uke (days >= 60). Tomme buckets fylles med 0.
-    Eksplisitt unit="day" overstyrer uke-aggregeringen (CSV-eksport vil ha
-    dagsoppløsning uansett periodelengde).
-
-    Uke-unike = sum av dags-unike — EKSAKT, ikke tilnærmet: visitor_hash roterer
-    daglig, så samme person har ulik hash hver dag og DISTINCT over uka gir
-    samme tall som summen (jf. stats()-docstringen)."""
-    forced = unit is not None
-    unit = unit or ("hour" if days == 1 else "day")
-    start, end = _period_window(days)
+def _raw_series(site_id: int, days: int, unit: str, start: str, end: str) -> list[dict]:
     b = _bucket_expr(unit)
     where = f"site_id = {P} AND ts >= {P} AND ts < {P}"
     with _cursor() as cur:
@@ -1907,6 +1975,27 @@ def timeseries(site_id: int, days: int = 7, unit: str | None = None) -> list[dic
                 "visitors": r["vis"] if r else 0,
             }
         )
+    return out
+
+
+def timeseries(site_id: int, days: int = 7, unit: str | None = None) -> list[dict]:
+    """Buckets med pv + unike, oppløsning etter vinduslengde: time (days=1),
+    dag, eller uke (days >= 60). Tomme buckets fylles med 0.
+    Eksplisitt unit="day" overstyrer uke-aggregeringen (CSV-eksport vil ha
+    dagsoppløsning uansett periodelengde).
+
+    Uke-unike = sum av dags-unike — EKSAKT, ikke tilnærmet: visitor_hash roterer
+    daglig, så samme person har ulik hash hver dag og DISTINCT over uka gir
+    samme tall som summen (jf. stats()-docstringen)."""
+    forced = unit is not None
+    unit = unit or ("hour" if days == 1 else "day")
+    start, end = _period_window(days)
+    if unit == "day" and _long(start):
+        # Older days from the stored per-day totals; pageviews only (app/history.py).
+        from app import history
+        out = history.daily_series(site_id, days)
+    else:
+        out = _raw_series(site_id, days, unit, start, end)
     if days >= 60 and not forced:  # uke-buckets: bucket = mandagen i uka
         weeks: dict[str, dict] = {}
         for b_ in out:
@@ -2537,6 +2626,9 @@ def _ai_key(referrer_src: str | None, utm_source: str | None) -> str:
 def ai_referrals(site_id: int, days: int = 7, offset: int = 0) -> dict:
     """Besøk henvist fra AI-assistenter — live events-vindu (ingen GSC-lag her)."""
     start, end = _period_window(days, offset)
+    if _long(start):
+        from app import history
+        return history.ai_referrals(site_id, start, end)
     pred, params = _ai_where()
     with _cursor() as cur:
         cur.execute(
@@ -2553,6 +2645,9 @@ def ai_referrals(site_id: int, days: int = 7, offset: int = 0) -> dict:
 def ai_referral_sources(site_id: int, days: int = 7, limit: int = 8) -> list[dict]:
     """Hvilke AI-assistenter som sender trafikken — for Søk-seksjonen på site-siden."""
     start, end = _period_window(days)
+    if _long(start):
+        from app import history
+        return history.ai_referral_sources(site_id, start, end, limit)
     pred, params = _ai_where()
     with _cursor() as cur:
         cur.execute(
@@ -2651,6 +2746,7 @@ SITE_TABLES = (
     "goals",
     "funnels",
     "daily_rollups",
+    "daily_breakdowns",
     "search_stats",
     "search_connections",
     "anchors",
@@ -2821,6 +2917,10 @@ def bot_summary(site_id: int, days: int = 7, limit: int = 10) -> dict:
     """Robot hits for the period: total, per class, top agents, and the pages AI
     crawlers fetched. `n` counts hits (beacons), not visitors: robots get no hash."""
     first, last = _bot_days(days)
+    if _long(f"{first} 00:00:00"):
+        from app import history
+        start, end = _period_window(days)
+        return history.bot_summary(site_id, start, end, limit)
     where = f"site_id = {P} AND day >= {P} AND day <= {P}"
     args = (site_id, first, last)
     limit = int(limit)
