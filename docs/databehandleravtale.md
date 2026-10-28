@@ -1,7 +1,7 @@
 # Databehandleravtale (DPA) — Sporløs
 
 The published agreement lives in **`app/dpa.py`** and is served at
-**https://sporlos.no/databehandleravtale** (version 2, valid from 2026-10-26; version 1 was valid from 2026-09-30).
+**https://sporlos.no/databehandleravtale** (version 3, valid from 2026-10-27; version 2 was valid from 2026-10-26, version 1 from 2026-09-30).
 
 It is accepted electronically when an account is created (GDPR art. 28 nr. 9); the
 accepted version and time are stored on the tenant (`tenants.dpa_version`,

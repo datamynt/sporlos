@@ -10,11 +10,11 @@ Facts in the appendices must match how the service actually runs (privacy.py,
 the backup chain on b550, the subprocessor list on /personvern).
 """
 
-VERSION = "2"
-VALID_FROM = "2026-10-26"
+VERSION = "3"
+VALID_FROM = "2026-10-27"
 
 HTML = """<h1>Databehandleravtale</h1>
-<p class=muted>Versjon 2 · gjelder fra 26.10.2026 · <a href="#" onclick="window.print();return false">Skriv ut eller lagre som PDF</a></p>
+<p class=muted>Versjon 3 · gjelder fra 27.10.2026 · <a href="#" onclick="window.print();return false">Skriv ut eller lagre som PDF</a></p>
 
 <p>Denne databehandleravtalen («Avtalen») regulerer Datamynts behandling av personopplysninger
 på vegne av Kunden når Kunden bruker webanalysetjenesten Sporløs.</p>
@@ -116,15 +116,17 @@ dagens besøks-hash. Ved kjøp, når Kunden sender det: beløp, valuta, betaling
 enhetspris). <b>Ingen direkte identifikatorer, ingen informasjonskapsler, ingen posisjon under fylkesnivå, ingen
 ordre-ID eller kundedata.</b></td></tr>
 <tr><td><b>Varighet</b></td><td>Enkeltregistreringene, med besøks-hash, slettes automatisk etter 90 dager. Etter det
-beholdes bare dagstall per nettsted (sidevisninger, besøkende, besøk og fluktfrekvens), uten hash, så lenge
-tjenesteavtalen løper. Hashen lages med et tilfeldig salt som byttes og slettes hvert døgn, så besøk kan ikke
+beholdes bare dagstall per nettsted, uten hash: sidevisninger, besøkende, besøk og fluktfrekvens, og antall per
+side, kilde, land og fylke, enhets-, nettleser- og OS-type, kampanje, hendelse og kjøp. Hver fordeling er summert
+for seg, aldri kombinert med en annen, så en rad kan ikke knyttes til én besøkende. Dagstallene beholdes så lenge
+tjenesteavtalen løper, og slettes sammen med nettstedet eller kontoen. Hashen lages med et tilfeldig salt som byttes og slettes hvert døgn, så besøk kan ikke
 kobles på tvers av dager.</td></tr>
 </table>
 
 <h2>Bilag B — Sikkerhetstiltak (GDPR art. 32)</h2>
 <ul>
 <li>Ingen lagring av IP-adresser. Dagens salt er tilfeldig og slettes etter døgnet.</li>
-<li>Enkeltregistreringer slettes automatisk etter 90 dager; bare dagstall uten hash beholdes.</li>
+<li>Enkeltregistreringer slettes automatisk etter 90 dager; bare dagstall uten hash beholdes, hver fordeling summert for seg.</li>
 <li>Ingen informasjonskapsler, vedvarende identifikatorer eller fingerprinting hos de besøkende.</li>
 <li>Geografi bevisst begrenset til land og fylke, ikke by, for å hindre re-identifisering.</li>
 <li>All trafikk over TLS (HTTPS). Databasen er ikke eksponert mot internett.</li>
