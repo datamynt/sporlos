@@ -4413,9 +4413,16 @@ def _bots_html(site_id: int, days: int, label: str, *, always: bool = False) -> 
     robot counted (all time, like e-commerce), so quiet sites get no empty box.
     `always=True` (the public demo) shows the section regardless."""
     botcount.flush()  # fresh numbers: ingest buffers robot hits for up to a minute
-    if not always and not store.has_bots(site_id):
+    first = store.first_bot_day(site_id)
+    if not always and not first:
         return ""
     b = store.bot_summary(site_id, days, limit=10)
+    # Counting started recently: a longer period holds no older robot data, so say so
+    # instead of letting 7, 30 and 90 days look stuck on the same number.
+    since = (
+        f" Roboter telles fra {_no_date(first)}, så perioden har ikke tall fra før det."
+        if first and first > store._bot_days(days)[0] else ""
+    )
 
     def rows(items, name, cls_col):
         mx = max((i["n"] for i in items), default=0) or 1
@@ -4458,7 +4465,7 @@ def _bots_html(site_id: int, days: int, label: str, *, always: bool = False) -> 
         '<h3 id=roboter>Roboter og KI-agenter</h3>'
         "<p class=hint>Trafikk som ikke er mennesker: søkemotorer, KI-crawlere, KI-agenter, "
         "lenkeforhåndsvisninger og skript. Telles ikke med i besøkstallene over. Roboter telles "
-        "i treff, ikke som unike besøkende.</p>"
+        f"i treff, ikke som unike besøkende.{since}</p>"
         + body
         + '<p style="color:var(--muted);font-size:.78rem;margin:.7rem 0 0">Forbehold: Sporløs ser bare '
         "roboter som kjører JavaScript. De fleste KI-crawlere gjør ikke det, så de er undertalt her. "
