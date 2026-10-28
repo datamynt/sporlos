@@ -342,6 +342,21 @@ class BotApiAndDashboardTest(IngestTestCase):
         self.assertIn("Ingen roboter registrert", html)
         self.assertNotIn("Roboter telles fra", html)  # counting predates the 7-day period
 
+    def test_first_bot_day_is_a_string_on_postgres(self):
+        # Postgres hands back bot_daily.day as a date; the dashboard compares it to a string.
+        from contextlib import contextmanager
+        from datetime import date
+
+        cur = mock.Mock()
+        cur.fetchone.return_value = {"d": date(2026, 10, 26)}
+
+        @contextmanager
+        def fake_cursor():
+            yield cur
+
+        with mock.patch.object(store, "_cursor", fake_cursor):
+            self.assertEqual(store.first_bot_day(self.site["id"]), "2026-10-26")
+
     def test_dashboard_notes_when_counting_started(self):
         self.seed()  # today only: a 7-day period reaches back before the first count
         today = datetime.now(timezone.utc).strftime("%d.%m.%Y")

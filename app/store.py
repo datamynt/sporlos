@@ -2910,7 +2910,8 @@ def first_bot_day(site_id: int) -> str | None:
     with _cursor() as cur:
         cur.execute(f"SELECT MIN(day) AS d FROM bot_daily WHERE site_id = {P}", (site_id,))
         row = cur.fetchone()
-        return row["d"] if row and row["d"] else None
+        # Postgres returns a date (day is DATE there), SQLite a string: normalise.
+        return str(row["d"])[:10] if row and row["d"] else None
 
 
 def bot_summary(site_id: int, days: int = 7, limit: int = 10) -> dict:
